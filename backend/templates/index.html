@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rule-Based Auto Remediation - Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/style.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+  <nav class="navbar navbar-light bg-white shadow-sm mb-4">
+    <div class="container-fluid">
+      <span class="navbar-brand mb-0 h1">Auto-Remediation Dashboard</span>
+    </div>
+  </nav>
+
+  <div class="container">
+    <ul class="nav nav-tabs mb-3" id="mainTabs">
+      <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#eventsTab">Events</a></li>
+      <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#rulesTab">Rules</a></li>
+      <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#approvalsTab">Approvals</a></li>
+      <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#historyTab">History</a></li>
+    </ul>
+
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="eventsTab">
+        <div class="mb-2 d-flex justify-content-between">
+          <h5>Recent Events</h5>
+          <button class="btn btn-sm btn-outline-secondary" onclick="loadEvents()">Refresh</button>
+        </div>
+        <table class="table table-sm table-striped" id="events-table">
+          <thead><tr><th>ID</th><th>EventID</th><th>Source</th><th>Message</th><th>Time</th><th>Actions</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="tab-pane fade" id="rulesTab">
+        <div class="row">
+          <div class="col-md-6">
+            <h5>Rules</h5>
+            <table class="table table-sm" id="rules-table">
+              <thead><tr><th>Name</th><th>Match</th><th>Auto</th><th>Actions</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="col-md-6">
+            <h5>Create / Edit Rule</h5>
+            <form id="rule-form">
+              <input type="hidden" id="rule-id" />
+              <div class="mb-2"><input class="form-control" id="rule-name" placeholder="Name" required /></div>
+              <div class="mb-2"><input class="form-control" id="rule-event_id" placeholder="Event ID (optional)" /></div>
+              <div class="mb-2"><input class="form-control" id="rule-source" placeholder="Source (optional)" /></div>
+              <div class="mb-2"><input class="form-control" id="rule-message_regex" placeholder="Message regex (optional)" /></div>
+              <div class="mb-2"><input class="form-control" id="rule-remediation_script" placeholder="Remediation script path (optional)" /></div>
+              <div class="form-check mb-2"><input type="checkbox" class="form-check-input" id="rule-auto" /><label class="form-check-label">Auto-remediate</label></div>
+              <div class="d-flex gap-2"><button class="btn btn-primary" type="submit">Save</button><button class="btn btn-secondary" type="button" id="rule-reset">Reset</button></div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="approvalsTab">
+        <div class="mb-2 d-flex justify-content-between"><h5>Approval Requests</h5><button class="btn btn-sm btn-outline-secondary" onclick="loadRequests()">Refresh</button></div>
+        <table class="table table-sm" id="approvals-table"><thead><tr><th>ID</th><th>EventID</th><th>Rule</th><th>Requested By</th><th>Requested At</th><th>Status</th><th>Actions</th></tr></thead><tbody></tbody></table>
+      </div>
+
+      <div class="tab-pane fade" id="historyTab">
+        <div class="mb-2 d-flex justify-content-between"><h5>Remediation History</h5><button class="btn btn-sm btn-outline-secondary" onclick="loadHistory()">Refresh</button></div>
+        <table class="table table-sm" id="history-table"><thead><tr><th>ID</th><th>EventID</th><th>Rule</th><th>Status</th><th>Output</th><th>Time</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Matches / Run Modal -->
+  <div class="modal fade" tabindex="-1" id="matchesModal">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Matches for Event <span id="modal-event-id"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div id="matches-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+async function api(path, opts){
+  const res = await fetch(path, opts);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+async function loadEvents(){
+  const events = await api('/api/events');
+  const tbody = document.querySelector('#events-table tbody');
+  tbody.innerHTML = '';
+  for(const e of events){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${e.id}</td><td>${e.event_id}</td><td>${e.source}</td><td title="${e.message}">${e.message}</td><td>${e.timestamp}</td><td><button class="btn btn-sm btn-outline-primary" onclick="showMatches(${e.id})">Matches</button></td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+async function showMatches(eventId){
+  document.getElementById('modal-event-id').textContent = eventId;
+  const matches = await api(`/api/events/${eventId}/matches`);
+  const div = document.getElementById('matches-list');
+  div.innerHTML = '';
+  if(matches.length === 0){ div.innerHTML = '<div class="alert alert-secondary">No matching rules</div>'; }
+  for(const m of matches){
+    const card = document.createElement('div');
+    card.className = 'card mb-2';
+    card.innerHTML = `<div class="card-body d-flex justify-content-between align-items-center"><div><b>${m.name}</b><div class="small">match: ${m.event_id || '*'} / ${m.source || '*'} / regex: ${m.message_regex || ''}</div></div><div><button class="btn btn-sm btn-outline-warning" onclick="requestRun(${m.id}, ${eventId}, this)">Request</button></div></div>`;"},{
+    div.appendChild(card);
+  }
+  var myModal = new bootstrap.Modal(document.getElementById('matchesModal'))
+  myModal.show();
+}
+
+async function runRule(ruleId, eventId, btn){
+  btn.disabled = true; btn.textContent = 'Running...';
+  try{
+    const res = await api(`/api/rules/${ruleId}/run`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({event_row_id: eventId})});
+    alert(`Result: ${res.status}\n${res.output ? res.output.substring(0,500) : ''}`);
+  }catch(e){ alert('Run failed: '+e.message); }
+  btn.disabled = false; btn.textContent = 'Run';
+}
+
+async function requestRun(ruleId, eventId, btn){
+  btn.disabled = true; btn.textContent = 'Requested';
+  try{
+    await api('/api/requests', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({event_row_id: eventId, rule_id: ruleId, requested_by: 'web-ui'})});
+    alert('Approval requested');
+    loadRequests();
+  }catch(e){ alert('Request failed: '+e.message); btn.disabled = false; btn.textContent = 'Request'; }
+}
+
+async function loadRequests(){
+  const rows = await api('/api/requests?status=pending');
+  const tbody = document.querySelector('#approvals-table tbody');
+  tbody.innerHTML = '';
+  for(const r of rows){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${r.id}</td><td>${r.event_id || r.event_row_id}</td><td>${r.rule_name || r.rule_id}</td><td>${r.requested_by}</td><td>${r.requested_at}</td><td>${r.status}</td><td><button class="btn btn-sm btn-success" onclick="approveRequest(${r.id}, this)">Approve</button> <button class="btn btn-sm btn-danger" onclick="denyRequest(${r.id}, this)">Deny</button></td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+async function approveRequest(id, btn){
+  if(!confirm('Approve this request?')) return;
+  btn.disabled = true; btn.textContent = 'Approving...';
+  try{
+    const res = await api(`/api/requests/${id}/approve`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({processed_by: 'admin'})});
+    alert(`Approved: ${res.result.status}\n${res.result.output ? res.result.output.substring(0,500) : ''}`);
+  }catch(e){ alert('Approve failed: '+e.message); }
+  loadRequests(); loadHistory(); loadEvents();
+}
+
+async function denyRequest(id, btn){
+  if(!confirm('Deny this request?')) return;
+  btn.disabled = true; btn.textContent = 'Denying...';
+  try{
+    await api(`/api/requests/${id}/deny`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({processed_by: 'admin', note: 'Denied by admin'})});
+    alert('Denied');
+  }catch(e){ alert('Deny failed: '+e.message); }
+  loadRequests();
+}
+
+// Rules
+async function loadRules(){
+  const rules = await api('/api/rules');
+  const tbody = document.querySelector('#rules-table tbody');
+  tbody.innerHTML = '';
+  for(const r of rules){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${r.name}</td><td>${r.event_id || '*'} / ${r.source || '*'}</td><td>${r.auto_remediate ? 'Yes' : 'No'}</td><td><button class="btn btn-sm btn-outline-secondary" onclick='editRule(${JSON.stringify(r)})'>Edit</button> <button class="btn btn-sm btn-outline-danger" onclick="deleteRule(${r.id})">Delete</button></td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function editRule(r){
+  document.getElementById('rule-id').value = r.id;
+  document.getElementById('rule-name').value = r.name;
+  document.getElementById('rule-event_id').value = r.event_id || '';
+  document.getElementById('rule-source').value = r.source || '';
+  document.getElementById('rule-message_regex').value = r.message_regex || '';
+  document.getElementById('rule-remediation_script').value = r.remediation_script || '';
+  document.getElementById('rule-auto').checked = r.auto_remediate;
+}
+
+document.getElementById('rule-reset').addEventListener('click', ()=>{ document.getElementById('rule-form').reset(); document.getElementById('rule-id').value=''; });
+
+document.getElementById('rule-form').addEventListener('submit', async (ev)=>{
+  ev.preventDefault();
+  const payload = {
+    name: document.getElementById('rule-name').value,
+    event_id: document.getElementById('rule-event_id').value || null,
+    source: document.getElementById('rule-source').value || null,
+    message_regex: document.getElementById('rule-message_regex').value || null,
+    remediation_script: document.getElementById('rule-remediation_script').value || null,
+    auto_remediate: document.getElementById('rule-auto').checked
+  };
+  const ruleId = document.getElementById('rule-id').value;
+  if(ruleId){
+    await api(`/api/rules/${ruleId}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+    alert('Updated');
+  } else {
+    await api('/api/rules', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+    alert('Created');
+  }
+  document.getElementById('rule-form').reset(); document.getElementById('rule-id').value='';
+  loadRules();
+});
+
+async function deleteRule(id){
+  if(!confirm('Delete rule?')) return;
+  await api(`/api/rules/${id}`, {method:'DELETE'});
+  loadRules();
+}
+
+// History
+async function loadHistory(){
+  const rows = await api('/api/history');
+  const tbody = document.querySelector('#history-table tbody');
+  tbody.innerHTML = '';
+  for(const h of rows){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${h.id}</td><td>${h.event_id || h.event_row_id}</td><td>${h.rule_name || h.rule_id}</td><td>${h.status}</td><td title="${h.output}">${h.output ? h.output.substring(0,200) : ''}</td><td>${h.timestamp}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+// initial load
+loadEvents(); loadRules(); loadHistory(); loadRequests();
+setInterval(() => { loadEvents(); loadRequests(); }, 5000);
+</script>
+
+</body>
+</html>
