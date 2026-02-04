@@ -14,7 +14,11 @@ def init_db():
         log_name TEXT,
         source TEXT,
         message TEXT,
-        timestamp TEXT
+        timestamp TEXT,
+        category TEXT,
+        severity TEXT,
+        description TEXT,
+        recommended_action TEXT
     )
     ''')
 
@@ -26,7 +30,11 @@ def init_db():
         source TEXT,
         message_regex TEXT,
         remediation_script TEXT,
-        auto_remediate INTEGER DEFAULT 0
+        auto_remediate INTEGER DEFAULT 0,
+        category TEXT,
+        severity TEXT,
+        description TEXT,
+        recommended_action TEXT
     )
     ''')
 
@@ -56,7 +64,58 @@ def init_db():
     ''')
 
     conn.commit()
+
+    # Migrate existing tables to add new columns if they don't exist
+    migrate_db(conn)
+
     conn.close()
+
+
+def migrate_db(conn):
+    """Add new columns to existing tables if they don't exist."""
+    c = conn.cursor()
+
+    # Get existing columns in events table
+    c.execute("PRAGMA table_info(events)")
+    events_columns = [col[1] for col in c.fetchall()]
+
+    # Add missing columns to events table
+    new_event_columns = [
+        ('category', 'TEXT'),
+        ('severity', 'TEXT'),
+        ('description', 'TEXT'),
+        ('recommended_action', 'TEXT')
+    ]
+
+    for col_name, col_type in new_event_columns:
+        if col_name not in events_columns:
+            try:
+                c.execute(f'ALTER TABLE events ADD COLUMN {col_name} {col_type}')
+                print(f'Added column {col_name} to events table')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+    # Get existing columns in rules table
+    c.execute("PRAGMA table_info(rules)")
+    rules_columns = [col[1] for col in c.fetchall()]
+
+    # Add missing columns to rules table
+    new_rule_columns = [
+        ('category', 'TEXT'),
+        ('severity', 'TEXT'),
+        ('description', 'TEXT'),
+        ('recommended_action', 'TEXT')
+    ]
+
+    for col_name, col_type in new_rule_columns:
+        if col_name not in rules_columns:
+            try:
+                c.execute(f'ALTER TABLE rules ADD COLUMN {col_name} {col_type}')
+                print(f'Added column {col_name} to rules table')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+    conn.commit()
 
 
 if __name__ == '__main__':

@@ -22,12 +22,25 @@ def index():
 def events():
     if request.method == 'GET':
         rows = models.get_events(limit=200)
-        events = [dict(id=r[0], event_id=r[1], log_name=r[2], source=r[3], message=r[4], timestamp=r[5]) for r in rows]
+        events = [dict(id=r[0], event_id=r[1], log_name=r[2], source=r[3], message=r[4],
+                      timestamp=r[5], category=r[6], severity=r[7], description=r[8],
+                      recommended_action=r[9]) for r in rows]
         return jsonify(events)
 
     data = request.get_json(force=True)
     # expected keys: event_id, log_name, source, message, timestamp (optional)
-    event_row_id = models.add_event(data.get('event_id'), data.get('log_name'), data.get('source'), data.get('message'), data.get('timestamp'))
+    # The add_event function will automatically enrich with metadata from JSON
+    event_row_id = models.add_event(
+        data.get('event_id'),
+        data.get('log_name'),
+        data.get('source'),
+        data.get('message'),
+        data.get('timestamp'),
+        data.get('category'),
+        data.get('severity'),
+        data.get('description'),
+        data.get('recommended_action')
+    )
 
     matched = models.match_rules_for_event(data)
     matched_info = []
@@ -56,11 +69,24 @@ def events():
 def rules():
     if request.method == 'GET':
         rows = models.get_rules()
-        rules = [dict(id=r[0], name=r[1], event_id=r[2], source=r[3], message_regex=r[4], remediation_script=r[5], auto_remediate=bool(r[6])) for r in rows]
+        rules = [dict(id=r[0], name=r[1], event_id=r[2], source=r[3], message_regex=r[4],
+                     remediation_script=r[5], auto_remediate=bool(r[6]), category=r[7],
+                     severity=r[8], description=r[9], recommended_action=r[10]) for r in rows]
         return jsonify(rules)
 
     data = request.get_json(force=True)
-    rid = models.add_rule(data.get('name'), data.get('event_id'), data.get('source'), data.get('message_regex'), data.get('remediation_script'), data.get('auto_remediate', False))
+    rid = models.add_rule(
+        data.get('name'),
+        data.get('event_id'),
+        data.get('source'),
+        data.get('message_regex'),
+        data.get('remediation_script'),
+        data.get('auto_remediate', False),
+        data.get('category'),
+        data.get('severity'),
+        data.get('description'),
+        data.get('recommended_action')
+    )
     return jsonify({'status': 'created', 'rule_id': rid}), 201
 
 
@@ -70,12 +96,26 @@ def rule_detail(rule_id):
         r = models.get_rule(rule_id)
         if not r:
             return jsonify({'error': 'not found'}), 404
-        rule = dict(id=r[0], name=r[1], event_id=r[2], source=r[3], message_regex=r[4], remediation_script=r[5], auto_remediate=bool(r[6]))
+        rule = dict(id=r[0], name=r[1], event_id=r[2], source=r[3], message_regex=r[4],
+                   remediation_script=r[5], auto_remediate=bool(r[6]), category=r[7],
+                   severity=r[8], description=r[9], recommended_action=r[10])
         return jsonify(rule)
 
     if request.method == 'PUT':
         data = request.get_json(force=True)
-        ok = models.update_rule(rule_id, data.get('name'), data.get('event_id'), data.get('source'), data.get('message_regex'), data.get('remediation_script'), data.get('auto_remediate'))
+        ok = models.update_rule(
+            rule_id,
+            data.get('name'),
+            data.get('event_id'),
+            data.get('source'),
+            data.get('message_regex'),
+            data.get('remediation_script'),
+            data.get('auto_remediate'),
+            data.get('category'),
+            data.get('severity'),
+            data.get('description'),
+            data.get('recommended_action')
+        )
         return jsonify({'status': 'updated' if ok else 'nochange'})
 
     if request.method == 'DELETE':
@@ -107,11 +147,16 @@ def event_matches(event_id):
     ev = models.get_event(event_id)
     if not ev:
         return jsonify({'error': 'event not found'}), 404
-    event_dict = {'event_id': ev[1], 'log_name': ev[2], 'source': ev[3], 'message': ev[4], 'timestamp': ev[5]}
+    event_dict = {'event_id': ev[1], 'log_name': ev[2], 'source': ev[3], 'message': ev[4],
+                  'timestamp': ev[5], 'category': ev[6], 'severity': ev[7],
+                  'description': ev[8], 'recommended_action': ev[9]}
     matched = models.match_rules_for_event(event_dict)
     matched_info = []
     for r in matched:
-        matched_info.append(dict(id=r[0], name=r[1], event_id=r[2], source=r[3], message_regex=r[4], remediation_script=r[5], auto_remediate=bool(r[6])))
+        matched_info.append(dict(id=r[0], name=r[1], event_id=r[2], source=r[3],
+                                message_regex=r[4], remediation_script=r[5], auto_remediate=bool(r[6]),
+                                category=r[7], severity=r[8], description=r[9],
+                                recommended_action=r[10]))
     return jsonify(matched_info)
 
 
@@ -155,6 +200,36 @@ def deny_request(req_id):
     note = data.get('note', 'denied by admin')
     models.update_request_status(req_id, 'denied', processed_by, note)
     return jsonify({'status': 'denied'})
+
+
+@app.route('/api/event-definitions', methods=['GET'])
+def event_definitions():
+    """Get all event definitions from the JSON file."""
+    definitions = models.get_all_event_definitions()
+    return jsonify(definitions)
+
+
+@app.route('/api/event-definitions/<int:event_id>', methods=['GET'])
+def event_definition_detail(event_id):
+    """Get a specific event definition by event_id."""
+    source = request.args.get('source')
+    defn = models.get_event_definition(event_id, source)
+    if not defn:
+        return jsonify({'error': 'event definition not found'}), 404
+    return jsonify(defn)
+
+
+@app.route('/api/populate-rules', methods=['POST'])
+def populate_rules():
+    """Populate rules from the JSON event definitions file."""
+    data = request.get_json(force=True) if request.is_json else {}
+    overwrite = data.get('overwrite', False)
+
+    try:
+        count = models.populate_rules_from_json(overwrite=overwrite)
+        return jsonify({'status': 'success', 'rules_created': count})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 if __name__ == '__main__':

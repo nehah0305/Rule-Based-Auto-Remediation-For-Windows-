@@ -1,0 +1,394 @@
+[
+    {
+        "event_id": 7031,
+        "event_source": "Service Control Manager",
+        "category": "Service Failure",
+        "severity": "High",
+        "description": "A Windows service terminated unexpectedly.",
+        "recommended_action": "Restart the affected service",
+        "auto_remediate_candidate": true
+    },
+    {
+        "event_id": 7034,
+        "event_source": "Service Control Manager",
+        "category": "Service Failure",
+        "severity": "High",
+        "description": "A service terminated unexpectedly without reporting status.",
+        "recommended_action": "Restart the service and check dependencies",
+        "auto_remediate_candidate": true
+    },
+    {
+        "event_id": 7000,
+        "event_source": "Service Control Manager",
+        "category": "Service Startup Failure",
+        "severity": "High",
+        "description": "A service failed to start.",
+        "recommended_action": "Verify service configuration and restart",
+        "auto_remediate_candidate": true
+    },
+    {
+        "event_id": 7001,
+        "event_source": "Service Control Manager",
+        "category": "Dependency Failure",
+        "severity": "High",
+        "description": "A service failed to start due to dependency failure.",
+        "recommended_action": "Start dependency services",
+        "auto_remediate_candidate": true
+    },
+    {
+        "event_id": 2013,
+        "event_source": "Disk",
+        "category": "Low Disk Space",
+        "severity": "Medium",
+        "description": "Disk space on a volume is running low.",
+        "recommended_action": "Clean temporary files and logs",
+        "auto_remediate_candidate": true
+    },
+    {
+        "event_id": 51,
+        "event_source": "Disk",
+        "category": "Disk I/O Error",
+        "severity": "Critical",
+        "description": "An error was detected on the device during a paging operation.",
+        "recommended_action": "Check disk health and hardware",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 55,
+        "event_source": "NTFS",
+        "category": "File System Corruption",
+        "severity": "Critical",
+        "description": "The file system structure on the disk is corrupt.",
+        "recommended_action": "Run chkdsk and escalate",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 1000,
+        "event_source": "Application Error",
+        "category": "Application Crash",
+        "severity": "Medium",
+        "description": "An application crashed unexpectedly.",
+        "recommended_action": "Restart application or service",
+        "auto_remediate_candidate": true
+    },
+    {
+        "event_id": 1001,
+        "event_source": "Windows Error Reporting",
+        "category": "Application Hang",
+        "severity": "Medium",
+        "description": "Application stopped responding.",
+        "recommended_action": "Restart application",
+        "auto_remediate_candidate": true
+    },
+    {
+        "event_id": 1026,
+        "event_source": ".NET Runtime",
+        "category": "Runtime Crash",
+        "severity": "Medium",
+        "description": ".NET application terminated due to unhandled exception.",
+        "recommended_action": "Restart application and log exception",
+        "auto_remediate_candidate": true
+    },
+    {
+        "event_id": 219,
+        "event_source": "Kernel-PnP",
+        "category": "Driver Failure",
+        "severity": "Critical",
+        "description": "A driver failed to load for a hardware device.",
+        "recommended_action": "Rollback or disable driver",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 4101,
+        "event_source": "Display",
+        "category": "Driver Crash",
+        "severity": "High",
+        "description": "Display driver stopped responding and recovered.",
+        "recommended_action": "Update or rollback display driver",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 6008,
+        "event_source": "EventLog",
+        "category": "Unexpected Shutdown",
+        "severity": "Critical",
+        "description": "Previous system shutdown was unexpected.",
+        "recommended_action": "Analyze crash logs",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 4625,
+        "event_source": "Security",
+        "category": "Authentication Failure",
+        "severity": "High",
+        "description": "An account failed to log on.",
+        "recommended_action": "Investigate failed login attempts",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 4740,
+        "event_source": "Security",
+        "category": "Account Lockout",
+        "severity": "High",
+        "description": "A user account was locked out.",
+        "recommended_action": "Notify admin and review security logs",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 5152,
+        "event_source": "Windows Filtering Platform",
+        "category": "Network Block",
+        "severity": "Medium",
+        "description": "A network packet was blocked by firewall.",
+        "recommended_action": "Review firewall rules",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 41,
+        "event_source": "Kernel-Power",
+        "category": "Boot & Power",
+        "severity": "Critical",
+        "description": "System rebooted without a clean shutdown.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 6005,
+        "event_source": "EventLog",
+        "category": "Boot & Power",
+        "severity": "Info",
+        "description": "The Event Log service was started (system boot).",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 6006,
+        "event_source": "EventLog",
+        "category": "Boot & Power",
+        "severity": "Info",
+        "description": "The Event Log service was stopped (clean shutdown).",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 1001,
+        "event_source": "BugCheck",
+        "category": "System Crash",
+        "severity": "Critical",
+        "description": "The system encountered a bugcheck (BSOD).",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 7,
+        "event_source": "Disk",
+        "category": "Storage",
+        "severity": "Critical",
+        "description": "Bad block detected on disk.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 98,
+        "event_source": "VolSnap",
+        "category": "Volume Shadow Copy",
+        "severity": "High",
+        "description": "Volume Shadow Copy Service encountered errors.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 140,
+        "event_source": "Disk",
+        "category": "Storage",
+        "severity": "High",
+        "description": "Disk write operation failed.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 2004,
+        "event_source": "Resource-Exhaustion-Detector",
+        "category": "Memory",
+        "severity": "High",
+        "description": "System is running low on memory or handles.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 2019,
+        "event_source": "Srv",
+        "category": "Memory",
+        "severity": "High",
+        "description": "The server was unable to allocate from the nonpaged pool.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 2020,
+        "event_source": "Srv",
+        "category": "Memory",
+        "severity": "High",
+        "description": "The server was unable to allocate from the paged pool.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 10016,
+        "event_source": "DistributedCOM",
+        "category": "COM / Permissions",
+        "severity": "Medium",
+        "description": "DCOM permission issue detected.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 4201,
+        "event_source": "TCPIP",
+        "category": "Networking",
+        "severity": "High",
+        "description": "Network interface was disconnected.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 4227,
+        "event_source": "TCPIP",
+        "category": "Networking",
+        "severity": "High",
+        "description": "TCP/IP failed to establish a connection.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 5719,
+        "event_source": "NETLOGON",
+        "category": "Domain Connectivity",
+        "severity": "Critical",
+        "description": "Failed to establish a secure channel with a domain controller.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 36874,
+        "event_source": "Schannel",
+        "category": "Security / TLS",
+        "severity": "High",
+        "description": "TLS/SSL handshake failed.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 1058,
+        "event_source": "GroupPolicy",
+        "category": "Policy Processing",
+        "severity": "High",
+        "description": "Group Policy processing failed.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 4624,
+        "event_source": "Security",
+        "category": "Authentication",
+        "severity": "Info",
+        "description": "An account was successfully logged on.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 4648,
+        "event_source": "Security",
+        "category": "Authentication",
+        "severity": "Medium",
+        "description": "A logon was attempted using explicit credentials.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 4672,
+        "event_source": "Security",
+        "category": "Privilege Use",
+        "severity": "High",
+        "description": "Special privileges were assigned to a logon.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 4720,
+        "event_source": "Security",
+        "category": "Account Management",
+        "severity": "High",
+        "description": "A user account was created.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 4768,
+        "event_source": "Security",
+        "category": "Kerberos",
+        "severity": "Medium",
+        "description": "A Kerberos authentication ticket was requested.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 4769,
+        "event_source": "Security",
+        "category": "Kerberos",
+        "severity": "High",
+        "description": "A Kerberos service ticket request failed.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 20,
+        "event_source": "WindowsUpdateClient",
+        "category": "Windows Update",
+        "severity": "High",
+        "description": "Windows update installation failed.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 24,
+        "event_source": "WindowsUpdateClient",
+        "category": "Windows Update",
+        "severity": "Medium",
+        "description": "Windows update was rolled back.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 25,
+        "event_source": "WindowsUpdateClient",
+        "category": "Windows Update",
+        "severity": "Info",
+        "description": "Windows update installed successfully.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 31,
+        "event_source": "WindowsUpdateClient",
+        "category": "Windows Update",
+        "severity": "Medium",
+        "description": "Windows update download failed.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 5038,
+        "event_source": "CodeIntegrity",
+        "category": "System Integrity",
+        "severity": "Critical",
+        "description": "Code integrity violation detected.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 5061,
+        "event_source": "Cryptographic Services",
+        "category": "System Integrity",
+        "severity": "Critical",
+        "description": "Cryptographic operation failed.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 10010,
+        "event_source": "DistributedCOM",
+        "category": "COM / Registration",
+        "severity": "High",
+        "description": "DCOM server failed to register within the required timeout.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 7009,
+        "event_source": "Service Control Manager",
+        "category": "Service Startup",
+        "severity": "High",
+        "description": "Service startup timed out.",
+        "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 8198,
+        "event_source": "VSS",
+        "category": "Volume Shadow Copy",
+        "severity": "Critical",
+        "description": "Volume Shadow Copy Service encountered a critical failure.",
+        "auto_remediate_candidate": false
+    }
+]

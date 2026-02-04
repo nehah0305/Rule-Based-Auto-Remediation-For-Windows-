@@ -74,10 +74,12 @@
                   <thead class="table-light">
                     <tr>
                       <th style="width: 5%">ID</th>
-                      <th style="width: 12%">Event ID</th>
-                      <th style="width: 15%">Source</th>
-                      <th style="width: 45%">Message</th>
-                      <th style="width: 15%">Timestamp</th>
+                      <th style="width: 10%">Event ID</th>
+                      <th style="width: 12%">Source</th>
+                      <th style="width: 10%">Category</th>
+                      <th style="width: 8%">Severity</th>
+                      <th style="width: 30%">Description</th>
+                      <th style="width: 12%">Timestamp</th>
                       <th style="width: 8%" class="text-center">Action</th>
                     </tr>
                   </thead>
@@ -93,20 +95,24 @@
           <div class="row">
             <div class="col-lg-6">
               <div class="card card-modern">
-                <div class="card-header bg-gradient-success border-0">
+                <div class="card-header bg-gradient-success border-0 d-flex justify-content-between align-items-center">
                   <h5 class="mb-0 text-white">
                     <i class="fas fa-list me-2"></i>Active Rules
                   </h5>
+                  <button class="btn btn-sm btn-light" onclick="populateRulesFromJSON()">
+                    <i class="fas fa-download me-1"></i>Import from JSON
+                  </button>
                 </div>
                 <div class="card-body p-0">
                   <div class="table-responsive">
                     <table class="table table-hover mb-0" id="rules-table">
                       <thead class="table-light">
                         <tr>
-                          <th style="width: 35%">Rule Name</th>
-                          <th style="width: 35%">Criteria</th>
-                          <th style="width: 15%">Auto</th>
-                          <th style="width: 15%" class="text-center">Actions</th>
+                          <th style="width: 30%">Rule Name</th>
+                          <th style="width: 25%">Criteria</th>
+                          <th style="width: 10%">Severity</th>
+                          <th style="width: 10%">Auto</th>
+                          <th style="width: 25%" class="text-center">Actions</th>
                         </tr>
                       </thead>
                       <tbody></tbody>
@@ -290,27 +296,43 @@ function getStatusBadge(status) {
   return badges[status] || `<span class="badge bg-secondary">${status}</span>`;
 }
 
+function getSeverityBadge(severity) {
+  if (!severity) return '<span class="badge bg-secondary">Unknown</span>';
+  const badges = {
+    'Critical': '<span class="badge bg-danger">Critical</span>',
+    'High': '<span class="badge bg-warning">High</span>',
+    'Medium': '<span class="badge bg-info">Medium</span>',
+    'Low': '<span class="badge bg-secondary">Low</span>',
+    'Info': '<span class="badge bg-light text-dark">Info</span>'
+  };
+  return badges[severity] || `<span class="badge bg-secondary">${severity}</span>`;
+}
+
 async function loadEvents(){
   try {
     const events = await api('/api/events');
     const tbody = document.querySelector('#events-table tbody');
     tbody.innerHTML = '';
     if (events.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No events found</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No events found</td></tr>';
       return;
     }
     for(const e of events){
       const tr = document.createElement('tr');
-      const msgPreview = e.message.length > 60 ? e.message.substring(0, 60) + '...' : e.message;
+      const descPreview = e.description ? (e.description.length > 50 ? e.description.substring(0, 50) + '...' : e.description) : (e.message ? (e.message.length > 50 ? e.message.substring(0, 50) + '...' : e.message) : 'N/A');
+      const fullDesc = e.description || e.message || 'No description';
+      const category = e.category || 'Unknown';
       tr.innerHTML = `
         <td><span class="badge bg-primary">${e.id}</span></td>
         <td><code>${e.event_id}</code></td>
-        <td><strong>${e.source}</strong></td>
-        <td title="${e.message}" class="small">${msgPreview}</td>
+        <td><strong class="small">${e.source}</strong></td>
+        <td><span class="badge bg-secondary small">${category}</span></td>
+        <td>${getSeverityBadge(e.severity)}</td>
+        <td title="${fullDesc}" class="small">${descPreview}</td>
         <td><small class="text-muted">${new Date(e.timestamp).toLocaleString()}</small></td>
         <td class="text-center">
           <button class="btn btn-sm btn-outline-primary" onclick="showMatches(${e.id})">
-            <i class="fas fa-search me-1"></i>View Rules
+            <i class="fas fa-search me-1"></i>Rules
           </button>
         </td>
       `;
@@ -327,15 +349,15 @@ async function showMatches(eventId){
     const matches = await api(`/api/events/${eventId}/matches`);
     const div = document.getElementById('matches-list');
     div.innerHTML = '';
-    if(matches.length === 0){ 
-      div.innerHTML = '<div class="alert alert-info"><i class="fas fa-info-circle me-2"></i>No matching rules found for this event</div>'; 
+    if(matches.length === 0){
+      div.innerHTML = '<div class="alert alert-info"><i class="fas fa-info-circle me-2"></i>No matching rules found for this event</div>';
     } else {
       for(const m of matches){
         const criteria = [];
-        if(m.event_id) criteria.push(`<code>${m.event_id}</code>`);
-        if(m.source) criteria.push(`<code>${m.source}</code>`);
+        if(m.event_id) criteria.push(`Event: <code>${m.event_id}</code>`);
+        if(m.source) criteria.push(`Source: <code>${m.source}</code>`);
         if(m.message_regex) criteria.push(`Regex: <code>${m.message_regex}</code>`);
-        
+
         const card = document.createElement('div');
         card.className = 'card mb-3 border-left-primary';
         card.innerHTML = `
@@ -343,6 +365,9 @@ async function showMatches(eventId){
             <div class="row align-items-center">
               <div class="col">
                 <h6 class="mb-2"><strong>${m.name}</strong></h6>
+                ${m.severity ? `<div class="mb-1">${getSeverityBadge(m.severity)} ${m.category ? `<span class="badge bg-secondary">${m.category}</span>` : ''}</div>` : ''}
+                ${m.description ? `<div class="small mb-2"><strong>Description:</strong> ${m.description}</div>` : ''}
+                ${m.recommended_action ? `<div class="small mb-2"><strong>Recommended Action:</strong> ${m.recommended_action}</div>` : ''}
                 <div class="small text-muted">
                   ${criteria.length > 0 ? criteria.join(' • ') : 'Matches all events'}
                 </div>
@@ -469,17 +494,19 @@ async function loadRules(){
     const tbody = document.querySelector('#rules-table tbody');
     tbody.innerHTML = '';
     if (rules.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">No rules configured</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No rules configured. Click "Import from JSON" to load predefined rules.</td></tr>';
       return;
     }
     for(const r of rules){
       const tr = document.createElement('tr');
       const criteria = [];
-      if(r.event_id) criteria.push(`<code>${r.event_id}</code>`);
-      if(r.source) criteria.push(`<code>${r.source}</code>`);
+      if(r.event_id) criteria.push(`Event: <code>${r.event_id}</code>`);
+      if(r.source) criteria.push(`Source: <code>${r.source}</code>`);
+      const title = r.description ? `title="${r.description}"` : '';
       tr.innerHTML = `
-        <td><strong>${r.name}</strong></td>
-        <td><small>${criteria.length > 0 ? criteria.join(' • ') : '<em>All events</em>'}</small></td>
+        <td ${title}><strong>${r.name}</strong>${r.category ? `<br><small class="text-muted">${r.category}</small>` : ''}</td>
+        <td><small>${criteria.length > 0 ? criteria.join('<br>') : '<em>All events</em>'}</small></td>
+        <td>${r.severity ? getSeverityBadge(r.severity) : '<span class="badge bg-secondary">N/A</span>'}</td>
         <td>${r.auto_remediate ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>'}</td>
         <td class="text-center">
           <button class="btn btn-sm btn-outline-secondary" onclick='editRule(${JSON.stringify(r)})'>
@@ -556,6 +583,17 @@ async function deleteRule(id){
     loadRules();
   } catch(e) {
     showStatus('Error', 'Failed to delete rule: ' + e.message, 'error');
+  }
+}
+
+async function populateRulesFromJSON(){
+  if(!confirm('This will import rules from the windows_error_events.json file. Existing rules will not be affected. Continue?')) return;
+  try {
+    const result = await api('/api/populate-rules', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({overwrite: false})});
+    showStatus('Success', `Successfully imported ${result.rules_created} rules from JSON file.`, 'success');
+    loadRules();
+  } catch(e) {
+    showStatus('Error', 'Failed to import rules: ' + e.message, 'error');
   }
 }
 

@@ -2,23 +2,87 @@ import os
 import sqlite3
 import re
 import subprocess
+import json
 from datetime import datetime
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'rules.db')
+EVENT_DEFINITIONS_PATH = os.path.join(os.path.dirname(__file__), '..', 'windows_error_events.json')
+
+# Cache for event definitions
+_event_definitions_cache = None
 
 
 def _conn():
     return sqlite3.connect(DB_PATH)
 
 
-def add_event(event_id, log_name, source, message, timestamp=None):
+def load_event_definitions():
+    """Load event definitions from JSON file and cache them."""
+    global _event_definitions_cache
+
+    if _event_definitions_cache is not None:
+        return _event_definitions_cache
+
+    if not os.path.exists(EVENT_DEFINITIONS_PATH):
+        print(f"Warning: Event definitions file not found at {EVENT_DEFINITIONS_PATH}")
+        _event_definitions_cache = []
+        return _event_definitions_cache
+
+    try:
+        with open(EVENT_DEFINITIONS_PATH, 'r', encoding='utf-8') as f:
+            _event_definitions_cache = json.load(f)
+        return _event_definitions_cache
+    except Exception as e:
+        print(f"Error loading event definitions: {e}")
+        _event_definitions_cache = []
+        return _event_definitions_cache
+
+
+def get_event_definition(event_id, source=None):
+    """Get event definition from JSON by event_id and optionally source."""
+    definitions = load_event_definitions()
+
+    # Try to find exact match with source first
+    if source:
+        for defn in definitions:
+            if defn.get('event_id') == event_id and defn.get('event_source', '').lower() == source.lower():
+                return defn
+
+    # Fall back to matching just event_id
+    for defn in definitions:
+        if defn.get('event_id') == event_id:
+            return defn
+
+    return None
+
+
+def get_all_event_definitions():
+    """Get all event definitions from JSON."""
+    return load_event_definitions()
+
+
+def add_event(event_id, log_name, source, message, timestamp=None, category=None, severity=None, description=None, recommended_action=None):
     conn = _conn()
     c = conn.cursor()
     if timestamp is None:
         timestamp = datetime.utcnow().isoformat()
+
+    # Enrich with metadata from JSON if not provided
+    if category is None or severity is None or description is None or recommended_action is None:
+        defn = get_event_definition(event_id, source)
+        if defn:
+            if category is None:
+                category = defn.get('category')
+            if severity is None:
+                severity = defn.get('severity')
+            if description is None:
+                description = defn.get('description')
+            if recommended_action is None:
+                recommended_action = defn.get('recommended_action')
+
     c.execute(
-        'INSERT INTO events (event_id, log_name, source, message, timestamp) VALUES (?, ?, ?, ?, ?)',
-        (event_id, log_name, source, message, timestamp)
+        'INSERT INTO events (event_id, log_name, source, message, timestamp, category, severity, description, recommended_action) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        (event_id, log_name, source, message, timestamp, category, severity, description, recommended_action)
     )
     rowid = c.lastrowid
     conn.commit()
@@ -29,18 +93,32 @@ def add_event(event_id, log_name, source, message, timestamp=None):
 def get_events(limit=100):
     conn = _conn()
     c = conn.cursor()
-    c.execute('SELECT id, event_id, log_name, source, message, timestamp FROM events ORDER BY id DESC LIMIT ?', (limit,))
+    c.execute('SELECT id, event_id, log_name, source, message, timestamp, category, severity, description, recommended_action FROM events ORDER BY id DESC LIMIT ?', (limit,))
     rows = c.fetchall()
     conn.close()
     return rows
 
 
-def add_rule(name, event_id=None, source=None, message_regex=None, remediation_script=None, auto_remediate=0):
+def add_rule(name, event_id=None, source=None, message_regex=None, remediation_script=None, auto_remediate=0, category=None, severity=None, description=None, recommended_action=None):
     conn = _conn()
     c = conn.cursor()
+
+    # Enrich with metadata from JSON if not provided
+    if event_id and (category is None or severity is None or description is None or recommended_action is None):
+        defn = get_event_definition(event_id, source)
+        if defn:
+            if category is None:
+                category = defn.get('category')
+            if severity is None:
+                severity = defn.get('severity')
+            if description is None:
+                description = defn.get('description')
+            if recommended_action is None:
+                recommended_action = defn.get('recommended_action')
+
     c.execute(
-        'INSERT INTO rules (name, event_id, source, message_regex, remediation_script, auto_remediate) VALUES (?, ?, ?, ?, ?, ?)',
-        (name, event_id, source, message_regex, remediation_script, int(auto_remediate))
+        'INSERT INTO rules (name, event_id, source, message_regex, remediation_script, auto_remediate, category, severity, description, recommended_action) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        (name, event_id, source, message_regex, remediation_script, int(auto_remediate), category, severity, description, recommended_action)
     )
     conn.commit()
     rid = c.lastrowid
@@ -51,7 +129,7 @@ def add_rule(name, event_id=None, source=None, message_regex=None, remediation_s
 def get_rules():
     conn = _conn()
     c = conn.cursor()
-    c.execute('SELECT id, name, event_id, source, message_regex, remediation_script, auto_remediate FROM rules')
+    c.execute('SELECT id, name, event_id, source, message_regex, remediation_script, auto_remediate, category, severity, description, recommended_action FROM rules')
     rows = c.fetchall()
     conn.close()
     return rows
@@ -62,7 +140,9 @@ def match_rules_for_event(event):
     matched = []
     rules = get_rules()
     for r in rules:
-        rid, name, r_event_id, r_source, r_message_regex, remediation_script, auto_remediate = r
+        # Unpack all fields including new metadata fields
+        (rid, name, r_event_id, r_source, r_message_regex, remediation_script,
+         auto_remediate, category, severity, description, recommended_action) = r
         # event fields: event_id, log_name, source, message
         if r_event_id and r_event_id != event.get('event_id'):
             continue
@@ -93,13 +173,13 @@ def record_remediation(event_row_id, rule_id, status, output=''):
 def get_rule(rule_id):
     conn = _conn()
     c = conn.cursor()
-    c.execute('SELECT id, name, event_id, source, message_regex, remediation_script, auto_remediate FROM rules WHERE id=?', (rule_id,))
+    c.execute('SELECT id, name, event_id, source, message_regex, remediation_script, auto_remediate, category, severity, description, recommended_action FROM rules WHERE id=?', (rule_id,))
     r = c.fetchone()
     conn.close()
     return r
 
 
-def update_rule(rule_id, name=None, event_id=None, source=None, message_regex=None, remediation_script=None, auto_remediate=None):
+def update_rule(rule_id, name=None, event_id=None, source=None, message_regex=None, remediation_script=None, auto_remediate=None, category=None, severity=None, description=None, recommended_action=None):
     conn = _conn()
     c = conn.cursor()
     fields = []
@@ -116,6 +196,14 @@ def update_rule(rule_id, name=None, event_id=None, source=None, message_regex=No
         fields.append('remediation_script=?'); vals.append(remediation_script)
     if auto_remediate is not None:
         fields.append('auto_remediate=?'); vals.append(int(bool(auto_remediate)))
+    if category is not None:
+        fields.append('category=?'); vals.append(category)
+    if severity is not None:
+        fields.append('severity=?'); vals.append(severity)
+    if description is not None:
+        fields.append('description=?'); vals.append(description)
+    if recommended_action is not None:
+        fields.append('recommended_action=?'); vals.append(recommended_action)
     if not fields:
         conn.close()
         return False
@@ -156,7 +244,7 @@ def get_history(limit=200):
 def get_event(event_row_id):
     conn = _conn()
     c = conn.cursor()
-    c.execute('SELECT id, event_id, log_name, source, message, timestamp FROM events WHERE id=?', (event_row_id,))
+    c.execute('SELECT id, event_id, log_name, source, message, timestamp, category, severity, description, recommended_action FROM events WHERE id=?', (event_row_id,))
     r = c.fetchone()
     conn.close()
     return r
@@ -242,6 +330,73 @@ def update_request_status(request_id, status, processed_by=None, decision_note=N
     conn.commit()
     conn.close()
     return True
+
+
+def populate_rules_from_json(overwrite=False):
+    """
+    Populate rules from the JSON event definitions file.
+    Only creates rules for events marked as auto_remediate_candidate.
+
+    Args:
+        overwrite: If True, delete existing rules before populating
+
+    Returns:
+        Number of rules created
+    """
+    definitions = load_event_definitions()
+
+    if overwrite:
+        conn = _conn()
+        c = conn.cursor()
+        c.execute('DELETE FROM rules')
+        conn.commit()
+        conn.close()
+        print("Cleared existing rules")
+
+    created_count = 0
+    for defn in definitions:
+        if not defn.get('auto_remediate_candidate', False):
+            continue
+
+        event_id = defn.get('event_id')
+        source = defn.get('event_source')
+        category = defn.get('category')
+        severity = defn.get('severity')
+        description = defn.get('description')
+        recommended_action = defn.get('recommended_action')
+
+        # Create a rule name
+        rule_name = f"{source} - Event {event_id}"
+        if category:
+            rule_name = f"{category} - {source} Event {event_id}"
+
+        # Check if rule already exists
+        existing_rules = get_rules()
+        rule_exists = False
+        for r in existing_rules:
+            if r[2] == event_id and (r[3] or '').lower() == (source or '').lower():
+                rule_exists = True
+                break
+
+        if not rule_exists:
+            # Create the rule with auto_remediate=False by default for safety
+            # Users can enable it manually after reviewing
+            add_rule(
+                name=rule_name,
+                event_id=event_id,
+                source=source,
+                message_regex=None,
+                remediation_script=None,
+                auto_remediate=False,
+                category=category,
+                severity=severity,
+                description=description,
+                recommended_action=recommended_action
+            )
+            created_count += 1
+            print(f"Created rule: {rule_name}")
+
+    return created_count
 
 
 if __name__ == '__main__':
