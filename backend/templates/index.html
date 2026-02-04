@@ -7,6 +7,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link href="/static/style.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body class="bg-gradient">
   <!-- Sidebar Navigation -->
@@ -18,13 +19,23 @@
       </div>
       <ul class="nav nav-pills flex-column mb-auto nav-sidebar" id="mainTabs">
         <li class="nav-item mb-2">
-          <a class="nav-link active rounded-3" data-bs-toggle="tab" href="#eventsTab">
+          <a class="nav-link active rounded-3" data-bs-toggle="tab" href="#dashboardTab">
+            <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+          </a>
+        </li>
+        <li class="nav-item mb-2">
+          <a class="nav-link rounded-3" data-bs-toggle="tab" href="#eventsTab">
             <i class="fas fa-bell me-2"></i>Events
           </a>
         </li>
         <li class="nav-item mb-2">
           <a class="nav-link rounded-3" data-bs-toggle="tab" href="#rulesTab">
             <i class="fas fa-cogs me-2"></i>Rules
+          </a>
+        </li>
+        <li class="nav-item mb-2">
+          <a class="nav-link rounded-3" data-bs-toggle="tab" href="#definitionsTab">
+            <i class="fas fa-book me-2"></i>Event Catalog
           </a>
         </li>
         <li class="nav-item mb-2">
@@ -60,15 +71,169 @@
 
     <div class="container-fluid p-4">
       <div class="tab-content">
+        <!-- Dashboard Tab -->
+        <div class="tab-pane fade show active" id="dashboardTab">
+          <!-- Statistics Cards -->
+          <div class="row mb-4">
+            <div class="col-md-3">
+              <div class="card card-modern border-start border-primary border-4">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                      <h6 class="text-muted mb-1">Total Events</h6>
+                      <h2 class="mb-0" id="stat-total-events">0</h2>
+                    </div>
+                    <div class="text-primary">
+                      <i class="fas fa-bell fa-2x"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="card card-modern border-start border-success border-4">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                      <h6 class="text-muted mb-1">Active Rules</h6>
+                      <h2 class="mb-0" id="stat-total-rules">0</h2>
+                    </div>
+                    <div class="text-success">
+                      <i class="fas fa-cogs fa-2x"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="card card-modern border-start border-warning border-4">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                      <h6 class="text-muted mb-1">Pending Approvals</h6>
+                      <h2 class="mb-0" id="stat-pending-approvals">0</h2>
+                    </div>
+                    <div class="text-warning">
+                      <i class="fas fa-clock fa-2x"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="card card-modern border-start border-info border-4">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                      <h6 class="text-muted mb-1">Remediations</h6>
+                      <h2 class="mb-0" id="stat-total-remediations">0</h2>
+                    </div>
+                    <div class="text-info">
+                      <i class="fas fa-history fa-2x"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Charts Row -->
+          <div class="row mb-4">
+            <div class="col-md-6">
+              <div class="card card-modern">
+                <div class="card-header bg-gradient-primary border-0">
+                  <h5 class="mb-0 text-white"><i class="fas fa-chart-pie me-2"></i>Events by Severity</h5>
+                </div>
+                <div class="card-body">
+                  <canvas id="severityChart" height="200"></canvas>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="card card-modern">
+                <div class="card-header bg-gradient-success border-0">
+                  <h5 class="mb-0 text-white"><i class="fas fa-chart-bar me-2"></i>Events by Category</h5>
+                </div>
+                <div class="card-body">
+                  <canvas id="categoryChart" height="200"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recent Activity -->
+          <div class="row">
+            <div class="col-md-6">
+              <div class="card card-modern">
+                <div class="card-header bg-gradient-info border-0">
+                  <h5 class="mb-0 text-white"><i class="fas fa-clock me-2"></i>Recent Events</h5>
+                </div>
+                <div class="card-body p-0">
+                  <div class="list-group list-group-flush" id="recent-events-list">
+                    <div class="list-group-item text-center text-muted">Loading...</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="card card-modern">
+                <div class="card-header bg-gradient-secondary border-0">
+                  <h5 class="mb-0 text-white"><i class="fas fa-tasks me-2"></i>Recent Remediations</h5>
+                </div>
+                <div class="card-body p-0">
+                  <div class="list-group list-group-flush" id="recent-remediations-list">
+                    <div class="list-group-item text-center text-muted">Loading...</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Events Tab -->
-        <div class="tab-pane fade show active" id="eventsTab">
+        <div class="tab-pane fade" id="eventsTab">
           <div class="card card-modern">
             <div class="card-header bg-gradient-primary border-0">
-              <h5 class="mb-0 text-white">
-                <i class="fas fa-bell me-2"></i>System Events
-              </h5>
+              <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 text-white">
+                  <i class="fas fa-bell me-2"></i>System Events
+                </h5>
+                <div class="input-group" style="max-width: 350px;">
+                  <span class="input-group-text bg-white border-end-0">
+                    <i class="fas fa-search text-muted"></i>
+                  </span>
+                  <input type="text" class="form-control border-start-0" id="events-search"
+                         placeholder="Search events..." onkeyup="filterEventsTable()">
+                </div>
+              </div>
             </div>
             <div class="card-body p-0">
+              <!-- Filter Bar -->
+              <div class="p-3 bg-light border-bottom">
+                <div class="row g-2">
+                  <div class="col-md-4">
+                    <select class="form-select form-select-sm" id="events-severity-filter" onchange="filterEventsTable()">
+                      <option value="">All Severities</option>
+                      <option value="Critical">Critical</option>
+                      <option value="High">High</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Low">Low</option>
+                      <option value="Info">Info</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4">
+                    <select class="form-select form-select-sm" id="events-category-filter" onchange="filterEventsTable()">
+                      <option value="">All Categories</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4">
+                    <button class="btn btn-sm btn-outline-secondary w-100" onclick="clearEventsFilters()">
+                      <i class="fas fa-times me-1"></i>Clear Filters
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div class="table-responsive">
                 <table class="table table-hover mb-0" id="events-table">
                   <thead class="table-light">
@@ -165,6 +330,78 @@
                     </div>
                   </form>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Event Definitions/Catalog Tab -->
+        <div class="tab-pane fade" id="definitionsTab">
+          <div class="card card-modern">
+            <div class="card-header bg-gradient-primary border-0">
+              <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 text-white">
+                  <i class="fas fa-book me-2"></i>Event Catalog
+                  <span class="badge bg-light text-dark ms-2" id="definitions-count">0</span>
+                </h5>
+                <div class="input-group" style="max-width: 400px;">
+                  <span class="input-group-text bg-white border-end-0">
+                    <i class="fas fa-search text-muted"></i>
+                  </span>
+                  <input type="text" class="form-control border-start-0" id="definitions-search"
+                         placeholder="Search by Event ID, Source, Category, or Severity...">
+                </div>
+              </div>
+            </div>
+            <div class="card-body p-0">
+              <!-- Filter Bar -->
+              <div class="p-3 bg-light border-bottom">
+                <div class="row g-2">
+                  <div class="col-md-3">
+                    <select class="form-select form-select-sm" id="filter-severity">
+                      <option value="">All Severities</option>
+                      <option value="Critical">Critical</option>
+                      <option value="High">High</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Low">Low</option>
+                      <option value="Info">Info</option>
+                    </select>
+                  </div>
+                  <div class="col-md-3">
+                    <select class="form-select form-select-sm" id="filter-category">
+                      <option value="">All Categories</option>
+                    </select>
+                  </div>
+                  <div class="col-md-3">
+                    <select class="form-select form-select-sm" id="filter-auto-remediate">
+                      <option value="">All Events</option>
+                      <option value="true">Auto-Remediate Candidates</option>
+                      <option value="false">Manual Only</option>
+                    </select>
+                  </div>
+                  <div class="col-md-3">
+                    <button class="btn btn-sm btn-outline-secondary w-100" onclick="clearDefinitionsFilters()">
+                      <i class="fas fa-times me-1"></i>Clear Filters
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="table-responsive">
+                <table class="table table-hover mb-0" id="definitions-table">
+                  <thead class="table-light">
+                    <tr>
+                      <th style="width: 8%">Event ID</th>
+                      <th style="width: 15%">Source</th>
+                      <th style="width: 12%">Category</th>
+                      <th style="width: 8%">Severity</th>
+                      <th style="width: 30%">Description</th>
+                      <th style="width: 12%">Auto-Remediate</th>
+                      <th style="width: 15%" class="text-center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -308,39 +545,83 @@ function getSeverityBadge(severity) {
   return badges[severity] || `<span class="badge bg-secondary">${severity}</span>`;
 }
 
+let allEvents = [];
+
 async function loadEvents(){
   try {
-    const events = await api('/api/events');
-    const tbody = document.querySelector('#events-table tbody');
-    tbody.innerHTML = '';
-    if (events.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No events found</td></tr>';
-      return;
+    allEvents = await api('/api/events');
+
+    // Populate category filter
+    const categories = [...new Set(allEvents.map(e => e.category || 'Unknown'))].sort();
+    const categoryFilter = document.getElementById('events-category-filter');
+    if (categoryFilter) {
+      categoryFilter.innerHTML = '<option value="">All Categories</option>' +
+        categories.map(c => `<option value="${c}">${c}</option>`).join('');
     }
-    for(const e of events){
-      const tr = document.createElement('tr');
-      const descPreview = e.description ? (e.description.length > 50 ? e.description.substring(0, 50) + '...' : e.description) : (e.message ? (e.message.length > 50 ? e.message.substring(0, 50) + '...' : e.message) : 'N/A');
-      const fullDesc = e.description || e.message || 'No description';
-      const category = e.category || 'Unknown';
-      tr.innerHTML = `
-        <td><span class="badge bg-primary">${e.id}</span></td>
-        <td><code>${e.event_id}</code></td>
-        <td><strong class="small">${e.source}</strong></td>
-        <td><span class="badge bg-secondary small">${category}</span></td>
-        <td>${getSeverityBadge(e.severity)}</td>
-        <td title="${fullDesc}" class="small">${descPreview}</td>
-        <td><small class="text-muted">${new Date(e.timestamp).toLocaleString()}</small></td>
-        <td class="text-center">
-          <button class="btn btn-sm btn-outline-primary" onclick="showMatches(${e.id})">
-            <i class="fas fa-search me-1"></i>Rules
-          </button>
-        </td>
-      `;
-      tbody.appendChild(tr);
-    }
+
+    displayEvents(allEvents);
   } catch(e) {
     console.error('Failed to load events:', e);
   }
+}
+
+function displayEvents(events) {
+  const tbody = document.querySelector('#events-table tbody');
+  tbody.innerHTML = '';
+  if (events.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No events found</td></tr>';
+    return;
+  }
+  for(const e of events){
+    const tr = document.createElement('tr');
+    const descPreview = e.description ? (e.description.length > 50 ? e.description.substring(0, 50) + '...' : e.description) : (e.message ? (e.message.length > 50 ? e.message.substring(0, 50) + '...' : e.message) : 'N/A');
+    const fullDesc = e.description || e.message || 'No description';
+    const category = e.category || 'Unknown';
+    tr.innerHTML = `
+      <td><span class="badge bg-primary">${e.id}</span></td>
+      <td><code>${e.event_id}</code></td>
+      <td><strong class="small">${e.source}</strong></td>
+      <td><span class="badge bg-secondary small">${category}</span></td>
+      <td>${getSeverityBadge(e.severity)}</td>
+      <td title="${fullDesc}" class="small">${descPreview}</td>
+      <td><small class="text-muted">${new Date(e.timestamp).toLocaleString()}</small></td>
+      <td class="text-center">
+        <button class="btn btn-sm btn-outline-primary" onclick="showMatches(${e.id})">
+          <i class="fas fa-search me-1"></i>Rules
+        </button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+function filterEventsTable() {
+  const searchTerm = document.getElementById('events-search').value.toLowerCase();
+  const severityFilter = document.getElementById('events-severity-filter').value;
+  const categoryFilter = document.getElementById('events-category-filter').value;
+
+  const filtered = allEvents.filter(e => {
+    const matchesSearch = !searchTerm ||
+      e.event_id.toString().includes(searchTerm) ||
+      e.source.toLowerCase().includes(searchTerm) ||
+      (e.category && e.category.toLowerCase().includes(searchTerm)) ||
+      (e.description && e.description.toLowerCase().includes(searchTerm)) ||
+      (e.message && e.message.toLowerCase().includes(searchTerm));
+
+    const matchesSeverity = !severityFilter || e.severity === severityFilter;
+    const matchesCategory = !categoryFilter || (e.category || 'Unknown') === categoryFilter;
+
+    return matchesSearch && matchesSeverity && matchesCategory;
+  });
+
+  displayEvents(filtered);
+}
+
+function clearEventsFilters() {
+  document.getElementById('events-search').value = '';
+  document.getElementById('events-severity-filter').value = '';
+  document.getElementById('events-category-filter').value = '';
+  filterEventsTable();
 }
 
 async function showMatches(eventId){
@@ -625,20 +906,309 @@ async function loadHistory(){
   }
 }
 
+// Dashboard Functions
+let severityChart = null;
+let categoryChart = null;
+
+async function loadDashboard() {
+  try {
+    const [events, rules, requests, history] = await Promise.all([
+      api('/api/events'),
+      api('/api/rules'),
+      api('/api/requests'),
+      api('/api/history')
+    ]);
+
+    // Update statistics
+    document.getElementById('stat-total-events').textContent = events.length;
+    document.getElementById('stat-total-rules').textContent = rules.length;
+    document.getElementById('stat-pending-approvals').textContent = requests.filter(r => r.status === 'pending').length;
+    document.getElementById('stat-total-remediations').textContent = history.length;
+
+    // Update charts
+    updateSeverityChart(events);
+    updateCategoryChart(events);
+
+    // Update recent events
+    updateRecentEvents(events.slice(-5).reverse());
+
+    // Update recent remediations
+    updateRecentRemediations(history.slice(-5).reverse());
+  } catch(e) {
+    console.error('Failed to load dashboard:', e);
+  }
+}
+
+function updateSeverityChart(events) {
+  const severityCounts = {};
+  events.forEach(e => {
+    const sev = e.severity || 'Unknown';
+    severityCounts[sev] = (severityCounts[sev] || 0) + 1;
+  });
+
+  const ctx = document.getElementById('severityChart');
+  if (severityChart) severityChart.destroy();
+
+  severityChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(severityCounts),
+      datasets: [{
+        data: Object.values(severityCounts),
+        backgroundColor: [
+          '#dc3545', // Critical - red
+          '#ffc107', // High - yellow
+          '#0dcaf0', // Medium - cyan
+          '#6c757d', // Low - gray
+          '#f8f9fa'  // Info - light
+        ]
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'bottom'
+        }
+      }
+    }
+  });
+}
+
+function updateCategoryChart(events) {
+  const categoryCounts = {};
+  events.forEach(e => {
+    const cat = e.category || 'Unknown';
+    categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+  });
+
+  // Get top 10 categories
+  const sortedCategories = Object.entries(categoryCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+
+  const ctx = document.getElementById('categoryChart');
+  if (categoryChart) categoryChart.destroy();
+
+  categoryChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sortedCategories.map(c => c[0]),
+      datasets: [{
+        label: 'Event Count',
+        data: sortedCategories.map(c => c[1]),
+        backgroundColor: '#198754'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: false
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            stepSize: 1
+          }
+        }
+      }
+    }
+  });
+}
+
+function updateRecentEvents(events) {
+  const list = document.getElementById('recent-events-list');
+  if (events.length === 0) {
+    list.innerHTML = '<div class="list-group-item text-center text-muted">No recent events</div>';
+    return;
+  }
+
+  list.innerHTML = events.map(e => `
+    <div class="list-group-item list-group-item-action">
+      <div class="d-flex w-100 justify-content-between align-items-start">
+        <div>
+          <h6 class="mb-1">Event ${e.event_id} - ${e.source}</h6>
+          <p class="mb-1 small text-muted">${e.description || e.message || 'No description'}</p>
+        </div>
+        ${getSeverityBadge(e.severity)}
+      </div>
+      <small class="text-muted">${new Date(e.timestamp).toLocaleString()}</small>
+    </div>
+  `).join('');
+}
+
+function updateRecentRemediations(history) {
+  const list = document.getElementById('recent-remediations-list');
+  if (history.length === 0) {
+    list.innerHTML = '<div class="list-group-item text-center text-muted">No recent remediations</div>';
+    return;
+  }
+
+  list.innerHTML = history.map(h => `
+    <div class="list-group-item">
+      <div class="d-flex w-100 justify-content-between align-items-start">
+        <div>
+          <h6 class="mb-1">${h.rule_name || 'Rule ' + h.rule_id}</h6>
+          <p class="mb-1 small text-muted">Event ${h.event_id || h.event_row_id}</p>
+        </div>
+        ${getStatusBadge(h.status)}
+      </div>
+      <small class="text-muted">${new Date(h.timestamp).toLocaleString()}</small>
+    </div>
+  `).join('');
+}
+
+// Event Definitions/Catalog Functions
+let allDefinitions = [];
+let filteredDefinitions = [];
+
+async function loadEventDefinitions() {
+  try {
+    allDefinitions = await api('/api/event-definitions');
+    filteredDefinitions = [...allDefinitions];
+
+    // Update count
+    document.getElementById('definitions-count').textContent = allDefinitions.length;
+
+    // Populate category filter
+    const categories = [...new Set(allDefinitions.map(d => d.category))].sort();
+    const categoryFilter = document.getElementById('filter-category');
+    categoryFilter.innerHTML = '<option value="">All Categories</option>' +
+      categories.map(c => `<option value="${c}">${c}</option>`).join('');
+
+    // Display definitions
+    displayEventDefinitions(filteredDefinitions);
+  } catch(e) {
+    console.error('Failed to load event definitions:', e);
+  }
+}
+
+function displayEventDefinitions(definitions) {
+  const tbody = document.querySelector('#definitions-table tbody');
+  if (definitions.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No event definitions found</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = definitions.map(d => {
+    const descPreview = d.description && d.description.length > 80 ? d.description.substring(0, 80) + '...' : d.description;
+    return `
+      <tr>
+        <td><code class="fw-bold">${d.event_id}</code></td>
+        <td><small>${d.event_source}</small></td>
+        <td><span class="badge bg-secondary small">${d.category}</span></td>
+        <td>${getSeverityBadge(d.severity)}</td>
+        <td title="${d.description}" class="small">${descPreview}</td>
+        <td class="text-center">
+          ${d.auto_remediate_candidate ?
+            '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Yes</span>' :
+            '<span class="badge bg-secondary">No</span>'}
+        </td>
+        <td class="text-center">
+          <button class="btn btn-sm btn-outline-primary" onclick='createRuleFromDefinition(${JSON.stringify(d)})' title="Create rule from this definition">
+            <i class="fas fa-plus me-1"></i>Create Rule
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function filterEventDefinitions() {
+  const searchTerm = document.getElementById('definitions-search').value.toLowerCase();
+  const severityFilter = document.getElementById('filter-severity').value;
+  const categoryFilter = document.getElementById('filter-category').value;
+  const autoRemediateFilter = document.getElementById('filter-auto-remediate').value;
+
+  filteredDefinitions = allDefinitions.filter(d => {
+    // Search filter
+    const matchesSearch = !searchTerm ||
+      d.event_id.toString().includes(searchTerm) ||
+      d.event_source.toLowerCase().includes(searchTerm) ||
+      d.category.toLowerCase().includes(searchTerm) ||
+      d.severity.toLowerCase().includes(searchTerm) ||
+      (d.description && d.description.toLowerCase().includes(searchTerm));
+
+    // Severity filter
+    const matchesSeverity = !severityFilter || d.severity === severityFilter;
+
+    // Category filter
+    const matchesCategory = !categoryFilter || d.category === categoryFilter;
+
+    // Auto-remediate filter
+    const matchesAutoRemediate = !autoRemediateFilter ||
+      (autoRemediateFilter === 'true' && d.auto_remediate_candidate) ||
+      (autoRemediateFilter === 'false' && !d.auto_remediate_candidate);
+
+    return matchesSearch && matchesSeverity && matchesCategory && matchesAutoRemediate;
+  });
+
+  displayEventDefinitions(filteredDefinitions);
+}
+
+function clearDefinitionsFilters() {
+  document.getElementById('definitions-search').value = '';
+  document.getElementById('filter-severity').value = '';
+  document.getElementById('filter-category').value = '';
+  document.getElementById('filter-auto-remediate').value = '';
+  filterEventDefinitions();
+}
+
+async function createRuleFromDefinition(definition) {
+  // Switch to Rules tab
+  const rulesTab = document.querySelector('a[href="#rulesTab"]');
+  rulesTab.click();
+
+  // Pre-fill the form
+  document.getElementById('rule-id').value = '';
+  document.getElementById('rule-name').value = `${definition.category} - ${definition.event_source} Event ${definition.event_id}`;
+  document.getElementById('rule-event_id').value = definition.event_id;
+  document.getElementById('rule-source').value = definition.event_source;
+  document.getElementById('rule-message_regex').value = '';
+  document.getElementById('rule-auto').checked = false; // Safety: don't auto-enable
+
+  // Scroll to form
+  document.getElementById('rule-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  showStatus('Info', `Rule form pre-filled from event definition. Add a remediation script and save.`, 'info');
+}
+
+// Add event listeners for filters
+document.addEventListener('DOMContentLoaded', () => {
+  const searchInput = document.getElementById('definitions-search');
+  const severityFilter = document.getElementById('filter-severity');
+  const categoryFilter = document.getElementById('filter-category');
+  const autoRemediateFilter = document.getElementById('filter-auto-remediate');
+
+  if (searchInput) searchInput.addEventListener('input', filterEventDefinitions);
+  if (severityFilter) severityFilter.addEventListener('change', filterEventDefinitions);
+  if (categoryFilter) categoryFilter.addEventListener('change', filterEventDefinitions);
+  if (autoRemediateFilter) autoRemediateFilter.addEventListener('change', filterEventDefinitions);
+});
+
 function refreshAll() {
   loadEvents();
   loadRules();
   loadHistory();
   loadRequests();
+  loadDashboard();
+  loadEventDefinitions();
   showStatus('Refreshing', 'All data has been reloaded.', 'info');
 }
 
 // Initial load
-loadEvents(); 
-loadRules(); 
-loadHistory(); 
+loadDashboard();
+loadEvents();
+loadRules();
+loadHistory();
 loadRequests();
-setInterval(() => { loadEvents(); loadRequests(); }, 5000);
+loadEventDefinitions();
+setInterval(() => { loadEvents(); loadRequests(); loadDashboard(); }, 5000);
 </script>
 
 </body>
