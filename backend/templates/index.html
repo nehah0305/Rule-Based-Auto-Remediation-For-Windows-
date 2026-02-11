@@ -537,13 +537,95 @@ function getStatusBadge(status) {
 function getSeverityBadge(severity) {
   if (!severity) return '<span class="badge bg-secondary">Unknown</span>';
   const badges = {
-    'Critical': '<span class="badge bg-danger">Critical</span>',
-    'High': '<span class="badge bg-warning">High</span>',
-    'Medium': '<span class="badge bg-info">Medium</span>',
-    'Low': '<span class="badge bg-secondary">Low</span>',
-    'Info': '<span class="badge bg-light text-dark">Info</span>'
+    'Critical': '<span class="badge bg-danger"><i class="fas fa-circle-exclamation me-1"></i>Critical</span>',
+    'High': '<span class="badge bg-warning"><i class="fas fa-exclamation-triangle me-1"></i>High</span>',
+    'Medium': '<span class="badge bg-info"><i class="fas fa-circle-question me-1"></i>Medium</span>',
+    'Low': '<span class="badge bg-secondary"><i class="fas fa-circle-info me-1"></i>Low</span>',
+    'Info': '<span class="badge bg-light text-dark"><i class="fas fa-circle-info me-1"></i>Info</span>'
   };
   return badges[severity] || `<span class="badge bg-secondary">${severity}</span>`;
+}
+
+function getCategoryBadge(category) {
+  if (!category) return '<span class="badge-category unknown"><i class="fas fa-tag me-1"></i>Unknown</span>';
+  
+  const categoryLower = category.toLowerCase();
+  const categoryMap = {
+    // Service-related
+    'service failure': 'service-failure',
+    'service startup failure': 'service-failure',
+    'service terminated': 'service-failure',
+    'dependency failure': 'service-failure',
+    'service control manager': 'service-failure',
+    
+    // Disk-related
+    'low disk space': 'disk-issue',
+    'disk i/o error': 'disk-issue',
+    'disk': 'disk-issue',
+    'storage': 'disk-issue',
+    
+    // Security-related
+    'security': 'security',
+    'authentication': 'security',
+    'permission': 'security',
+    'access denied': 'security',
+    'account lockout': 'security',
+    
+    // Network-related
+    'network': 'network',
+    'connectivity': 'network',
+    'dns': 'network',
+    'tcp/ip': 'network',
+    'internet': 'network',
+    
+    // System-related
+    'system': 'system',
+    'shutdown': 'system',
+    'boot': 'system',
+    'driver': 'driver',
+    'device': 'system',
+    
+    // Application-related
+    'application': 'application',
+    'app': 'application',
+    'program': 'application',
+    'software': 'application',
+    
+    // Memory-related
+    'memory': 'memory',
+    'ram': 'memory',
+    'heap': 'memory',
+    'virtual memory': 'memory',
+    
+    // Registry-related
+    'registry': 'registry',
+    'configurations': 'registry'
+  };
+  
+  // Find matching category color
+  let colorClass = 'unknown';
+  for (const [key, value] of Object.entries(categoryMap)) {
+    if (categoryLower.includes(key)) {
+      colorClass = value;
+      break;
+    }
+  }
+  
+  const icons = {
+    'service-failure': 'fa-cogs',
+    'disk-issue': 'fa-hard-drive',
+    'security': 'fa-lock',
+    'network': 'fa-network-wired',
+    'system': 'fa-computer',
+    'application': 'fa-cube',
+    'memory': 'fa-microchip',
+    'driver': 'fa-plug',
+    'registry': 'fa-database',
+    'unknown': 'fa-tag'
+  };
+  
+  const icon = icons[colorClass] || 'fa-tag';
+  return `<span class="badge-category ${colorClass} fw-bold"><i class="fas ${icon} me-1"></i>${category}</span>`;
 }
 
 let allEvents = [];
@@ -582,7 +664,7 @@ function displayEvents(events) {
       <td><span class="badge bg-primary">${e.id}</span></td>
       <td><code>${e.event_id}</code></td>
       <td><strong class="small">${e.source}</strong></td>
-      <td><span class="badge bg-secondary small">${category}</span></td>
+      <td>${getCategoryBadge(category)}</td>
       <td>${getSeverityBadge(e.severity)}</td>
       <td title="${fullDesc}" class="small">${descPreview}</td>
       <td><small class="text-muted">${new Date(e.timestamp).toLocaleString()}</small></td>
@@ -647,7 +729,7 @@ async function showMatches(eventId){
             <div class="row align-items-center">
               <div class="col">
                 <h6 class="mb-2"><strong>${m.name}</strong></h6>
-                ${m.severity ? `<div class="mb-1">${getSeverityBadge(m.severity)} ${m.category ? `<span class="badge bg-secondary">${m.category}</span>` : ''}</div>` : ''}
+                ${m.severity ? `<div class="mb-1">${getSeverityBadge(m.severity)} ${m.category ? getCategoryBadge(m.category) : ''}</div>` : ''}
                 ${m.description ? `<div class="small mb-2"><strong>Description:</strong> ${m.description}</div>` : ''}
                 ${m.recommended_action ? `<div class="small mb-2"><strong>Recommended Action:</strong> ${m.recommended_action}</div>` : ''}
                 <div class="small text-muted">
@@ -786,7 +868,7 @@ async function loadRules(){
       if(r.source) criteria.push(`Source: <code>${r.source}</code>`);
       const title = r.description ? `title="${r.description}"` : '';
       tr.innerHTML = `
-        <td ${title}><strong>${r.name}</strong>${r.category ? `<br><small class="text-muted">${r.category}</small>` : ''}</td>
+        <td ${title}><strong>${r.name}</strong>${r.category ? `<br>${getCategoryBadge(r.category)}` : ''}</td>
         <td><small>${criteria.length > 0 ? criteria.join('<br>') : '<em>All events</em>'}</small></td>
         <td>${r.severity ? getSeverityBadge(r.severity) : '<span class="badge bg-secondary">N/A</span>'}</td>
         <td>${r.auto_remediate ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>'}</td>
@@ -1106,7 +1188,7 @@ function displayEventDefinitions(definitions) {
       <tr>
         <td><code class="fw-bold">${d.event_id}</code></td>
         <td><small>${d.event_source}</small></td>
-        <td><span class="badge bg-secondary small">${d.category}</span></td>
+        <td>${getCategoryBadge(d.category)}</td>
         <td>${getSeverityBadge(d.severity)}</td>
         <td title="${d.description}" class="small">${descPreview}</td>
         <td class="text-center">

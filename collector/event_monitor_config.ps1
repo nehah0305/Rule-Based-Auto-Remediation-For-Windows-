@@ -48,8 +48,9 @@ catch {
 # Extract configuration
 $ApiUrl = $config.api_url
 $PollIntervalSeconds = $config.poll_interval_seconds
-$MaxEventsPerPoll = $config.max_events_per_poll
-$HistoricalDays = if ($config.historical_days) { $config.historical_days } else { 7 }
+$MaxEventsPerPoll = if ($config.max_events_per_poll) { $config.max_events_per_poll } else { 100 }
+$HistoricalDays = if ($config.historical_days) { $config.historical_days } else { 30 }
+$MaxHistoricalEvents = if ($config.max_historical_events) { $config.max_historical_events } else { 10000 }
 $LogNames = $config.log_names -join ','
 $EventIds = if ($config.event_ids_to_monitor -and $config.event_ids_to_monitor.Count -gt 0) {
     $config.event_ids_to_monitor -join ','
@@ -83,23 +84,9 @@ if ($HistoricalDays -gt 0) {
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Initialize last check times
-if ($HistoricalDays -eq 0) {
-    # Start from now - only capture new events
-    foreach ($logName in $script:LogNamesArray) {
-        $script:LastCheckTime[$logName.Trim()] = Get-Date
-    }
-    Write-Host "Skipping historical events - monitoring new events only" -ForegroundColor Yellow
-    Write-Host ""
-} else {
-    # Start from X days ago to capture historical events
-    $startTime = (Get-Date).AddDays(-$HistoricalDays)
-    foreach ($logName in $script:LogNamesArray) {
-        $script:LastCheckTime[$logName.Trim()] = $startTime
-    }
-    Write-Host "Importing historical events from last $HistoricalDays days..." -ForegroundColor Yellow
-    Write-Host "This may take a moment..." -ForegroundColor Gray
-    Write-Host ""
+# Initialize last check times to now (we'll do historical import separately)
+foreach ($logName in $script:LogNamesArray) {
+    $script:LastCheckTime[$logName.Trim()] = Get-Date
 }
 
 # Function to send event to API
@@ -186,9 +173,97 @@ function Check-LogForNewEvents {
     }
 }
 
+# Function to import historical events
+function Import-HistoricalEvents {
+    if ($HistoricalDays -eq 0) {
+        Write-Host "Skipping historical import - monitoring new events only" -ForegroundColor Yellow
+        Write-Host ""
+        return
+    }
+
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host "HISTORICAL IMPORT - Last $HistoricalDays days" -ForegroundColor Cyan
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host ""
+
+    $startTime = (Get-Date).AddDays(-$HistoricalDays)
+    $totalImported = 0
+
+    foreach ($logName in $script:LogNamesArray) {
+        $logNameTrimmed = $logName.Trim()
+        Write-Host "Importing from $logNameTrimmed..." -ForegroundColor Yellow
+
+        try {
+            $filterHashtable = @{
+                LogName = $logNameTrimmed
+                StartTime = $startTime
+            }
+
+            if ($script:EventIdsArray.Count -gt 0) {
+                $filterHashtable['ID'] = $script:EventIdsArray
+            }
+
+            $events = Get-WinEvent -FilterHashtable $filterHashtable -MaxEvents $MaxHistoricalEvents -ErrorAction SilentlyContinue
+
+            if ($null -eq $events) {
+                Write-Host "  No events found in $logNameTrimmed" -ForegroundColor Gray
+                continue
+            }
+
+            if ($events -isnot [Array]) {
+                $events = @($events)
+            }
+
+            Write-Host "  Found $($events.Count) events, importing..." -ForegroundColor Cyan
+
+            [array]::Reverse($events)
+
+            $imported = 0
+            foreach ($evt in $events) {
+                $eventKey = "$($evt.LogName)-$($evt.RecordId)"
+
+                if ($script:ProcessedEvents.ContainsKey($eventKey)) {
+                    continue
+                }
+
+                if (Send-EventToApi -Event $evt) {
+                    $script:ProcessedEvents[$eventKey] = $true
+                    $imported++
+                    $totalImported++
+
+                    if ($imported % 50 -eq 0) {
+                        Write-Host "  Progress: $imported events imported..." -ForegroundColor Gray
+                    }
+                }
+            }
+
+            Write-Host "  [OK] Imported $imported events from $logNameTrimmed" -ForegroundColor Green
+        }
+        catch {
+            if ($_.Exception.Message -notlike "*No events were found*") {
+                Write-Host "  [FAIL] Error importing from $logNameTrimmed : $($_.Exception.Message)" -ForegroundColor Red
+            } else {
+                Write-Host "  No matching events in $logNameTrimmed" -ForegroundColor Gray
+            }
+        }
+    }
+
+    Write-Host ""
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host "HISTORICAL IMPORT COMPLETE" -ForegroundColor Green
+    Write-Host "Total events imported: $totalImported" -ForegroundColor Green
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host ""
+}
+
+# Import historical events before starting monitoring
+Import-HistoricalEvents
+
 # Main loop
-Write-Host "Starting monitoring...`n" -ForegroundColor Green
-Write-Host "Press Ctrl+C to stop`n" -ForegroundColor Yellow
+Write-Host "Starting real-time monitoring..." -ForegroundColor Green
+Write-Host ""
+Write-Host "Press Ctrl+C to stop" -ForegroundColor Yellow
+Write-Host ""
 
 $pollCount = 0
 

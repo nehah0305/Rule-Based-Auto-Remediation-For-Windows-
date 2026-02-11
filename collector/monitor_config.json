@@ -1,8 +1,9 @@
 {
   "api_url": "http://localhost:5000",
   "poll_interval_seconds": 10,
-  "max_events_per_poll": 50,
-  "historical_days": 7,
+  "max_events_per_poll": 100,
+  "historical_days": 30,
+  "max_historical_events": 10000,
   "log_names": [
     "System",
     "Application"
@@ -29,6 +30,6 @@
     4227,
     5719
   ],
-  "description": "Configuration for Windows Event Monitor. Leave event_ids_to_monitor empty to monitor all events. Set historical_days to 0 to skip historical import."
+  "description": "Configuration for Windows Event Monitor. Leave event_ids_to_monitor empty to monitor all events. Set historical_days to 0 to skip historical import. max_historical_events limits the total events imported (default: 10000)."
 }
 
