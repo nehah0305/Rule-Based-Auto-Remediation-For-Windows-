@@ -229,7 +229,7 @@ def get_history(limit=200):
     c = conn.cursor()
     c.execute('''
         SELECT h.id, h.event_row_id, h.rule_id, h.status, h.output, h.timestamp,
-               e.event_id, e.source, r.name
+               e.event_id, e.source, r.name, e.timestamp as event_timestamp
         FROM remediation_history h
         LEFT JOIN events e ON h.event_row_id = e.id
         LEFT JOIN rules r ON h.rule_id = r.id

@@ -456,8 +456,9 @@
                       <th style="width: 12%">Event ID</th>
                       <th style="width: 18%">Rule</th>
                       <th style="width: 12%">Status</th>
-                      <th style="width: 35%">Output</th>
-                      <th style="width: 15%">Timestamp</th>
+                      <th style="width: 30%">Output</th>
+                      <th style="width: 15%">Event Time</th>
+                      <th style="width: 15%">Remediation Time</th>
                     </tr>
                   </thead>
                   <tbody></tbody>
@@ -897,7 +898,8 @@ async function loadHistory(){
         <td><strong>${h.rule_name || h.rule_id}</strong></td>
         <td>${getStatusBadge(h.status)}</td>
         <td title="${h.output}" class="small"><code>${output}</code></td>
-        <td><small class="text-muted">${new Date(h.timestamp).toLocaleString()}</small></td>
+        <td><small class="text-muted">${h.event_timestamp ? new Date(h.event_timestamp).toLocaleString() : 'N/A'}</small></td>
+        <td><small class="text-muted">${h.timestamp ? new Date(h.timestamp).toLocaleString() : 'N/A'}</small></td>
       `;
       tbody.appendChild(tr);
     }
@@ -1058,7 +1060,10 @@ function updateRecentRemediations(history) {
         </div>
         ${getStatusBadge(h.status)}
       </div>
-      <small class="text-muted">${new Date(h.timestamp).toLocaleString()}</small>
+      <div class="small text-muted mt-2">
+        <div>Event time: ${h.event_timestamp ? new Date(h.event_timestamp).toLocaleString() : 'N/A'}</div>
+        <div>Remediated: ${h.timestamp ? new Date(h.timestamp).toLocaleString() : 'N/A'}</div>
+      </div>
     </div>
   `).join('');
 }

@@ -138,7 +138,7 @@ def history():
     rows = models.get_history(limit=500)
     hist = []
     for h in rows:
-        hist.append(dict(id=h[0], event_row_id=h[1], rule_id=h[2], status=h[3], output=h[4], timestamp=h[5], event_id=h[6], event_source=h[7], rule_name=h[8]))
+        hist.append(dict(id=h[0], event_row_id=h[1], rule_id=h[2], status=h[3], output=h[4], timestamp=h[5], event_id=h[6], event_source=h[7], rule_name=h[8], event_timestamp=h[9]))
     return jsonify(hist)
 
 
