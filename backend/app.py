@@ -209,6 +209,24 @@ def event_definitions():
     return jsonify(definitions)
 
 
+@app.route('/api/filtered-events', methods=['GET'])
+def filtered_events():
+    try:
+        rows = models.read_filtered_events_csv()
+        return jsonify(rows)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/last-processed', methods=['GET'])
+def last_processed():
+    try:
+        lp = models.get_last_processed()
+        return jsonify(lp or {})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/event-definitions/<int:event_id>', methods=['GET'])
 def event_definition_detail(event_id):
     """Get a specific event definition by event_id."""

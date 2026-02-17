@@ -17,6 +17,8 @@ function Send-EventToApi($ev) {
         log_name = $ev.LogName
         source = $ev.ProviderName
         message = ($ev.Message -join " ")
+        severity = if ($ev.LevelDisplayName) { $ev.LevelDisplayName } else { switch ($ev.Level) { 1 { 'Critical' } 2 { 'Error' } 3 { 'Warning' } 4 { 'Information' } Default { 'Info' } } }
+        category = $ev.TaskDisplayName
         timestamp = $ev.TimeCreated.ToString('o')
     }
     try {
@@ -35,6 +37,19 @@ if ($Tail) {
         Start-Sleep -Seconds 5
     }
 } else {
-    $events = Get-WinEvent -MaxEvents $MaxEvents -LogName $LogName
+    # Attempt to fetch last-processed timestamp from API and only load newer events
+    try {
+        $base = $ApiUrl -replace '/api/events$',''
+        $lp = Invoke-RestMethod -Method Get -Uri "$base/api/last-processed" -ErrorAction Stop
+        if ($lp -and $lp.last_timestamp) {
+            $start = [DateTime]::Parse($lp.last_timestamp)
+            $events = Get-WinEvent -FilterHashtable @{LogName=$LogName; StartTime=$start} -MaxEvents $MaxEvents
+        } else {
+            $events = Get-WinEvent -MaxEvents $MaxEvents -LogName $LogName
+        }
+    } catch {
+        # Fallback to simple fetch
+        $events = Get-WinEvent -MaxEvents $MaxEvents -LogName $LogName
+    }
     foreach ($e in $events) { Send-EventToApi $e }
 }

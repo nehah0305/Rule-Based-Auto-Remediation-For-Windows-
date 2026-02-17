@@ -221,6 +221,61 @@ powershell -ExecutionPolicy Bypass -File collector\collector.ps1 -MaxEvents 5 -L
 
 ---
 
+Updated: Detailed `collector.ps1` usage
+
+You can run `collector\collector.ps1` directly for one-off tests or tailing (live) mode. The collector now includes `severity` and `category` in the payload and supports resuming from the last processed event by querying the backend at `/api/last-processed`.
+
+Prerequisites
+- Backend running (see Step 4)
+- PowerShell running as Administrator when reading system logs
+
+Quick commands
+
+# One-time collection (last N events)
+```powershell
+powershell -ExecutionPolicy Bypass -File collector\collector.ps1 -MaxEvents 5 -LogName System -ApiUrl http://localhost:5000/api/events
+```
+
+# Tail (continuous) mode - keeps polling and sending new events
+```powershell
+powershell -ExecutionPolicy Bypass -File collector\collector.ps1 -Tail -LogName System -ApiUrl http://localhost:5000/api/events
+```
+
+# Run interactively from an already-open PowerShell session
+```powershell
+Set-Location .\collector
+.\collector.ps1 -Tail -ApiUrl http://localhost:5000/api/events
+```
+
+Behavior notes
+- When run without `-Tail`, the collector first attempts to GET `/api/last-processed` on the backend. If a `last_timestamp` is returned, the collector will request only events with `StartTime` after that timestamp. This enables resumed ingestion from the last time events were processed.
+- Each received event is posted to `POST /api/events` and the backend will append it to `backend/data/all_events.csv`. Events with severities matching `warning`, `warn`, `error`, or `critical` are appended to `backend/data/filtered_events.csv`.
+- The backend stores the last processed marker in `backend/data/last_processed.json`.
+
+Parameters
+- `-MaxEvents <int>`: Number of most-recent events to send (one-off mode).
+- `-LogName <string>`: Windows Event Log name (e.g., `System`, `Application`).
+- `-Tail`: Run in continuous polling/tailing mode.
+- `-ApiUrl <string>`: Full URL to the backend `POST /api/events` endpoint.
+
+Examples
+- One-time pull of 10 events from Application:
+```powershell
+powershell -ExecutionPolicy Bypass -File collector\collector.ps1 -MaxEvents 10 -LogName Application -ApiUrl http://localhost:5000/api/events
+```
+- Tail System log and send new events to a remote backend:
+```powershell
+powershell -ExecutionPolicy Bypass -File collector\collector.ps1 -Tail -LogName System -ApiUrl http://10.0.0.5:5000/api/events
+```
+
+Where to look for output
+- Filtered warnings/errors CSV: `backend/data/filtered_events.csv`
+- All events CSV: `backend/data/all_events.csv`
+- Last processed marker: `backend/data/last_processed.json`
+
+
+---
+
 ### Step 8: Verify Everything is Working
 
 **📍 Location:** Open **PowerShell** in project root

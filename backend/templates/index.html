@@ -29,6 +29,11 @@
           </a>
         </li>
         <li class="nav-item mb-2">
+          <a class="nav-link rounded-3" data-bs-toggle="tab" href="#filteredEventsTab">
+            <i class="fas fa-exclamation-triangle me-2"></i>Warnings & Errors
+          </a>
+        </li>
+        <li class="nav-item mb-2">
           <a class="nav-link rounded-3" data-bs-toggle="tab" href="#rulesTab">
             <i class="fas fa-cogs me-2"></i>Rules
           </a>
@@ -249,6 +254,40 @@
                     </tr>
                   </thead>
                   <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filtered Warnings & Errors -->
+        <div class="tab-pane fade p-3" id="filteredEventsTab">
+          <div class="card card-modern">
+            <div class="card-header bg-gradient-warning border-0 d-flex justify-content-between align-items-center">
+              <h5 class="mb-0 text-white">
+                <i class="fas fa-exclamation-triangle me-2"></i>Warnings & Errors (Filtered)
+                <small class="text-white-50 ms-2" id="filtered-last-updated"></small>
+              </h5>
+              <button class="btn btn-sm btn-light" onclick="loadFilteredEvents()">
+                <i class="fas fa-sync me-1"></i>Refresh
+              </button>
+            </div>
+            <div class="card-body p-0">
+              <div class="table-responsive">
+                <table class="table table-hover mb-0" id="filtered-events-table">
+                  <thead class="table-light">
+                    <tr>
+                      <th style="width:5%">ID</th>
+                      <th style="width:10%">Event ID</th>
+                      <th style="width:15%">Source</th>
+                      <th style="width:10%">Severity</th>
+                      <th style="width:40%">Message / Description</th>
+                      <th style="width:20%">Timestamp</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td colspan="6" class="text-center text-muted py-3">No warnings or errors yet</td></tr>
+                  </tbody>
                 </table>
               </div>
             </div>
@@ -1285,6 +1324,7 @@ function refreshAll() {
   loadRequests();
   loadDashboard();
   loadEventDefinitions();
+  loadFilteredEvents();
   showStatus('Refreshing', 'All data has been reloaded.', 'info');
 }
 
@@ -1295,7 +1335,43 @@ loadRules();
 loadHistory();
 loadRequests();
 loadEventDefinitions();
-setInterval(() => { loadEvents(); loadRequests(); loadDashboard(); }, 5000);
+loadFilteredEvents();
+setInterval(() => { loadEvents(); loadRequests(); loadDashboard(); loadFilteredEvents(); }, 5000);
+
+
+async function loadFilteredEvents(){
+  try{
+    const rows = await api('/api/filtered-events');
+    displayFilteredEvents(rows);
+    const el = document.getElementById('filtered-last-updated');
+    if(el) el.textContent = rows && rows.length > 0 ? `Last: ${new Date(rows[0].timestamp).toLocaleString()}` : '';
+  }catch(e){
+    console.error('Failed to load filtered events:', e);
+  }
+}
+
+function displayFilteredEvents(rows){
+  const tbody = document.querySelector('#filtered-events-table tbody');
+  if(!tbody) return;
+  tbody.innerHTML = '';
+  if(!rows || rows.length === 0){
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No warnings or errors yet</td></tr>';
+    return;
+  }
+  for(const r of rows){
+    const tr = document.createElement('tr');
+    const msg = (r.description || r.message || '').replace(/</g,'&lt;').substring(0,200);
+    tr.innerHTML = `
+      <td><span class="badge bg-warning text-dark">${r.id}</span></td>
+      <td><code>${r.event_id}</code></td>
+      <td>${r.source}</td>
+      <td>${getSeverityBadge(r.severity)}</td>
+      <td class="small" title="${(r.message || '').replace(/"/g, '&quot;')}">${msg}</td>
+      <td><small class="text-muted">${r.timestamp ? new Date(r.timestamp).toLocaleString() : ''}</small></td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
 </script>
 
 </body>

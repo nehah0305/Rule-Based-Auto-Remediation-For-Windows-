@@ -3,10 +3,21 @@ import sqlite3
 import re
 import subprocess
 import json
+import csv
 from datetime import datetime
+from pathlib import Path
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'rules.db')
 EVENT_DEFINITIONS_PATH = os.path.join(os.path.dirname(__file__), '..', 'windows_error_events.json')
+
+# Data directory for CSV exports and state
+DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
+ALL_EVENTS_CSV = os.path.join(DATA_DIR, 'all_events.csv')
+FILTERED_EVENTS_CSV = os.path.join(DATA_DIR, 'filtered_events.csv')
+LAST_PROCESSED_PATH = os.path.join(DATA_DIR, 'last_processed.json')
+
+# Ensure data dir exists
+Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
 
 # Cache for event definitions
 _event_definitions_cache = None
@@ -87,7 +98,84 @@ def add_event(event_id, log_name, source, message, timestamp=None, category=None
     rowid = c.lastrowid
     conn.commit()
     conn.close()
+
+    # Append to all events CSV
+    try:
+        write_event_row_to_csv(ALL_EVENTS_CSV, {
+            'id': rowid,
+            'event_id': event_id,
+            'log_name': log_name,
+            'source': source,
+            'message': message,
+            'timestamp': timestamp,
+            'category': category,
+            'severity': severity,
+            'description': description,
+            'recommended_action': recommended_action
+        })
+    except Exception:
+        pass
+
+    # If severity indicates warning/error, append to filtered CSV
+    try:
+        if severity and severity.lower() in ('warning', 'warn', 'error', 'critical'):
+            write_event_row_to_csv(FILTERED_EVENTS_CSV, {
+                'id': rowid,
+                'event_id': event_id,
+                'log_name': log_name,
+                'source': source,
+                'message': message,
+                'timestamp': timestamp,
+                'category': category,
+                'severity': severity,
+                'description': description,
+                'recommended_action': recommended_action
+            })
+    except Exception:
+        pass
+
+    # Update last processed marker
+    try:
+        with open(LAST_PROCESSED_PATH, 'w', encoding='utf-8') as f:
+            json.dump({'last_rowid': rowid, 'last_timestamp': timestamp}, f)
+    except Exception:
+        pass
     return rowid
+
+
+def write_event_row_to_csv(path, rowdict):
+    fieldnames = ['id', 'event_id', 'log_name', 'source', 'message', 'timestamp', 'category', 'severity', 'description', 'recommended_action']
+    exists = os.path.exists(path)
+    with open(path, 'a', newline='', encoding='utf-8') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        if not exists:
+            writer.writeheader()
+        writer.writerow({k: (rowdict.get(k) if rowdict.get(k) is not None else '') for k in fieldnames})
+
+
+def read_filtered_events_csv(limit=500):
+    """Read filtered events CSV and return list of dicts (most recent first)."""
+    if not os.path.exists(FILTERED_EVENTS_CSV):
+        return []
+    rows = []
+    with open(FILTERED_EVENTS_CSV, 'r', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for r in reader:
+            rows.append(r)
+    # Return most recent first (CSV is append-only chronological)
+    rows = rows[-limit:]
+    rows.reverse()
+    return rows
+
+
+def get_last_processed():
+    if not os.path.exists(LAST_PROCESSED_PATH):
+        return None
+    try:
+        with open(LAST_PROCESSED_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return None
 
 
 def get_events(limit=100):
