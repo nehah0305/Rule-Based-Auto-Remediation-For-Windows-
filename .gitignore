@@ -1,6 +1,28 @@
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 .env
 rules.db
 .vscode/
 .DS_Store
+
+# Backup files
+*.backup
+*_backup_*.csv
+*_old.csv
+
+# Test and migration scripts
+test_*.py
+migrate_*.py
+fix_*.py
+
+# Logs
+*.log
+debug.log
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
