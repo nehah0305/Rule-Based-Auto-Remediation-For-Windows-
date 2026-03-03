@@ -116,9 +116,24 @@ def add_event(event_id, log_name, source, message, timestamp=None, category=None
     except Exception:
         pass
 
-    # If severity indicates warning/error, append to filtered CSV
+    # If severity indicates warning/error, or message contains error keywords, append to filtered CSV
     try:
+        is_error = False
+        
+        # Check severity first
         if severity and severity.lower() in ('warning', 'warn', 'error', 'critical'):
+            is_error = True
+        
+        # If no severity, check message/description for error keywords
+        if not is_error:
+            error_keywords = ['error', 'failed', 'failure', 'exception', 'crash', 'rebooted', 'shutdown', 'stopped responding', 'warning', 'critical', 'bugcheck', 'corrupt', 'unexpected']
+            combined_text = (message or '') + ' ' + (description or '')
+            for kw in error_keywords:
+                if kw.lower() in combined_text.lower():
+                    is_error = True
+                    break
+        
+        if is_error:
             write_event_row_to_csv(FILTERED_EVENTS_CSV, {
                 'id': rowid,
                 'event_id': event_id,
@@ -127,7 +142,7 @@ def add_event(event_id, log_name, source, message, timestamp=None, category=None
                 'message': message,
                 'timestamp': timestamp,
                 'category': category,
-                'severity': severity,
+                'severity': severity or 'Warning',
                 'description': description,
                 'recommended_action': recommended_action
             })
