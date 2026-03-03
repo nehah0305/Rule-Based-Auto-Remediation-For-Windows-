@@ -207,17 +207,16 @@
                 <table class="table table-hover mb-0" id="filtered-events-table">
                   <thead class="table-light">
                     <tr>
-                      <th style="width:5%">ID</th>
-                      <th style="width:8%">Level</th>
-                      <th style="width:10%">Event ID</th>
-                      <th style="width:15%">Source</th>
-                      <th style="width:10%">Severity</th>
+                      <th style="width:10%">Level</th>
+                      <th style="width:12%">Event ID</th>
+                      <th style="width:17%">Source</th>
+                      <th style="width:12%">Severity</th>
                       <th style="width:35%">Message / Description</th>
-                      <th style="width:17%">Timestamp</th>
+                      <th style="width:14%">Timestamp</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr><td colspan="7" class="text-center text-muted py-3">No warnings or errors yet</td></tr>
+                    <tr><td colspan="6" class="text-center text-muted py-3">No warnings or errors yet</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -1218,14 +1217,13 @@ function displayFilteredEvents(rows){
   if(!tbody) return;
   tbody.innerHTML = '';
   if(!rows || rows.length === 0){
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No warnings or errors yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No warnings or errors yet</td></tr>';
     return;
   }
   for(const r of rows){
     const tr = document.createElement('tr');
     const msg = (r.description || r.message || '').replace(/</g,'&lt;').substring(0,200);
     tr.innerHTML = `
-      <td><span class="badge bg-warning text-dark">${r.id}</span></td>
       <td>${getLevelBadge(r.level)}</td>
       <td><code>${r.event_id}</code></td>
       <td>${r.source}</td>

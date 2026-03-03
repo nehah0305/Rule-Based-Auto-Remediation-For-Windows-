@@ -102,7 +102,6 @@ def add_event(event_id, log_name, source, message, timestamp=None, category=None
     # Append to errors/warnings CSV (all events are now errors/warnings since we filter at source)
     try:
         write_event_row_to_csv(ERRORS_WARNINGS_CSV, {
-            'id': rowid,
             'event_id': event_id,
             'log_name': log_name,
             'source': source,
@@ -127,7 +126,7 @@ def add_event(event_id, log_name, source, message, timestamp=None, category=None
 
 
 def write_event_row_to_csv(path, rowdict):
-    fieldnames = ['id', 'event_id', 'log_name', 'source', 'message', 'timestamp', 'category', 'severity', 'description', 'recommended_action', 'level']
+    fieldnames = ['event_id', 'log_name', 'source', 'message', 'timestamp', 'category', 'severity', 'description', 'recommended_action', 'level']
     exists = os.path.exists(path)
     with open(path, 'a', newline='', encoding='utf-8') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
