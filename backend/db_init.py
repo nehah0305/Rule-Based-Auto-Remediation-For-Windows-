@@ -18,7 +18,8 @@ def init_db():
         category TEXT,
         severity TEXT,
         description TEXT,
-        recommended_action TEXT
+        recommended_action TEXT,
+        level TEXT
     )
     ''')
 
@@ -84,7 +85,8 @@ def migrate_db(conn):
         ('category', 'TEXT'),
         ('severity', 'TEXT'),
         ('description', 'TEXT'),
-        ('recommended_action', 'TEXT')
+        ('recommended_action', 'TEXT'),
+        ('level', 'TEXT')
     ]
 
     for col_name, col_type in new_event_columns:

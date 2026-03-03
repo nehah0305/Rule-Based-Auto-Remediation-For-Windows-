@@ -2,12 +2,16 @@
 
 Lightweight PoC dashboard and collector for auto-remediation driven by Windows Event Logs.
 
+**🎯 Focus:** Monitors **Errors and Warnings only** (Administrative Events) - matching the "Administrative Events" view in Windows Event Viewer.
+
 ## Features
+- **Administrative Events Monitoring**: Captures only Error (Level 2) and Warning (Level 3) events
 - **Live Event Monitoring**: Real-time connection to Windows Event Viewer for automatic event detection
-- **Event Collection**: Collect and monitor Windows Event Log entries (System, Application, Security, etc.)
+- **Historical Import**: Import up to 30 days (10,000+ events) of errors/warnings on startup
 - **Rule-Based Remediation**: Define rules to automatically remediate common issues
 - **Event Definitions**: Pre-loaded with 40+ common Windows error events from `windows_error_events.json`
 - **Metadata Enrichment**: Events are automatically enriched with category, severity, description, and recommended actions
+- **Color-Coded UI**: Events color-coded by severity and category for easy identification
 - **Approval Workflow**: Manual approval process for sensitive remediation actions
 - **Web Dashboard**: Modern, responsive UI with statistics, charts, and real-time monitoring
 - **Background Service**: Run as Windows Scheduled Task for continuous monitoring

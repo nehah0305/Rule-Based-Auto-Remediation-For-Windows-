@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-    Simple polling-based Windows Event Log monitor that sends events to the remediation backend.
+    Windows Event Log monitor for Errors and Warnings (Administrative Events).
 
 .DESCRIPTION
-    This script polls Windows Event Logs at regular intervals and sends new events to the Flask backend.
-    Simpler alternative to event_watcher.ps1 that uses polling instead of event subscriptions.
+    This script monitors Windows Event Logs for Error (Level 2) and Warning (Level 3) events only,
+    matching the "Administrative Events" view in Event Viewer. Sends events to the Flask backend.
 
 .PARAMETER ApiUrl
     The URL of the Flask backend API (default: http://localhost:5000)
@@ -16,10 +16,10 @@
     How often to check for new events in seconds (default: 10)
 
 .PARAMETER EventIds
-    Optional comma-separated list of specific event IDs to monitor (monitors all if not specified)
+    Optional comma-separated list of specific event IDs to monitor (monitors all errors/warnings if not specified)
 
 .PARAMETER MaxEventsPerPoll
-    Maximum number of events to retrieve per poll (default: 50)
+    Maximum number of events to retrieve per poll (default: 100)
 
 .EXAMPLE
     .\event_monitor.ps1 -LogNames "System,Application" -PollIntervalSeconds 5
@@ -47,10 +47,11 @@ $script:LastCheckTime = @{}  # Track last check time for each log
 $script:ProcessedEvents = @{}  # Track processed events to avoid duplicates
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "Windows Event Monitor - Polling Mode" -ForegroundColor Cyan
+Write-Host "Windows Event Monitor - Administrative Events" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "API Endpoint: $script:ApiEndpoint" -ForegroundColor Green
 Write-Host "Monitoring Logs: $LogNames" -ForegroundColor Green
+Write-Host "Event Levels: Error (2) + Warning (3)" -ForegroundColor Yellow
 Write-Host "Poll Interval: $PollIntervalSeconds seconds" -ForegroundColor Green
 Write-Host "Max Events/Poll: $MaxEventsPerPoll" -ForegroundColor Green
 if ($script:EventIdsArray.Count -gt 0) {
@@ -78,6 +79,7 @@ function Send-EventToApi {
             source = $Event.ProviderName
             message = if ($Event.Message) { $Event.Message } else { "No message available" }
             timestamp = $Event.TimeCreated.ToString("yyyy-MM-ddTHH:mm:ss")
+            level = $Event.LevelDisplayName  # Error or Warning
         }
         
         $json = $eventData | ConvertTo-Json -Compress
@@ -105,16 +107,17 @@ function Check-LogForNewEvents {
     $currentTime = Get-Date
     
     try {
-        # Build filter
+        # Build filter - Only capture Error (Level 2) and Warning (Level 3) events
         $filterHashtable = @{
             LogName = $LogName
             StartTime = $lastCheck
+            Level = @(2, 3)  # 2 = Error, 3 = Warning (Administrative Events)
         }
-        
+
         if ($script:EventIdsArray.Count -gt 0) {
             $filterHashtable['ID'] = $script:EventIdsArray
         }
-        
+
         # Get events since last check
         $events = Get-WinEvent -FilterHashtable $filterHashtable -MaxEvents $MaxEventsPerPoll -ErrorAction SilentlyContinue
         
@@ -182,17 +185,18 @@ function Import-HistoricalEvents {
         Write-Host "Importing from $logNameTrimmed..." -ForegroundColor Yellow
 
         try {
-            # Build filter for historical events
+            # Build filter for historical events - Only Error (Level 2) and Warning (Level 3)
             $filterHashtable = @{
                 LogName = $logNameTrimmed
                 StartTime = $startTime
+                Level = @(2, 3)  # 2 = Error, 3 = Warning (Administrative Events)
             }
 
             if ($script:EventIdsArray.Count -gt 0) {
                 $filterHashtable['ID'] = $script:EventIdsArray
             }
 
-            # Get ALL historical events (up to MaxHistoricalEvents)
+            # Get ALL historical errors/warnings (up to MaxHistoricalEvents)
             $events = Get-WinEvent -FilterHashtable $filterHashtable -MaxEvents $MaxHistoricalEvents -ErrorAction SilentlyContinue
 
             if ($null -eq $events) {

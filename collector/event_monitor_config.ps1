@@ -100,6 +100,7 @@ function Send-EventToApi {
             source = $Event.ProviderName
             message = if ($Event.Message) { $Event.Message } else { "No message available" }
             timestamp = $Event.TimeCreated.ToString("yyyy-MM-ddTHH:mm:ss")
+            level = $Event.LevelDisplayName  # Error or Warning
         }
         
         $json = $eventData | ConvertTo-Json -Compress
@@ -127,15 +128,17 @@ function Check-LogForNewEvents {
     $currentTime = Get-Date
     
     try {
+        # Only capture Error (Level 2) and Warning (Level 3) events
         $filterHashtable = @{
             LogName = $LogName
             StartTime = $lastCheck
+            Level = @(2, 3)  # 2 = Error, 3 = Warning (Administrative Events)
         }
-        
+
         if ($script:EventIdsArray.Count -gt 0) {
             $filterHashtable['ID'] = $script:EventIdsArray
         }
-        
+
         $events = Get-WinEvent -FilterHashtable $filterHashtable -MaxEvents $MaxEventsPerPoll -ErrorAction SilentlyContinue
         
         if ($null -eq $events) {
@@ -194,9 +197,11 @@ function Import-HistoricalEvents {
         Write-Host "Importing from $logNameTrimmed..." -ForegroundColor Yellow
 
         try {
+            # Only import Error (Level 2) and Warning (Level 3) events
             $filterHashtable = @{
                 LogName = $logNameTrimmed
                 StartTime = $startTime
+                Level = @(2, 3)  # 2 = Error, 3 = Warning (Administrative Events)
             }
 
             if ($script:EventIdsArray.Count -gt 0) {

@@ -28,7 +28,7 @@ def events():
         return jsonify(events)
 
     data = request.get_json(force=True)
-    # expected keys: event_id, log_name, source, message, timestamp (optional)
+    # expected keys: event_id, log_name, source, message, timestamp (optional), level (Error/Warning)
     # The add_event function will automatically enrich with metadata from JSON
     event_row_id = models.add_event(
         data.get('event_id'),
@@ -39,7 +39,8 @@ def events():
         data.get('category'),
         data.get('severity'),
         data.get('description'),
-        data.get('recommended_action')
+        data.get('recommended_action'),
+        data.get('level')  # Error or Warning
     )
 
     matched = models.match_rules_for_event(data)

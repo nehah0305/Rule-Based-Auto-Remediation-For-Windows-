@@ -12,8 +12,8 @@ EVENT_DEFINITIONS_PATH = os.path.join(os.path.dirname(__file__), '..', 'windows_
 
 # Data directory for CSV exports and state
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
-ALL_EVENTS_CSV = os.path.join(DATA_DIR, 'all_events.csv')
-FILTERED_EVENTS_CSV = os.path.join(DATA_DIR, 'filtered_events.csv')
+# Single CSV file for errors and warnings only (Administrative Events)
+ERRORS_WARNINGS_CSV = os.path.join(DATA_DIR, 'errors_warnings.csv')
 LAST_PROCESSED_PATH = os.path.join(DATA_DIR, 'last_processed.json')
 
 # Ensure data dir exists
@@ -72,7 +72,7 @@ def get_all_event_definitions():
     return load_event_definitions()
 
 
-def add_event(event_id, log_name, source, message, timestamp=None, category=None, severity=None, description=None, recommended_action=None):
+def add_event(event_id, log_name, source, message, timestamp=None, category=None, severity=None, description=None, recommended_action=None, level=None):
     conn = _conn()
     c = conn.cursor()
     if timestamp is None:
@@ -92,16 +92,16 @@ def add_event(event_id, log_name, source, message, timestamp=None, category=None
                 recommended_action = defn.get('recommended_action')
 
     c.execute(
-        'INSERT INTO events (event_id, log_name, source, message, timestamp, category, severity, description, recommended_action) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        (event_id, log_name, source, message, timestamp, category, severity, description, recommended_action)
+        'INSERT INTO events (event_id, log_name, source, message, timestamp, category, severity, description, recommended_action, level) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        (event_id, log_name, source, message, timestamp, category, severity, description, recommended_action, level)
     )
     rowid = c.lastrowid
     conn.commit()
     conn.close()
 
-    # Append to all events CSV
+    # Append to errors/warnings CSV (all events are now errors/warnings since we filter at source)
     try:
-        write_event_row_to_csv(ALL_EVENTS_CSV, {
+        write_event_row_to_csv(ERRORS_WARNINGS_CSV, {
             'id': rowid,
             'event_id': event_id,
             'log_name': log_name,
@@ -111,41 +111,9 @@ def add_event(event_id, log_name, source, message, timestamp=None, category=None
             'category': category,
             'severity': severity,
             'description': description,
-            'recommended_action': recommended_action
+            'recommended_action': recommended_action,
+            'level': level
         })
-    except Exception:
-        pass
-
-    # If severity indicates warning/error, or message contains error keywords, append to filtered CSV
-    try:
-        is_error = False
-        
-        # Check severity first
-        if severity and severity.lower() in ('warning', 'warn', 'error', 'critical'):
-            is_error = True
-        
-        # If no severity, check message/description for error keywords
-        if not is_error:
-            error_keywords = ['error', 'failed', 'failure', 'exception', 'crash', 'rebooted', 'shutdown', 'stopped responding', 'warning', 'critical', 'bugcheck', 'corrupt', 'unexpected']
-            combined_text = (message or '') + ' ' + (description or '')
-            for kw in error_keywords:
-                if kw.lower() in combined_text.lower():
-                    is_error = True
-                    break
-        
-        if is_error:
-            write_event_row_to_csv(FILTERED_EVENTS_CSV, {
-                'id': rowid,
-                'event_id': event_id,
-                'log_name': log_name,
-                'source': source,
-                'message': message,
-                'timestamp': timestamp,
-                'category': category,
-                'severity': severity or 'Warning',
-                'description': description,
-                'recommended_action': recommended_action
-            })
     except Exception:
         pass
 
@@ -159,7 +127,7 @@ def add_event(event_id, log_name, source, message, timestamp=None, category=None
 
 
 def write_event_row_to_csv(path, rowdict):
-    fieldnames = ['id', 'event_id', 'log_name', 'source', 'message', 'timestamp', 'category', 'severity', 'description', 'recommended_action']
+    fieldnames = ['id', 'event_id', 'log_name', 'source', 'message', 'timestamp', 'category', 'severity', 'description', 'recommended_action', 'level']
     exists = os.path.exists(path)
     with open(path, 'a', newline='', encoding='utf-8') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -169,11 +137,11 @@ def write_event_row_to_csv(path, rowdict):
 
 
 def read_filtered_events_csv(limit=500):
-    """Read filtered events CSV and return list of dicts (most recent first)."""
-    if not os.path.exists(FILTERED_EVENTS_CSV):
+    """Read errors/warnings CSV and return list of dicts (most recent first)."""
+    if not os.path.exists(ERRORS_WARNINGS_CSV):
         return []
     rows = []
-    with open(FILTERED_EVENTS_CSV, 'r', encoding='utf-8') as csvfile:
+    with open(ERRORS_WARNINGS_CSV, 'r', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
         for r in reader:
             rows.append(r)

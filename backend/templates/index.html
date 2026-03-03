@@ -24,11 +24,6 @@
           </a>
         </li>
         <li class="nav-item mb-2">
-          <a class="nav-link rounded-3" data-bs-toggle="tab" href="#eventsTab">
-            <i class="fas fa-bell me-2"></i>Events
-          </a>
-        </li>
-        <li class="nav-item mb-2">
           <a class="nav-link rounded-3" data-bs-toggle="tab" href="#filteredEventsTab">
             <i class="fas fa-exclamation-triangle me-2"></i>Warnings & Errors
           </a>
@@ -85,11 +80,11 @@
                 <div class="card-body">
                   <div class="d-flex justify-content-between align-items-center">
                     <div>
-                      <h6 class="text-muted mb-1">Total Events</h6>
+                      <h6 class="text-muted mb-1">Errors & Warnings</h6>
                       <h2 class="mb-0" id="stat-total-events">0</h2>
                     </div>
-                    <div class="text-primary">
-                      <i class="fas fa-bell fa-2x"></i>
+                    <div class="text-warning">
+                      <i class="fas fa-exclamation-triangle fa-2x"></i>
                     </div>
                   </div>
                 </div>
@@ -195,71 +190,6 @@
           </div>
         </div>
 
-        <!-- Events Tab -->
-        <div class="tab-pane fade" id="eventsTab">
-          <div class="card card-modern">
-            <div class="card-header bg-gradient-primary border-0">
-              <div class="d-flex justify-content-between align-items-center">
-                <h5 class="mb-0 text-white">
-                  <i class="fas fa-bell me-2"></i>System Events
-                </h5>
-                <div class="input-group" style="max-width: 350px;">
-                  <span class="input-group-text bg-white border-end-0">
-                    <i class="fas fa-search text-muted"></i>
-                  </span>
-                  <input type="text" class="form-control border-start-0" id="events-search"
-                         placeholder="Search events..." onkeyup="filterEventsTable()">
-                </div>
-              </div>
-            </div>
-            <div class="card-body p-0">
-              <!-- Filter Bar -->
-              <div class="p-3 bg-light border-bottom">
-                <div class="row g-2">
-                  <div class="col-md-4">
-                    <select class="form-select form-select-sm" id="events-severity-filter" onchange="filterEventsTable()">
-                      <option value="">All Severities</option>
-                      <option value="Critical">Critical</option>
-                      <option value="High">High</option>
-                      <option value="Medium">Medium</option>
-                      <option value="Low">Low</option>
-                      <option value="Info">Info</option>
-                    </select>
-                  </div>
-                  <div class="col-md-4">
-                    <select class="form-select form-select-sm" id="events-category-filter" onchange="filterEventsTable()">
-                      <option value="">All Categories</option>
-                    </select>
-                  </div>
-                  <div class="col-md-4">
-                    <button class="btn btn-sm btn-outline-secondary w-100" onclick="clearEventsFilters()">
-                      <i class="fas fa-times me-1"></i>Clear Filters
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div class="table-responsive">
-                <table class="table table-hover mb-0" id="events-table">
-                  <thead class="table-light">
-                    <tr>
-                      <th style="width: 5%">ID</th>
-                      <th style="width: 10%">Event ID</th>
-                      <th style="width: 12%">Source</th>
-                      <th style="width: 10%">Category</th>
-                      <th style="width: 8%">Severity</th>
-                      <th style="width: 30%">Description</th>
-                      <th style="width: 12%">Timestamp</th>
-                      <th style="width: 8%" class="text-center">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Filtered Warnings & Errors -->
         <div class="tab-pane fade p-3" id="filteredEventsTab">
           <div class="card card-modern">
@@ -278,15 +208,16 @@
                   <thead class="table-light">
                     <tr>
                       <th style="width:5%">ID</th>
+                      <th style="width:8%">Level</th>
                       <th style="width:10%">Event ID</th>
                       <th style="width:15%">Source</th>
                       <th style="width:10%">Severity</th>
-                      <th style="width:40%">Message / Description</th>
-                      <th style="width:20%">Timestamp</th>
+                      <th style="width:35%">Message / Description</th>
+                      <th style="width:17%">Timestamp</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr><td colspan="6" class="text-center text-muted py-3">No warnings or errors yet</td></tr>
+                    <tr><td colspan="7" class="text-center text-muted py-3">No warnings or errors yet</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -585,6 +516,17 @@ function getSeverityBadge(severity) {
   return badges[severity] || `<span class="badge bg-secondary">${severity}</span>`;
 }
 
+function getLevelBadge(level) {
+  if (!level) return '<span class="badge bg-secondary">Unknown</span>';
+  const levelLower = level.toLowerCase();
+  if (levelLower === 'error') {
+    return '<span class="badge bg-danger"><i class="fas fa-times-circle me-1"></i>Error</span>';
+  } else if (levelLower === 'warning') {
+    return '<span class="badge bg-warning text-dark"><i class="fas fa-exclamation-triangle me-1"></i>Warning</span>';
+  }
+  return `<span class="badge bg-secondary">${level}</span>`;
+}
+
 function getCategoryBadge(category) {
   if (!category) return '<span class="badge-category unknown"><i class="fas fa-tag me-1"></i>Unknown</span>';
   
@@ -667,84 +609,7 @@ function getCategoryBadge(category) {
   return `<span class="badge-category ${colorClass} fw-bold"><i class="fas ${icon} me-1"></i>${category}</span>`;
 }
 
-let allEvents = [];
-
-async function loadEvents(){
-  try {
-    allEvents = await api('/api/events');
-
-    // Populate category filter
-    const categories = [...new Set(allEvents.map(e => e.category || 'Unknown'))].sort();
-    const categoryFilter = document.getElementById('events-category-filter');
-    if (categoryFilter) {
-      categoryFilter.innerHTML = '<option value="">All Categories</option>' +
-        categories.map(c => `<option value="${c}">${c}</option>`).join('');
-    }
-
-    displayEvents(allEvents);
-  } catch(e) {
-    console.error('Failed to load events:', e);
-  }
-}
-
-function displayEvents(events) {
-  const tbody = document.querySelector('#events-table tbody');
-  tbody.innerHTML = '';
-  if (events.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No events found</td></tr>';
-    return;
-  }
-  for(const e of events){
-    const tr = document.createElement('tr');
-    const descPreview = e.description ? (e.description.length > 50 ? e.description.substring(0, 50) + '...' : e.description) : (e.message ? (e.message.length > 50 ? e.message.substring(0, 50) + '...' : e.message) : 'N/A');
-    const fullDesc = e.description || e.message || 'No description';
-    const category = e.category || 'Unknown';
-    tr.innerHTML = `
-      <td><span class="badge bg-primary">${e.id}</span></td>
-      <td><code>${e.event_id}</code></td>
-      <td><strong class="small">${e.source}</strong></td>
-      <td>${getCategoryBadge(category)}</td>
-      <td>${getSeverityBadge(e.severity)}</td>
-      <td title="${fullDesc}" class="small">${descPreview}</td>
-      <td><small class="text-muted">${new Date(e.timestamp).toLocaleString()}</small></td>
-      <td class="text-center">
-        <button class="btn btn-sm btn-outline-primary" onclick="showMatches(${e.id})">
-          <i class="fas fa-search me-1"></i>Rules
-        </button>
-      </td>
-    `;
-    tbody.appendChild(tr);
-  }
-}
-
-function filterEventsTable() {
-  const searchTerm = document.getElementById('events-search').value.toLowerCase();
-  const severityFilter = document.getElementById('events-severity-filter').value;
-  const categoryFilter = document.getElementById('events-category-filter').value;
-
-  const filtered = allEvents.filter(e => {
-    const matchesSearch = !searchTerm ||
-      e.event_id.toString().includes(searchTerm) ||
-      e.source.toLowerCase().includes(searchTerm) ||
-      (e.category && e.category.toLowerCase().includes(searchTerm)) ||
-      (e.description && e.description.toLowerCase().includes(searchTerm)) ||
-      (e.message && e.message.toLowerCase().includes(searchTerm));
-
-    const matchesSeverity = !severityFilter || e.severity === severityFilter;
-    const matchesCategory = !categoryFilter || (e.category || 'Unknown') === categoryFilter;
-
-    return matchesSearch && matchesSeverity && matchesCategory;
-  });
-
-  displayEvents(filtered);
-}
-
-function clearEventsFilters() {
-  document.getElementById('events-search').value = '';
-  document.getElementById('events-severity-filter').value = '';
-  document.getElementById('events-category-filter').value = '';
-  filterEventsTable();
-}
+// Events tab removed - focusing only on errors and warnings
 
 async function showMatches(eventId){
   document.getElementById('modal-event-id').textContent = eventId;
@@ -873,7 +738,7 @@ async function approveRequest(id, btn){
   }catch(e){ 
     showStatus('Error', 'Failed to approve request: ' + e.message, 'error');
   }
-  loadRequests(); loadHistory(); loadEvents();
+  loadRequests(); loadHistory(); loadFilteredEvents();
 }
 
 async function denyRequest(id, btn){
@@ -1035,25 +900,25 @@ let categoryChart = null;
 
 async function loadDashboard() {
   try {
-    const [events, rules, requests, history] = await Promise.all([
-      api('/api/events'),
+    const [filteredEvents, rules, requests, history] = await Promise.all([
+      api('/api/filtered-events'),
       api('/api/rules'),
       api('/api/requests'),
       api('/api/history')
     ]);
 
-    // Update statistics
-    document.getElementById('stat-total-events').textContent = events.length;
+    // Update statistics - now showing errors/warnings only
+    document.getElementById('stat-total-events').textContent = filteredEvents.length;
     document.getElementById('stat-total-rules').textContent = rules.length;
     document.getElementById('stat-pending-approvals').textContent = requests.filter(r => r.status === 'pending').length;
     document.getElementById('stat-total-remediations').textContent = history.length;
 
-    // Update charts
-    updateSeverityChart(events);
-    updateCategoryChart(events);
+    // Update charts with errors/warnings data
+    updateSeverityChart(filteredEvents);
+    updateCategoryChart(filteredEvents);
 
-    // Update recent events
-    updateRecentEvents(events.slice(-5).reverse());
+    // Update recent events with errors/warnings
+    updateRecentEvents(filteredEvents.slice(0, 5));
 
     // Update recent remediations
     updateRecentRemediations(history.slice(-5).reverse());
@@ -1318,7 +1183,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function refreshAll() {
-  loadEvents();
   loadRules();
   loadHistory();
   loadRequests();
@@ -1330,13 +1194,12 @@ function refreshAll() {
 
 // Initial load
 loadDashboard();
-loadEvents();
 loadRules();
 loadHistory();
 loadRequests();
 loadEventDefinitions();
 loadFilteredEvents();
-setInterval(() => { loadEvents(); loadRequests(); loadDashboard(); loadFilteredEvents(); }, 5000);
+setInterval(() => { loadRequests(); loadDashboard(); loadFilteredEvents(); }, 5000);
 
 
 async function loadFilteredEvents(){
@@ -1355,7 +1218,7 @@ function displayFilteredEvents(rows){
   if(!tbody) return;
   tbody.innerHTML = '';
   if(!rows || rows.length === 0){
-    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No warnings or errors yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No warnings or errors yet</td></tr>';
     return;
   }
   for(const r of rows){
@@ -1363,6 +1226,7 @@ function displayFilteredEvents(rows){
     const msg = (r.description || r.message || '').replace(/</g,'&lt;').substring(0,200);
     tr.innerHTML = `
       <td><span class="badge bg-warning text-dark">${r.id}</span></td>
+      <td>${getLevelBadge(r.level)}</td>
       <td><code>${r.event_id}</code></td>
       <td>${r.source}</td>
       <td>${getSeverityBadge(r.severity)}</td>
