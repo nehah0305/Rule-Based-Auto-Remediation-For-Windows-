@@ -11,41 +11,41 @@
 </head>
 <body class="bg-gradient">
   <!-- Sidebar Navigation -->
-  <nav class="navbar navbar-dark bg-dark-navy sticky-top sidebar">
+  <nav class="navbar navbar-dark bg-dark-navy sticky-top sidebar" id="sidebar">
     <div class="container-fluid flex-column">
+      <!-- Sidebar Toggle Button (inside sidebar) -->
+      <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="Toggle Sidebar">
+        <i class="fas fa-chevron-left"></i>
+      </button>
+
       <div class="navbar-brand mb-4 d-flex align-items-center">
         <i class="fas fa-shield-alt me-2"></i>
-        <span class="fw-bold">Remediation Center</span>
+        <span class="fw-bold sidebar-text">Remediation Center</span>
       </div>
       <ul class="nav nav-pills flex-column mb-auto nav-sidebar" id="mainTabs">
         <li class="nav-item mb-2">
           <a class="nav-link active rounded-3" data-bs-toggle="tab" href="#dashboardTab">
-            <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+            <i class="fas fa-tachometer-alt me-2"></i><span class="sidebar-text">Dashboard</span>
           </a>
         </li>
         <li class="nav-item mb-2">
           <a class="nav-link rounded-3" data-bs-toggle="tab" href="#filteredEventsTab">
-            <i class="fas fa-exclamation-triangle me-2"></i>Warnings & Errors
+            <i class="fas fa-exclamation-triangle me-2"></i><span class="sidebar-text">Warnings & Errors</span>
           </a>
         </li>
         <li class="nav-item mb-2">
           <a class="nav-link rounded-3" data-bs-toggle="tab" href="#rulesTab">
-            <i class="fas fa-cogs me-2"></i>Rules
-          </a>
-        </li>
-        <li class="nav-item mb-2">
-          <a class="nav-link rounded-3" data-bs-toggle="tab" href="#definitionsTab">
-            <i class="fas fa-book me-2"></i>Event Catalog
+            <i class="fas fa-cogs me-2"></i><span class="sidebar-text">Rules</span>
           </a>
         </li>
         <li class="nav-item mb-2">
           <a class="nav-link rounded-3" data-bs-toggle="tab" href="#approvalsTab">
-            <i class="fas fa-check-circle me-2"></i>Approvals
+            <i class="fas fa-check-circle me-2"></i><span class="sidebar-text">Approvals</span>
           </a>
         </li>
         <li class="nav-item mb-2">
           <a class="nav-link rounded-3" data-bs-toggle="tab" href="#historyTab">
-            <i class="fas fa-history me-2"></i>History
+            <i class="fas fa-history me-2"></i><span class="sidebar-text">History</span>
           </a>
         </li>
       </ul>
@@ -207,16 +207,19 @@
                 <table class="table table-hover mb-0" id="filtered-events-table">
                   <thead class="table-light">
                     <tr>
-                      <th style="width:10%">Level</th>
-                      <th style="width:12%">Event ID</th>
-                      <th style="width:17%">Source</th>
-                      <th style="width:12%">Severity</th>
-                      <th style="width:35%">Message / Description</th>
-                      <th style="width:14%">Timestamp</th>
+                      <th style="width:7%">Level</th>
+                      <th style="width:8%">Event ID</th>
+                      <th style="width:13%">Source</th>
+                      <th style="width:8%">Severity</th>
+                      <th style="width:24%">Message / Description</th>
+                      <th style="width:10%">Timestamp</th>
+                      <th style="width:10%">Remediated</th>
+                      <th style="width:9%" class="text-center">Auto-Remediate</th>
+                      <th style="width:11%" class="text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr><td colspan="6" class="text-center text-muted py-3">No warnings or errors yet</td></tr>
+                    <tr><td colspan="9" class="text-center text-muted py-3">No warnings or errors yet</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -299,78 +302,6 @@
                     </div>
                   </form>
                 </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Event Definitions/Catalog Tab -->
-        <div class="tab-pane fade" id="definitionsTab">
-          <div class="card card-modern">
-            <div class="card-header bg-gradient-primary border-0">
-              <div class="d-flex justify-content-between align-items-center">
-                <h5 class="mb-0 text-white">
-                  <i class="fas fa-book me-2"></i>Event Catalog
-                  <span class="badge bg-light text-dark ms-2" id="definitions-count">0</span>
-                </h5>
-                <div class="input-group" style="max-width: 400px;">
-                  <span class="input-group-text bg-white border-end-0">
-                    <i class="fas fa-search text-muted"></i>
-                  </span>
-                  <input type="text" class="form-control border-start-0" id="definitions-search"
-                         placeholder="Search by Event ID, Source, Category, or Severity...">
-                </div>
-              </div>
-            </div>
-            <div class="card-body p-0">
-              <!-- Filter Bar -->
-              <div class="p-3 bg-light border-bottom">
-                <div class="row g-2">
-                  <div class="col-md-3">
-                    <select class="form-select form-select-sm" id="filter-severity">
-                      <option value="">All Severities</option>
-                      <option value="Critical">Critical</option>
-                      <option value="High">High</option>
-                      <option value="Medium">Medium</option>
-                      <option value="Low">Low</option>
-                      <option value="Info">Info</option>
-                    </select>
-                  </div>
-                  <div class="col-md-3">
-                    <select class="form-select form-select-sm" id="filter-category">
-                      <option value="">All Categories</option>
-                    </select>
-                  </div>
-                  <div class="col-md-3">
-                    <select class="form-select form-select-sm" id="filter-auto-remediate">
-                      <option value="">All Events</option>
-                      <option value="true">Auto-Remediate Candidates</option>
-                      <option value="false">Manual Only</option>
-                    </select>
-                  </div>
-                  <div class="col-md-3">
-                    <button class="btn btn-sm btn-outline-secondary w-100" onclick="clearDefinitionsFilters()">
-                      <i class="fas fa-times me-1"></i>Clear Filters
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div class="table-responsive">
-                <table class="table table-hover mb-0" id="definitions-table">
-                  <thead class="table-light">
-                    <tr>
-                      <th style="width: 8%">Event ID</th>
-                      <th style="width: 15%">Source</th>
-                      <th style="width: 12%">Category</th>
-                      <th style="width: 8%">Severity</th>
-                      <th style="width: 30%">Description</th>
-                      <th style="width: 12%">Auto-Remediate</th>
-                      <th style="width: 15%" class="text-center">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody></tbody>
-                </table>
               </div>
             </div>
           </div>
@@ -1168,6 +1099,28 @@ async function createRuleFromDefinition(definition) {
   showStatus('Info', `Rule form pre-filled from event definition. Add a remediation script and save.`, 'info');
 }
 
+async function createRuleFromEvent(event) {
+  // Switch to Rules tab
+  const rulesTab = document.querySelector('a[href="#rulesTab"]');
+  rulesTab.click();
+
+  // Pre-fill the form
+  document.getElementById('rule-id').value = '';
+  const ruleName = event.category ?
+    `${event.category} - ${event.source} Event ${event.event_id}` :
+    `${event.source} Event ${event.event_id}`;
+  document.getElementById('rule-name').value = ruleName;
+  document.getElementById('rule-event_id').value = event.event_id;
+  document.getElementById('rule-source').value = event.source;
+  document.getElementById('rule-message_regex').value = '';
+  document.getElementById('rule-auto').checked = false; // Safety: don't auto-enable
+
+  // Scroll to form
+  document.getElementById('rule-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  showStatus('Info', `Rule form pre-filled from event. Add a remediation script and save.`, 'info');
+}
+
 // Add event listeners for filters
 document.addEventListener('DOMContentLoaded', () => {
   const searchInput = document.getElementById('definitions-search');
@@ -1217,12 +1170,24 @@ function displayFilteredEvents(rows){
   if(!tbody) return;
   tbody.innerHTML = '';
   if(!rows || rows.length === 0){
-    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No warnings or errors yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">No warnings or errors yet</td></tr>';
     return;
   }
   for(const r of rows){
     const tr = document.createElement('tr');
     const msg = (r.description || r.message || '').replace(/</g,'&lt;').substring(0,200);
+
+    // Determine if auto-remediate candidate based on category/severity
+    const autoRemediateCandidate = r.category && r.severity &&
+                                    (r.severity.toLowerCase() === 'high' || r.severity.toLowerCase() === 'critical');
+
+    // Format remediated timestamp
+    let remediatedDisplay = '<span class="badge bg-secondary">Not Remediated</span>';
+    if (r.remediated_at) {
+      const remediatedDate = new Date(r.remediated_at);
+      remediatedDisplay = `<small class="text-success"><i class="fas fa-check-circle me-1"></i>${remediatedDate.toLocaleString()}</small>`;
+    }
+
     tr.innerHTML = `
       <td>${getLevelBadge(r.level)}</td>
       <td><code>${r.event_id}</code></td>
@@ -1230,10 +1195,41 @@ function displayFilteredEvents(rows){
       <td>${getSeverityBadge(r.severity)}</td>
       <td class="small" title="${(r.message || '').replace(/"/g, '&quot;')}">${msg}</td>
       <td><small class="text-muted">${r.timestamp ? new Date(r.timestamp).toLocaleString() : ''}</small></td>
+      <td>${remediatedDisplay}</td>
+      <td class="text-center">
+        ${autoRemediateCandidate ?
+          '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Yes</span>' :
+          '<span class="badge bg-secondary">No</span>'}
+      </td>
+      <td class="text-center">
+        <button class="btn btn-sm btn-outline-primary" onclick='createRuleFromEvent(${JSON.stringify(r)})' title="Create rule from this event">
+          <i class="fas fa-plus me-1"></i>Create Rule
+        </button>
+      </td>
     `;
     tbody.appendChild(tr);
   }
 }
+
+// Toggle Sidebar
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const mainContent = document.querySelector('.main-content');
+
+  sidebar.classList.toggle('collapsed');
+  mainContent.classList.toggle('sidebar-collapsed');
+
+  // Save state to localStorage
+  localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
+}
+
+// Restore sidebar state on page load
+document.addEventListener('DOMContentLoaded', () => {
+  const sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+  if (sidebarCollapsed) {
+    toggleSidebar();
+  }
+});
 </script>
 
 </body>

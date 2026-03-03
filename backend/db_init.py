@@ -19,9 +19,18 @@ def init_db():
         severity TEXT,
         description TEXT,
         recommended_action TEXT,
-        level TEXT
+        level TEXT,
+        remediated_at TEXT
     )
     ''')
+
+    # Add remediated_at column if it doesn't exist (migration)
+    try:
+        c.execute('ALTER TABLE events ADD COLUMN remediated_at TEXT')
+        conn.commit()
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
 
     c.execute('''
     CREATE TABLE IF NOT EXISTS rules (

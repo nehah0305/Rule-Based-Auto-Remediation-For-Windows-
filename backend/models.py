@@ -72,7 +72,7 @@ def get_all_event_definitions():
     return load_event_definitions()
 
 
-def add_event(event_id, log_name, source, message, timestamp=None, category=None, severity=None, description=None, recommended_action=None, level=None):
+def add_event(event_id, log_name, source, message, timestamp=None, category=None, severity=None, description=None, recommended_action=None, level=None, remediated_at=None):
     conn = _conn()
     c = conn.cursor()
     if timestamp is None:
@@ -92,8 +92,8 @@ def add_event(event_id, log_name, source, message, timestamp=None, category=None
                 recommended_action = defn.get('recommended_action')
 
     c.execute(
-        'INSERT INTO events (event_id, log_name, source, message, timestamp, category, severity, description, recommended_action, level) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        (event_id, log_name, source, message, timestamp, category, severity, description, recommended_action, level)
+        'INSERT INTO events (event_id, log_name, source, message, timestamp, category, severity, description, recommended_action, level, remediated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        (event_id, log_name, source, message, timestamp, category, severity, description, recommended_action, level, remediated_at)
     )
     rowid = c.lastrowid
     conn.commit()
@@ -111,7 +111,8 @@ def add_event(event_id, log_name, source, message, timestamp=None, category=None
             'severity': severity,
             'description': description,
             'recommended_action': recommended_action,
-            'level': level
+            'level': level,
+            'remediated_at': remediated_at
         })
     except Exception:
         pass
@@ -126,7 +127,7 @@ def add_event(event_id, log_name, source, message, timestamp=None, category=None
 
 
 def write_event_row_to_csv(path, rowdict):
-    fieldnames = ['event_id', 'log_name', 'source', 'message', 'timestamp', 'category', 'severity', 'description', 'recommended_action', 'level']
+    fieldnames = ['event_id', 'log_name', 'source', 'message', 'timestamp', 'category', 'severity', 'description', 'recommended_action', 'level', 'remediated_at']
     exists = os.path.exists(path)
     with open(path, 'a', newline='', encoding='utf-8') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
