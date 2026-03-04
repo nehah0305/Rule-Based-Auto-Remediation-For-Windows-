@@ -6,20 +6,25 @@
     This script monitors Windows Event Logs for Error (Level 2) and Warning (Level 3) events only,
     matching the "Administrative Events" view in Event Viewer. Sends events to the Flask backend.
 
+    Configuration is loaded from .env file in the project root. Command-line parameters override .env values.
+
 .PARAMETER ApiUrl
-    The URL of the Flask backend API (default: http://localhost:5000)
+    The URL of the Flask backend API (overrides .env if specified)
 
 .PARAMETER LogNames
-    Comma-separated list of event log names to monitor (default: System,Application)
+    Comma-separated list of event log names to monitor (overrides .env if specified)
 
 .PARAMETER PollIntervalSeconds
-    How often to check for new events in seconds (default: 10)
+    How often to check for new events in seconds (overrides .env if specified)
 
 .PARAMETER EventIds
-    Optional comma-separated list of specific event IDs to monitor (monitors all errors/warnings if not specified)
+    Optional comma-separated list of specific event IDs to monitor (overrides .env if specified)
 
 .PARAMETER MaxEventsPerPoll
-    Maximum number of events to retrieve per poll (default: 100)
+    Maximum number of events to retrieve per poll (overrides .env if specified)
+
+.EXAMPLE
+    .\event_monitor.ps1
 
 .EXAMPLE
     .\event_monitor.ps1 -LogNames "System,Application" -PollIntervalSeconds 5
@@ -29,15 +34,55 @@
 #>
 
 param(
-    [string]$ApiUrl = "http://localhost:5000",
-    [string]$LogNames = "System,Application",
-    [int]$PollIntervalSeconds = 10,
+    [string]$ApiUrl = "",
+    [string]$LogNames = "",
+    [int]$PollIntervalSeconds = 0,
     [string]$EventIds = "",
-    [int]$MaxEventsPerPoll = 100,
-    [int]$HistoricalDays = 30,
-    [int]$MaxHistoricalEvents = 10000,
+    [int]$MaxEventsPerPoll = 0,
+    [int]$HistoricalDays = 0,
+    [int]$MaxHistoricalEvents = 0,
     [switch]$SkipHistorical
 )
+
+# Load configuration from .env file
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ConfigScript = Join-Path $ScriptDir "Load-Config.ps1"
+
+if (Test-Path $ConfigScript) {
+    $envConfig = & $ConfigScript
+
+    # Use .env values as defaults, allow command-line parameters to override
+    if ([string]::IsNullOrWhiteSpace($ApiUrl)) {
+        $ApiUrl = $envConfig.API_BASE_URL
+    }
+    if ([string]::IsNullOrWhiteSpace($LogNames)) {
+        $LogNames = $envConfig.LOG_NAMES
+    }
+    if ($PollIntervalSeconds -eq 0) {
+        $PollIntervalSeconds = [int]$envConfig.POLL_INTERVAL_SECONDS
+    }
+    if ($MaxEventsPerPoll -eq 0) {
+        $MaxEventsPerPoll = [int]$envConfig.MAX_EVENTS_PER_POLL
+    }
+    if ($HistoricalDays -eq 0) {
+        $HistoricalDays = [int]$envConfig.HISTORICAL_DAYS
+    }
+    if ($MaxHistoricalEvents -eq 0) {
+        $MaxHistoricalEvents = [int]$envConfig.MAX_HISTORICAL_EVENTS
+    }
+    if ([string]::IsNullOrWhiteSpace($EventIds)) {
+        $EventIds = $envConfig.EVENT_IDS_TO_MONITOR
+    }
+} else {
+    Write-Warning "Configuration loader not found. Using default values."
+    # Set defaults if not specified
+    if ([string]::IsNullOrWhiteSpace($ApiUrl)) { $ApiUrl = "http://localhost:5000" }
+    if ([string]::IsNullOrWhiteSpace($LogNames)) { $LogNames = "System,Application" }
+    if ($PollIntervalSeconds -eq 0) { $PollIntervalSeconds = 10 }
+    if ($MaxEventsPerPoll -eq 0) { $MaxEventsPerPoll = 100 }
+    if ($HistoricalDays -eq 0) { $HistoricalDays = 30 }
+    if ($MaxHistoricalEvents -eq 0) { $MaxHistoricalEvents = 10000 }
+}
 
 # Configuration
 $script:ApiEndpoint = "$ApiUrl/api/events"
