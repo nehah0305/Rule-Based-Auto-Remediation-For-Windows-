@@ -3302,3 +3302,10 @@ Disk type: 0x0",2026-03-02T19:29:02,,,,,Error
 32972,10005,Application,MsiInstaller,"Product: HP Display Control Service -- The installer has encountered an unexpected error installing this package. This may indicate a problem with this package. The error code is 2753. The arguments are: DisplayControl, , ",2026-03-03T21:28:34,,,,,Error
 32973,1013,Application,MsiInstaller,Product: HP Display Control Service -- The device is not a supported system. Aborting installation.,2026-03-03T21:28:34,,,,,Error
 1013,Application,MsiInstaller,Product: HP Display Control Service -- The device is not a supported system. Aborting installation.,2026-03-03T21:28:34,,,,,Error,
+0,TestRun,TestSource,[Test Run] Manual test of rule: Demo - Service Restart,2026-03-07T07:10:01.194415,,,,,Test,
+0,TestRun,TestSource,[Test Run] Manual test of rule: Demo - Service Restart,2026-03-07T07:11:41.473755,,,,,Test,
+0,TestRun,TestSource,[Test Run] Manual test of rule: Demo - Service Restart,2026-03-07T12:21:46.402982,,,,,Test,
+0,,TestSource,Simulated event for demo,2026-03-07T12:23:17.705490,,,,,Error,
+0,,TestSource,Simulated event for demo,2026-03-07T12:23:23.157764,,,,,Error,
+,TestSource,Simulated event for demo,2026-03-07T12:23:23.157764,,,,,Error,,
+TestSource,Simulated event for demo,2026-03-07T12:23:23.157764,,,,,Error,,,

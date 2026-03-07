@@ -38,7 +38,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="D:\Programming\Unisys\Rule-Based-Auto-Remediation-For-Windows-\.venv"
+VIRTUAL_ENV="C:\Users\bios\Desktop\unisys-ab\Rule-Based-Auto-Remediation-For-Windows-\.venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"

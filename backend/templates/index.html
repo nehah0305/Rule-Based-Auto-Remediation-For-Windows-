@@ -12,6 +12,9 @@
 </head>
 
 <body class="bg-gradient">
+  <!-- Sidebar overlay (mobile) -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobileSidebar()"></div>
+
   <!-- Sidebar Navigation -->
   <nav class="navbar navbar-dark bg-dark-navy sticky-top sidebar" id="sidebar">
     <div class="container-fluid flex-column">
@@ -59,9 +62,14 @@
     <!-- Top Header -->
     <header class="header-top">
       <div class="d-flex justify-content-between align-items-center">
-        <div>
-          <h2 class="mb-0">Auto-Remediation Control Center</h2>
-          <p class="text-muted mb-0 small">Automated system remediation and management</p>
+        <div class="d-flex align-items-center gap-3">
+          <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="openMobileSidebar()" title="Menu">
+            <i class="fas fa-bars"></i>
+          </button>
+          <div>
+            <h2 class="mb-0">Auto-Remediation Control Center</h2>
+            <p class="text-muted mb-0 small">Automated system remediation and management</p>
+          </div>
         </div>
         <div class="d-flex gap-2">
           <button class="btn btn-sm btn-light" onclick="refreshAll()">
@@ -234,104 +242,37 @@
         <!-- Rules Tab -->
         <div class="tab-pane fade" id="rulesTab">
           <div class="row">
-            <div class="col-lg-6">
+            <div class="col-12">
               <div class="card card-modern">
-                <div class="card-header bg-gradient-success border-0 d-flex justify-content-between align-items-center">
+                <div
+                  class="card-header bg-gradient-success border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
                   <h5 class="mb-0 text-white">
                     <i class="fas fa-list me-2"></i>Active Rules
                   </h5>
-                  <button class="btn btn-sm btn-light" onclick="populateRulesFromJSON()">
-                    <i class="fas fa-download me-1"></i>Import from JSON
-                  </button>
+                  <div class="d-flex gap-2 flex-wrap">
+                    <button class="btn btn-sm btn-light" onclick="openNewRuleModal()">
+                      <i class="fas fa-plus me-1"></i>New Rule
+                    </button>
+                    <button class="btn btn-sm btn-light" onclick="populateRulesFromJSON()">
+                      <i class="fas fa-download me-1"></i>Import from JSON
+                    </button>
+                  </div>
                 </div>
                 <div class="card-body p-0">
                   <div class="table-responsive">
                     <table class="table table-hover mb-0" id="rules-table">
                       <thead class="table-light">
                         <tr>
-                          <th style="width: 30%">Rule Name</th>
-                          <th style="width: 25%">Criteria</th>
-                          <th style="width: 10%">Severity</th>
-                          <th style="width: 10%">Auto</th>
-                          <th style="width: 25%" class="text-center">Actions</th>
+                          <th style="min-width:180px">Rule Name</th>
+                          <th style="min-width:160px">Criteria</th>
+                          <th style="min-width:100px">Severity</th>
+                          <th style="min-width:80px">Auto</th>
+                          <th style="min-width:220px" class="text-center">Actions</th>
                         </tr>
                       </thead>
                       <tbody></tbody>
                     </table>
                   </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="col-lg-6">
-              <div class="card card-modern">
-                <div class="card-header bg-gradient-info border-0">
-                  <h5 class="mb-0 text-white">
-                    <i class="fas fa-plus-circle me-2"></i>Create/Edit Rule
-                  </h5>
-                </div>
-                <div class="card-body">
-                  <form id="rule-form">
-                    <input type="hidden" id="rule-id" />
-                    <div class="mb-3">
-                      <label class="form-label fw-500">Rule Name *</label>
-                      <input class="form-control form-control-modern" id="rule-name" placeholder="Enter rule name"
-                        required />
-                    </div>
-                    <div class="mb-3">
-                      <label class="form-label fw-500">Event ID</label>
-                      <input class="form-control form-control-modern" id="rule-event_id"
-                        placeholder="Optional - leave blank for all" />
-                    </div>
-                    <div class="mb-3">
-                      <label class="form-label fw-500">Source</label>
-                      <input class="form-control form-control-modern" id="rule-source"
-                        placeholder="Optional - leave blank for all" />
-                    </div>
-                    <div class="mb-3">
-                      <label class="form-label fw-500">Message Regex</label>
-                      <input class="form-control form-control-modern" id="rule-message_regex"
-                        placeholder="Optional regex pattern" />
-                    </div>
-                    <div class="mb-3">
-                      <label class="form-label fw-500">Remediation Script</label>
-                      <div class="btn-group w-100 mb-2" role="group" id="script-type-group">
-                        <input type="radio" class="btn-check" name="script-type-radio" id="script-type-file"
-                          value="file" checked />
-                        <label class="btn btn-outline-secondary btn-sm" for="script-type-file">
-                          <i class="fas fa-file me-1"></i>File Path
-                        </label>
-                        <input type="radio" class="btn-check" name="script-type-radio" id="script-type-inline"
-                          value="inline" />
-                        <label class="btn btn-outline-primary btn-sm" for="script-type-inline">
-                          <i class="fas fa-code me-1"></i>Inline Script
-                        </label>
-                      </div>
-                      <textarea class="form-control form-control-modern font-monospace" id="rule-remediation_script"
-                        rows="5" placeholder="C:\scripts\fix.ps1"
-                        style="font-size: 0.85rem; resize: vertical;"></textarea>
-                      <small class="text-muted" id="script-hint">
-                        <i class="fas fa-info-circle me-1"></i>
-                        <span id="script-hint-text">Enter the full path to a .ps1 file on this machine.</span>
-                      </small>
-                    </div>
-                    <div class="form-check mb-3">
-                      <input type="checkbox" class="form-check-input" id="rule-auto" />
-                      <label class="form-check-label" for="rule-auto">
-                        Enable Auto-Remediation
-                      </label>
-                      <small class="d-block text-muted mt-1">When enabled, remediation runs automatically on matching
-                        events</small>
-                    </div>
-                    <div class="d-grid gap-2">
-                      <button class="btn btn-primary btn-modern" type="submit">
-                        <i class="fas fa-save me-2"></i>Save Rule
-                      </button>
-                      <button class="btn btn-outline-secondary btn-modern" type="button" id="rule-reset">
-                        <i class="fas fa-redo me-2"></i>Reset Form
-                      </button>
-                    </div>
-                  </form>
                 </div>
               </div>
             </div>
@@ -402,6 +343,83 @@
     </div>
   </div>
 
+
+  <!-- Rule Create/Edit Modal -->
+  <div class="modal fade" tabindex="-1" id="ruleModal">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content modal-modern">
+        <div class="modal-header bg-gradient-info border-0">
+          <h5 class="modal-title text-white" id="ruleModalTitle">
+            <i class="fas fa-plus-circle me-2"></i>Create Rule
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="rule-form">
+            <input type="hidden" id="rule-id" />
+            <div class="row g-3">
+              <div class="col-md-8">
+                <label class="form-label fw-500">Rule Name *</label>
+                <input class="form-control form-control-modern" id="rule-name"
+                  placeholder="Enter a descriptive rule name" required />
+              </div>
+              <div class="col-md-4">
+                <label class="form-label fw-500">Event ID</label>
+                <input class="form-control form-control-modern" id="rule-event_id" placeholder="e.g. 7034" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-500">Source</label>
+                <input class="form-control form-control-modern" id="rule-source"
+                  placeholder="e.g. Service Control Manager" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-500">Message Regex</label>
+                <input class="form-control form-control-modern" id="rule-message_regex"
+                  placeholder="Optional regex pattern" />
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-500">Remediation Script</label>
+                <div class="btn-group w-100 mb-2" role="group">
+                  <input type="radio" class="btn-check" name="script-type-radio" id="script-type-file" value="file"
+                    checked />
+                  <label class="btn btn-outline-secondary btn-sm" for="script-type-file">
+                    <i class="fas fa-file me-1"></i>File Path
+                  </label>
+                  <input type="radio" class="btn-check" name="script-type-radio" id="script-type-inline"
+                    value="inline" />
+                  <label class="btn btn-outline-primary btn-sm" for="script-type-inline">
+                    <i class="fas fa-code me-1"></i>Inline Script
+                  </label>
+                </div>
+                <textarea class="form-control form-control-modern font-monospace" id="rule-remediation_script" rows="6"
+                  placeholder="C:\scripts\fix.ps1" style="font-size: 0.85rem; resize: vertical;"></textarea>
+                <small class="text-muted mt-1 d-block">
+                  <i class="fas fa-info-circle me-1"></i>
+                  <span id="script-hint-text">Enter the full path to a .ps1 file on this machine.</span>
+                </small>
+              </div>
+              <div class="col-12">
+                <div class="form-check">
+                  <input type="checkbox" class="form-check-input" id="rule-auto" />
+                  <label class="form-check-label" for="rule-auto">Enable Auto-Remediation</label>
+                  <small class="d-block text-muted mt-1">When enabled, the script runs automatically on every matching
+                    event</small>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer" style="background:var(--glass-bg); border-top:1px solid var(--glass-border);">
+          <button class="btn btn-outline-secondary" id="rule-reset" type="button">
+            <i class="fas fa-redo me-1"></i>Reset
+          </button>
+          <button class="btn btn-primary btn-modern" id="rule-save-btn" type="button">
+            <i class="fas fa-save me-1"></i>Save Rule
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Matches Modal -->
   <div class="modal fade" tabindex="-1" id="matchesModal">
@@ -800,19 +818,20 @@
       document.getElementById('rule-message_regex').value = r.message_regex || '';
       document.getElementById('rule-remediation_script').value = r.remediation_script || '';
       document.getElementById('rule-auto').checked = r.auto_remediate;
-      // Set script type radio
       const scriptType = r.script_type || 'file';
       document.getElementById(scriptType === 'inline' ? 'script-type-inline' : 'script-type-file').checked = true;
       updateScriptTypeHint(scriptType);
-      document.querySelector('[href="#rulesTab"]').click();
-      window.scrollTo(0, 0);
+      document.getElementById('ruleModalTitle').innerHTML = '<i class="fas fa-edit me-2"></i>Edit Rule';
+      new bootstrap.Modal(document.getElementById('ruleModal')).show();
     }
 
-    document.getElementById('rule-reset').addEventListener('click', () => {
+    function openNewRuleModal() {
       document.getElementById('rule-form').reset();
       document.getElementById('rule-id').value = '';
       updateScriptTypeHint('file');
-    });
+      document.getElementById('ruleModalTitle').innerHTML = '<i class="fas fa-plus-circle me-2"></i>Create Rule';
+      new bootstrap.Modal(document.getElementById('ruleModal')).show();
+    }
 
     // Script type toggle hint
     function updateScriptTypeHint(type) {
@@ -831,15 +850,16 @@
       radio.addEventListener('change', (e) => updateScriptTypeHint(e.target.value));
     });
 
-    document.getElementById('rule-form').addEventListener('submit', async (ev) => {
-      ev.preventDefault();
-      const btn = ev.target.querySelector('button[type="submit"]');
+    // Rule Save button (in modal)
+    document.getElementById('rule-save-btn').addEventListener('click', async () => {
+      const nameField = document.getElementById('rule-name');
+      if (!nameField.value.trim()) { nameField.focus(); return; }
+      const btn = document.getElementById('rule-save-btn');
       btn.disabled = true;
       const originalText = btn.innerHTML;
       btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving...';
 
       const selectedType = document.querySelector('input[name="script-type-radio"]:checked')?.value || 'file';
-
       try {
         const payload = {
           name: document.getElementById('rule-name').value,
@@ -853,15 +873,12 @@
         const ruleId = document.getElementById('rule-id').value;
         if (ruleId) {
           await api(`/api/rules/${ruleId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-          showStatus('Success', 'Rule updated successfully.', 'success');
         } else {
           await api('/api/rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-          showStatus('Success', 'Rule created successfully.', 'success');
         }
-        document.getElementById('rule-form').reset();
-        document.getElementById('rule-id').value = '';
-        updateScriptTypeHint('file');
+        bootstrap.Modal.getInstance(document.getElementById('ruleModal'))?.hide();
         loadRules();
+        showStatus('Success', ruleId ? 'Rule updated successfully.' : 'Rule created successfully.', 'success');
       } catch (e) {
         showStatus('Error', 'Failed to save rule: ' + e.message, 'error');
       }
@@ -1329,6 +1346,26 @@
       if (sidebarCollapsed) {
         toggleSidebar();
       }
+    });
+
+    // Mobile sidebar open/close
+    function openMobileSidebar() {
+      document.getElementById('sidebar').classList.add('show');
+      document.getElementById('sidebarOverlay').classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeMobileSidebar() {
+      document.getElementById('sidebar').classList.remove('show');
+      document.getElementById('sidebarOverlay').classList.remove('active');
+      document.body.style.overflow = '';
+    }
+
+    // Close mobile sidebar when a nav link is clicked
+    document.querySelectorAll('.nav-sidebar .nav-link').forEach(link => {
+      link.addEventListener('click', () => {
+        if (window.innerWidth <= 768) closeMobileSidebar();
+      });
     });
   </script>
 

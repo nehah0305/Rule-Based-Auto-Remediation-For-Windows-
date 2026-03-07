@@ -745,12 +745,57 @@ code {
   background: rgba(74, 158, 255, 0.6);
 }
 
+/* Mobile hamburger button */
+.mobile-menu-btn {
+  display: none;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  color: #e0e7ff;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+.mobile-menu-btn:hover {
+  background: var(--glass-hover);
+  border-color: var(--primary-color);
+}
+
+/* Sidebar overlay backdrop (mobile) */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  z-index: 999;
+}
+.sidebar-overlay.active { display: block; }
+
+/* Rules table — no word wrap in action cell */
+#rules-table td:last-child {
+  white-space: nowrap;
+}
+#rules-table td:first-child {
+  font-weight: 600;
+  max-width: 260px;
+  word-break: break-word;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
+  .mobile-menu-btn { display: flex; }
+
   .sidebar {
     position: fixed;
     left: -100%;
-    width: 70%;
+    width: 80%;
+    max-width: 300px;
     height: 100vh;
     transition: left 0.3s ease;
     z-index: 1000;
@@ -765,24 +810,21 @@ code {
   }
 
   .header-top {
-    padding: 1.5rem;
+    padding: 1rem 1.25rem;
   }
 
   .header-top h2 {
-    font-size: 1.5rem;
-  }
-
-  .header-top .btn {
-    padding: 0.4rem 0.75rem;
-    font-size: 0.85rem;
+    font-size: 1.25rem;
   }
 
   .container-fluid.p-4 {
-    padding: 1rem !important;
+    padding: 0.75rem !important;
   }
 
   .card-modern .card-header {
     padding: 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
 
   .card-modern .card-body {
@@ -790,12 +832,13 @@ code {
   }
 
   .table thead th {
-    padding: 0.75rem;
+    padding: 0.6rem 0.75rem;
     font-size: 0.75rem;
   }
 
   .table tbody td {
-    padding: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.85rem;
   }
 
   .btn {
@@ -803,28 +846,47 @@ code {
     font-size: 0.8rem;
   }
 
+  .btn-sm {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.78rem;
+  }
+
   .row > [class*="col-"] {
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
+  }
+
+  /* Stack stat cards in 2 columns on mobile */
+  .row .col-md-3 {
+    flex: 0 0 50%;
+    max-width: 50%;
   }
 }
 
 @media (max-width: 576px) {
   .sidebar {
     width: 100%;
+    max-width: none;
   }
 
   .header-top {
     flex-direction: column;
-    gap: 1rem;
+    align-items: flex-start;
+    gap: 0.75rem;
   }
 
   .table-responsive {
-    font-size: 0.85rem;
+    font-size: 0.82rem;
   }
 
-  .btn {
+  /* Single column stat cards on very small screens */
+  .row .col-md-3 {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+
+  .badge {
     padding: 0.35rem 0.5rem;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
   }
 }
 

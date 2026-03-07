@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import re
+import shutil
 import subprocess
 import json
 import csv
@@ -10,6 +11,13 @@ from pathlib import Path
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'rules.db')
 EVENT_DEFINITIONS_PATH = os.path.join(os.path.dirname(__file__), '..', 'windows_error_events.json')
+
+_POWERSHELL = (
+    shutil.which('powershell')
+    or shutil.which('powershell.exe')
+    or r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+)
+
 
 # Data directory for CSV exports and state
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
@@ -386,7 +394,7 @@ def run_remediation(event_row_id, rule_id, timeout=60):
             script_to_run = remediation_script
 
         proc = subprocess.run(
-            ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script_to_run],
+            [_POWERSHELL, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script_to_run],
             capture_output=True, text=True, timeout=timeout
         )
         status = 'success' if proc.returncode == 0 else 'failed'
