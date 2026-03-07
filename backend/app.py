@@ -3,9 +3,13 @@ import subprocess
 import os
 import json
 import re
+from dotenv import load_dotenv
 
 from db_init import init_db
 import models
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -292,4 +296,13 @@ def populate_rules():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Get configuration from environment variables with defaults
+    host = os.getenv('FLASK_HOST', '0.0.0.0')
+    port = int(os.getenv('FLASK_PORT', '5000'))
+    debug = os.getenv('FLASK_DEBUG', 'True').lower() in ('true', '1', 'yes')
+
+    print(f"Starting Flask server on {host}:{port}")
+    print(f"Debug mode: {debug}")
+    print(f"Access the dashboard at: http://localhost:{port}")
+
+    app.run(host=host, port=port, debug=debug)

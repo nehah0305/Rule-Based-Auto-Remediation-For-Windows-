@@ -1,599 +1,562 @@
-# Rule-Based Auto Remediation (Windows)
+# Rule-Based Auto Remediation for Windows
 
-Lightweight PoC dashboard and collector for auto-remediation driven by Windows Event Logs.
+A lightweight, intelligent system for monitoring Windows Event Logs and automatically remediating common issues. Built with Flask (backend) and PowerShell (event collector), this system provides real-time monitoring, rule-based automation, and a modern web dashboard.
 
 **🎯 Focus:** Monitors **Errors and Warnings only** (Administrative Events) - matching the "Administrative Events" view in Windows Event Viewer.
 
-## Features
-- **Administrative Events Monitoring**: Captures only Error (Level 2) and Warning (Level 3) events
-- **Live Event Monitoring**: Real-time connection to Windows Event Viewer for automatic event detection
-- **Historical Import**: Import up to 30 days (10,000+ events) of errors/warnings on startup
-- **Rule-Based Remediation**: Define rules to automatically remediate common issues
-- **Event Definitions**: Pre-loaded with 40+ common Windows error events from `windows_error_events.json`
-- **Metadata Enrichment**: Events are automatically enriched with category, severity, description, and recommended actions
-- **Color-Coded UI**: Events color-coded by severity and category for easy identification
-- **Approval Workflow**: Manual approval process for sensitive remediation actions
-- **Web Dashboard**: Modern, responsive UI with statistics, charts, and real-time monitoring
-- **Background Service**: Run as Windows Scheduled Task for continuous monitoring
+---
 
-## Prerequisites
+## ✨ Features
 
-- **Windows OS** (Windows 10/11 or Windows Server 2016+)
-- **Python 3.8+** installed and added to PATH
-- **PowerShell 5.1+** (comes with Windows)
-- **Administrator privileges** (for event monitoring and remediation)
+### Core Functionality
+- **🔍 Administrative Events Monitoring**: Captures only Error (Level 2) and Warning (Level 3) events
+- **⚡ Live Event Monitoring**: Real-time connection to Windows Event Viewer for automatic event detection
+- **📅 Historical Import**: Import up to 30 days (10,000+ events) of errors/warnings on startup
+- **🤖 Rule-Based Remediation**: Define rules to automatically remediate common issues
+- **📚 Event Definitions**: Pre-loaded with 40+ common Windows error events from `windows_error_events.json`
+- **🎨 Metadata Enrichment**: Events are automatically enriched with category, severity, description, and recommended actions
 
-## Quick Start Guide
+### User Interface
+- **🎯 Modern Web Dashboard**: Responsive UI with statistics, charts, and real-time monitoring
+- **🎨 Color-Coded Events**: Events color-coded by severity and category for easy identification
+- **📊 Remediation Tracking**: Track when events were remediated with timestamps
+- **🔄 Retractable Sidebar**: Collapsible navigation for better screen space management
+- **✅ Auto-Remediate Indicators**: Visual indicators for events eligible for auto-remediation
+- **➕ Quick Rule Creation**: Create rules directly from events with one click
 
-### Step 1: Clone or Download the Project
+### Advanced Features
+- **✅ Approval Workflow**: Manual approval process for sensitive remediation actions
+- **📜 Remediation History**: Complete audit trail of all remediation actions
+- **🔧 Background Service**: Run as Windows Scheduled Task for continuous monitoring
+- **🌐 Multi-System Support**: Deploy centrally with monitors on multiple machines
+- **⚙️ Flexible Configuration**: Environment-based configuration for easy deployment
+
+---
+
+## 🚀 Quick Start (New Users)
+
+### Step 1: Clone or Download
 
 ```bash
-# If using Git
+# Using Git
 git clone <repository-url>
 cd Rule-Based-Auto-Remediation-For-Windows-
 
-# Or download and extract the ZIP file, then navigate to the folder
+# Or download and extract the ZIP file
 ```
 
-**📍 Location:** Run this in your desired project directory (e.g., `C:\Projects\`)
+### Step 2: Run Automated Setup
 
----
+Open **PowerShell** in the project directory and run:
 
-### Step 2: Setup Python Environment
-
-**📍 Location:** Open **Command Prompt** or **PowerShell** in the project root directory
-
-```bash
-# Create a virtual environment
-python -m venv .venv
-
-# Activate the virtual environment
-.\.venv\Scripts\activate
-
-# You should see (.venv) in your prompt now
-
-# Install required Python packages
-pip install -r backend\requirements.txt
-```
-
-**Expected Output:**
-```
-Successfully installed Flask-3.x.x SQLAlchemy-2.x.x ...
-```
-
-**Troubleshooting:**
-- If `python` command not found, try `py` or `python3`
-- If activation fails, run: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
-
----
-
-### Step 3: Initialize the Database
-
-**📍 Location:** Same terminal (with virtual environment activated)
-
-```bash
-python backend\db_init.py
-```
-
-**Expected Output:**
-```
-Database initialized successfully!
-Database location: backend/events.db
-```
-
-**What this does:**
-- Creates `backend/events.db` SQLite database
-- Creates tables: events, rules, remediation_history, remediation_requests
-- Applies schema migrations if needed
-
----
-
-### Step 4: Start the Flask Backend
-
-**📍 Location:** Same terminal (keep this terminal open)
-
-```bash
-python backend\app.py
-```
-
-**Expected Output:**
-```
- * Running on http://127.0.0.1:5000
- * Running on http://localhost:5000
-Press CTRL+C to quit
-```
-
-**⚠️ Important:** Keep this terminal window open! The backend must be running for the system to work.
-
----
-
-### Step 5: Open the Web Dashboard
-
-**📍 Location:** Open your web browser
-
-Navigate to: **http://localhost:5000**
-
-**What you'll see:**
-- Dashboard tab with statistics and charts
-- Events tab (empty initially)
-- Event Catalog tab (40+ event definitions)
-- Rules tab (empty initially)
-- Approvals tab
-- History tab
-
----
-
-### Step 6: Import Event Rules from JSON
-
-**📍 Location:** In the web dashboard (http://localhost:5000)
-
-**Method 1: Using the Dashboard (Recommended)**
-1. Click on the **"Rules"** tab
-2. Click the **"Import from JSON"** button at the top
-3. Wait for the success message
-4. You should see multiple rules imported
-
-**Method 2: Using API (Alternative)**
-
-**📍 Location:** Open a **new terminal** (keep backend running in the first one)
-
-```bash
-curl -X POST -H "Content-Type: application/json" http://localhost:5000/api/populate-rules
-```
-
-Or using PowerShell:
 ```powershell
-Invoke-RestMethod -Uri "http://localhost:5000/api/populate-rules" -Method Post
+.\setup.ps1
 ```
 
-**What this does:**
-- Imports rules for all events marked as `auto_remediate_candidate: true` in `windows_error_events.json`
-- Creates approximately 20+ rules automatically
+**This will automatically:**
+- ✅ Check Python installation
+- ✅ Create virtual environment
+- ✅ Install all dependencies
+- ✅ Create configuration file (`.env`)
+- ✅ Detect your network IP addresses
+- ✅ Initialize the database
 
----
+**Follow the prompts** to configure the API URL (use default for local setup).
 
-### Step 7: Start Live Event Monitoring
+### Step 3: Start the Backend
 
-**📍 Location:** Open a **new terminal/PowerShell window** (keep backend running)
+```cmd
+start_backend.bat
+```
 
-**Option A: Quick Start with Batch File (Easiest)**
+**Expected output:**
+```
+Starting Flask server on 0.0.0.0:5000
+Access the dashboard at: http://localhost:5000
+ * Running on http://0.0.0.0:5000
+```
 
-**📍 Location:** Double-click `start_event_monitor.bat` in the project root folder
+**Keep this window open!**
 
-Or from Command Prompt:
+### Step 4: Start the Event Monitor
+
+Open a **new terminal** and run:
+
 ```cmd
 start_event_monitor.bat
 ```
 
-**Expected Output:** A new PowerShell window opens showing:
+**What happens:**
+- Imports historical events from the last 30 days
+- Starts monitoring for new events
+- Sends events to the backend automatically
+
+### Step 5: Access the Dashboard
+
+Open your browser and go to:
+
 ```
-========================================
-Windows Event Monitor - Polling Mode
-========================================
-API Endpoint: http://localhost:5000/api/events
-Monitoring Logs: System,Application
-Poll Interval: 10 seconds
-...
-Starting monitoring...
+http://localhost:5000
+```
+
+**You should see:**
+- Dashboard with statistics
+- Warnings & Errors tab with imported events
+- Rules tab for creating remediation rules
+- Approvals and History tabs
+
+**🎉 That's it! Your system is running!**
+
+---
+
+## 📋 Prerequisites
+
+- **Windows OS**: Windows 10/11 or Windows Server 2016+
+- **Python 3.8+**: [Download from python.org](https://www.python.org/downloads/)
+- **PowerShell 5.1+**: Comes with Windows
+- **Administrator Privileges**: Required for event monitoring and remediation
+- **Network Access**: If deploying across multiple machines
+
+## 📖 Detailed Installation Guide
+
+For detailed step-by-step instructions, see **[INSTALLATION.md](INSTALLATION.md)**
+
+### Manual Installation (Alternative)
+
+If you prefer manual setup or the automated script fails:
+
+1. **Create virtual environment:**
+   ```bash
+   python -m venv .venv
+   .\.venv\Scripts\activate
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   pip install -r backend\requirements.txt
+   ```
+
+3. **Create configuration:**
+   ```bash
+   copy .env.example .env
+   notepad .env  # Edit as needed
+   ```
+
+4. **Initialize database:**
+   ```bash
+   python backend\db_init.py
+   ```
+
+5. **Start backend:**
+   ```bash
+   python backend\app.py
+   ```
+
+6. **Start monitor (new terminal):**
+   ```cmd
+   start_event_monitor.bat
+   ```
+
+---
+
+## 🌐 Multi-System Deployment
+
+### Centralized Monitoring Setup
+
+Deploy the backend on one server and event monitors on multiple client machines.
+
+**Architecture:**
+```
+┌─────────────────────────────────────┐
+│     Central Server (Backend)        │
+│     IP: 192.168.1.100:5000         │
+└─────────────────────────────────────┘
+              ▲
+              │ Events via HTTP
+      ┌───────┼───────┐
+      │       │       │
+  ┌───┴───┐ ┌─┴───┐ ┌─┴───┐
+  │Client1│ │Client2│ │Client3│
+  │Monitor│ │Monitor│ │Monitor│
+  └───────┘ └───────┘ └───────┘
+```
+
+**On Central Server:**
+
+1. Run setup and configure with server IP:
+   ```powershell
+   .\setup.ps1
+   # When prompted, enter: http://192.168.1.100:5000
+   ```
+
+2. Configure firewall:
+   ```powershell
+   New-NetFirewallRule -DisplayName "Flask Backend" -Direction Inbound -LocalPort 5000 -Protocol TCP -Action Allow
+   ```
+
+3. Start backend:
+   ```cmd
+   start_backend.bat
+   ```
+
+**On Client Machines:**
+
+1. Copy project files (or minimal files: `.env`, `start_event_monitor.bat`, `collector/`)
+
+2. Create `.env` file:
+   ```ini
+   API_BASE_URL=http://192.168.1.100:5000
+   ```
+
+3. Start monitor:
+   ```cmd
+   start_event_monitor.bat
+   ```
+
+**For complete deployment instructions, see [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)**
+
+---
+
+## ⚙️ Configuration
+
+All configuration is managed through the `.env` file in the project root.
+
+### Key Configuration Options
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FLASK_HOST` | `0.0.0.0` | Flask server host |
+| `FLASK_PORT` | `5000` | Flask server port |
+| `API_BASE_URL` | `http://localhost:5000` | Backend API URL |
+| `POLL_INTERVAL_SECONDS` | `10` | Event polling frequency |
+| `HISTORICAL_DAYS` | `30` | Days of historical events to import |
+| `LOG_NAMES` | `System,Application` | Event logs to monitor |
+| `EVENT_IDS_TO_MONITOR` | `` | Specific Event IDs (empty = all) |
+
+### Example Configurations
+
+**Local Development:**
+```ini
+API_BASE_URL=http://localhost:5000
+FLASK_HOST=127.0.0.1
+```
+
+**Network Server:**
+```ini
+API_BASE_URL=http://192.168.1.100:5000
+FLASK_HOST=0.0.0.0
+```
+
+**High-Frequency Monitoring:**
+```ini
+POLL_INTERVAL_SECONDS=5
+MAX_EVENTS_PER_POLL=200
 ```
 
 ---
 
-**Option B: PowerShell with Configuration (Recommended for Production)**
+## 🧪 Testing the Installation
 
-**📍 Location:** Open **PowerShell** in the project root directory
-
-```powershell
-powershell -ExecutionPolicy Bypass -File collector\event_monitor_config.ps1
-```
-
-**Expected Output:**
-```
-========================================
-Windows Event Monitor - Config Mode
-========================================
-Config File: collector\monitor_config.json
-API Endpoint: http://localhost:5000/api/events
-...
-```
-
----
-
-**Option C: PowerShell with Custom Parameters**
-
-**📍 Location:** PowerShell in project root
+### Quick Test
 
 ```powershell
-# Monitor specific logs with custom interval
-powershell -ExecutionPolicy Bypass -File collector\event_monitor.ps1 -LogNames "System,Application" -PollIntervalSeconds 5
+# Generate a test event
+Write-EventLog -LogName Application -Source "Application" -EventId 1000 -EntryType Error -Message "Test event"
 
-# Monitor only specific Event IDs
-powershell -ExecutionPolicy Bypass -File collector\event_monitor.ps1 -EventIds "7031,7034,1000,1001" -MaxEventsPerPoll 100
+# Check dashboard - event should appear within 10 seconds
 ```
 
----
-
-**Option D: Manual Event Collection (One-time, for testing)**
-
-**📍 Location:** PowerShell in project root
+### Verify Backend
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File collector\collector.ps1 -MaxEvents 5 -LogName System
-```
-
-**What this does:** Collects the last 5 events from System log and sends them to the backend (one-time only, not continuous monitoring)
-
----
-
-Updated: Detailed `collector.ps1` usage
-
-You can run `collector\collector.ps1` directly for one-off tests or tailing (live) mode. The collector now includes `severity` and `category` in the payload and supports resuming from the last processed event by querying the backend at `/api/last-processed`.
-
-Prerequisites
-- Backend running (see Step 4)
-- PowerShell running as Administrator when reading system logs
-
-Quick commands
-
-# One-time collection (last N events)
-```powershell
-powershell -ExecutionPolicy Bypass -File collector\collector.ps1 -MaxEvents 5 -LogName System -ApiUrl http://localhost:5000/api/events
-```
-
-# Tail (continuous) mode - keeps polling and sending new events
-```powershell
-powershell -ExecutionPolicy Bypass -File collector\collector.ps1 -Tail -LogName System -ApiUrl http://localhost:5000/api/events
-```
-
-# Run interactively from an already-open PowerShell session
-```powershell
-Set-Location .\collector
-.\collector.ps1 -Tail -ApiUrl http://localhost:5000/api/events
-```
-
-Behavior notes
-- When run without `-Tail`, the collector first attempts to GET `/api/last-processed` on the backend. If a `last_timestamp` is returned, the collector will request only events with `StartTime` after that timestamp. This enables resumed ingestion from the last time events were processed.
-- Each received event is posted to `POST /api/events` and the backend will append it to `backend/data/all_events.csv`. Events with severities matching `warning`, `warn`, `error`, or `critical` are appended to `backend/data/filtered_events.csv`.
-- The backend stores the last processed marker in `backend/data/last_processed.json`.
-
-Parameters
-- `-MaxEvents <int>`: Number of most-recent events to send (one-off mode).
-- `-LogName <string>`: Windows Event Log name (e.g., `System`, `Application`).
-- `-Tail`: Run in continuous polling/tailing mode.
-- `-ApiUrl <string>`: Full URL to the backend `POST /api/events` endpoint.
-
-Examples
-- One-time pull of 10 events from Application:
-```powershell
-powershell -ExecutionPolicy Bypass -File collector\collector.ps1 -MaxEvents 10 -LogName Application -ApiUrl http://localhost:5000/api/events
-```
-- Tail System log and send new events to a remote backend:
-```powershell
-powershell -ExecutionPolicy Bypass -File collector\collector.ps1 -Tail -LogName System -ApiUrl http://10.0.0.5:5000/api/events
-```
-
-Where to look for output
-- Filtered warnings/errors CSV: `backend/data/filtered_events.csv`
-- All events CSV: `backend/data/all_events.csv`
-- Last processed marker: `backend/data/last_processed.json`
-
-
----
-
-### Step 8: Verify Everything is Working
-
-**📍 Location:** Open **PowerShell** in project root
-
-```powershell
-.\test_live_monitoring.ps1
-```
-
-**Expected Output:**
-```
-========================================
-Live Monitoring Test Script
-========================================
-
-Step 1: Checking if backend is running...
-✓ Backend is running at http://localhost:5000
-
-Step 2: Generating test events...
-✓ Created Event 1000: Test Application Error
-✓ Created Event 1001: Test Application Hang
-✓ Created Event 1026: Test .NET Runtime Error
-
-Step 3: Waiting for events to be captured...
-Waiting 15 seconds...
-
-Step 4: Checking if events were captured...
-✓ SUCCESS! Captured 3 new event(s)
-```
-
-**If test fails:**
-- Make sure backend is running (Step 4)
-- Make sure event monitor is running (Step 7)
-- Run PowerShell as Administrator
-
----
-
-### Step 9: View Events in Dashboard
-
-**📍 Location:** Web browser at http://localhost:5000
-
-1. Click on the **"Dashboard"** tab
-   - See total events count increase
-   - View charts showing events by severity and category
-   - See recent events in the activity list
-
-2. Click on the **"Events"** tab
-   - See all captured events
-   - Use search and filters to find specific events
-   - Click on events to see details
-
-3. Click on the **"Event Catalog"** tab
-   - Browse all 40+ event definitions
-   - Click "Create Rule" to create rules for specific events
-   - Search and filter by severity, category, etc.
-
----
-
-## Running the Complete System
-
-**You need 2 terminal windows running simultaneously:**
-
-### Terminal 1: Flask Backend
-**📍 Location:** Project root directory
-```bash
-.\.venv\Scripts\activate
-python backend\app.py
-```
-**Status:** Keep running ✅
-
-### Terminal 2: Event Monitor
-**📍 Location:** Project root directory
-```cmd
-start_event_monitor.bat
-```
-**Status:** Keep running ✅
-
-### Browser: Web Dashboard
-**📍 Location:** http://localhost:5000
-**Status:** Open and refresh as needed ✅
-
----
-
-## Installing as Background Service (Production)
-
-For continuous monitoring without keeping terminal windows open:
-
-**📍 Location:** Open **PowerShell as Administrator** in project root
-
-```powershell
-# Install as Windows Scheduled Task
-.\collector\install_as_task.ps1
-
-# Follow the prompts:
-# - Task name: WindowsEventMonitor (default)
-# - Run as: SYSTEM (default)
-# - Start now: Y
-```
-
-**Manage the service:**
-```powershell
-# Start the task
-Start-ScheduledTask -TaskName "WindowsEventMonitor"
-
-# Stop the task
-Stop-ScheduledTask -TaskName "WindowsEventMonitor"
-
-# Check status
-Get-ScheduledTask -TaskName "WindowsEventMonitor" | Get-ScheduledTaskInfo
-
-# Remove the task
-Unregister-ScheduledTask -TaskName "WindowsEventMonitor" -Confirm:$false
-```
-
-**Note:** The backend (Flask) still needs to run separately. Only the event monitor runs as a scheduled task.
-
----
-
-## Configuration
-
-### Event Monitor Configuration
-
-**📍 Location:** Edit `collector\monitor_config.json`
-
-```json
-{
-  "api_url": "http://localhost:5000",
-  "poll_interval_seconds": 10,
-  "max_events_per_poll": 50,
-  "log_names": ["System", "Application"],
-  "event_ids_to_monitor": [7031, 7034, 1000, 1001]
-}
-```
-
-**Options:**
-- `api_url`: Backend URL (change if running on different machine)
-- `poll_interval_seconds`: How often to check for events (5-60 recommended)
-- `max_events_per_poll`: Maximum events per check (prevent overload)
-- `log_names`: Which Windows logs to monitor
-- `event_ids_to_monitor`: Specific Event IDs (empty array = all events)
-
-**After editing:** Restart the event monitor for changes to take effect
-
----
-
-## Troubleshooting
-
-### Backend won't start
-```bash
-# Check if port 5000 is already in use
-netstat -ano | findstr :5000
-
-# Try a different port
-set FLASK_RUN_PORT=5001
-python backend\app.py
-```
-
-### Event monitor can't connect to backend
-```powershell
-# Test if backend is running
-curl http://localhost:5000/api/events
-
-# Or in PowerShell
 Invoke-RestMethod -Uri "http://localhost:5000/api/events"
 ```
 
-### PowerShell execution policy error
-```powershell
-# Run as Administrator
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+### Check Event Monitor
+
+Look at the PowerShell window - you should see:
+```
+[10:30:45] [OK] Event 1000 from Application
 ```
 
-### No events being captured
-1. Check if event monitor is running
-2. Check if backend is running
-3. Generate a test event:
-   ```powershell
-   Write-EventLog -LogName Application -Source "Application" -EventId 1000 -EntryType Error -Message "Test event"
-   ```
-4. Check Event Viewer to see if events exist
+---
 
-### Database errors
+## 🎯 Using the System
+
+### Creating Remediation Rules
+
+1. **From Dashboard:**
+   - Go to "Warnings & Errors" tab
+   - Click "+ Create Rule" on any event
+   - Fill in the rule details
+   - Add PowerShell remediation script
+   - Enable "Auto Remediate" if desired
+   - Save
+
+2. **Import from JSON:**
+   - Go to "Rules" tab
+   - Click "Import from JSON"
+   - Pre-configured rules are imported automatically
+
+### Example Remediation Script
+
+```powershell
+# Restart a failed service
+$serviceName = "Spooler"
+Restart-Service -Name $serviceName -Force
+Write-Output "Service $serviceName restarted successfully"
+```
+
+### Approval Workflow
+
+For sensitive operations:
+1. Disable "Auto Remediate" on the rule
+2. When event occurs, a remediation request is created
+3. Go to "Approvals" tab
+4. Review and approve/deny the request
+5. Check "History" tab for results
+
+---
+
+## 🔧 Running as Windows Service (Production)
+
+### Backend as Service
+
+Use NSSM (Non-Sucking Service Manager):
+
+```cmd
+nssm install AutoRemediationBackend "C:\Path\To\.venv\Scripts\python.exe" "C:\Path\To\backend\app.py"
+nssm set AutoRemediationBackend AppDirectory "C:\Path\To\Project"
+nssm start AutoRemediationBackend
+```
+
+### Event Monitor as Scheduled Task
+
+```powershell
+$action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-ExecutionPolicy Bypass -File C:\Path\To\collector\event_monitor.ps1"
+$trigger = New-ScheduledTaskTrigger -AtStartup
+$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+
+Register-ScheduledTask -TaskName "AutoRemediationMonitor" -Action $action -Trigger $trigger -Principal $principal
+Start-ScheduledTask -TaskName "AutoRemediationMonitor"
+```
+
+---
+
+## 🔍 Troubleshooting
+
+### Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| **Python not found** | Try `py` or `python3`, or install from [python.org](https://www.python.org/downloads/) |
+| **Port 5000 in use** | Change `FLASK_PORT` in `.env` to another port (e.g., 5001) |
+| **Cannot run scripts** | Run `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` as Administrator |
+| **Backend won't start** | Check if port is available: `netstat -ano \| findstr :5000` |
+| **No events appearing** | Verify monitor is running, generate test event, check PowerShell window for errors |
+| **Cannot connect to backend** | Check firewall, verify API_BASE_URL in `.env`, test with `curl http://localhost:5000/api/events` |
+
+### Generate Test Event
+
+```powershell
+Write-EventLog -LogName Application -Source "Application" -EventId 1000 -EntryType Error -Message "Test event"
+```
+
+### Verify Backend is Running
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:5000/api/events"
+```
+
+### Reset Database
+
 ```bash
-# Reinitialize database (⚠️ deletes all data)
+# ⚠️ Warning: This deletes all data
 python backend\db_init.py
 ```
 
----
-
-## Complete Workflow Example
-
-**Scenario:** Monitor for service failures and auto-remediate
-
-1. **Start the system** (Steps 1-7 above)
-
-2. **Create a rule for Event 7031 (Service Crash)**
-   - Go to Event Catalog tab
-   - Find Event 7031 (Service Control Manager)
-   - Click "Create Rule"
-   - Add remediation script:
-     ```powershell
-     # Restart the failed service
-     $serviceName = "YourServiceName"
-     Restart-Service -Name $serviceName -Force
-     ```
-   - Enable "Auto Remediate" if desired
-   - Save the rule
-
-3. **Wait for events**
-   - Event monitor detects Event 7031
-   - Sends to backend
-   - Backend matches against rules
-   - If auto-remediate enabled: runs script automatically
-   - If not: creates approval request
-
-4. **View results**
-   - Check History tab for remediation results
-   - Check Approvals tab for pending requests
+For more troubleshooting help, see **[INSTALLATION.md](INSTALLATION.md#troubleshooting)**
 
 ---
 
-## Additional Resources
+## 📚 Documentation
 
-- **Live Monitoring Guide:** [LIVE_MONITORING_GUIDE.md](LIVE_MONITORING_GUIDE.md)
-- **Implementation Summary:** [LIVE_MONITORING_SUMMARY.md](LIVE_MONITORING_SUMMARY.md)
-- **Integration Details:** [INTEGRATION_SUMMARY.md](INTEGRATION_SUMMARY.md)
-- **Quick Start Guide:** [QUICK_START_GUIDE.md](QUICK_START_GUIDE.md)
+- **[INSTALLATION.md](INSTALLATION.md)** - Detailed installation instructions
+- **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - Multi-system deployment guide
+- **[PORTABILITY_UPDATE.md](PORTABILITY_UPDATE.md)** - Portability features and changes
+- **[.env.example](.env.example)** - Configuration template with all options
 
-## Event Definitions
+## 📊 Dashboard Features
 
-The `windows_error_events.json` file contains definitions for 40+ common Windows error events including:
-- **Service Failures** (Event IDs: 7031, 7034, 7000, 7001, etc.)
-- **Disk Issues** (Event IDs: 2013, 51, 55, etc.)
-- **Application Crashes** (Event IDs: 1000, 1001, 1026)
-- **Driver Failures** (Event IDs: 219, 4101)
-- **Security Events** (Event IDs: 4625, 4740)
-- **Network Issues** (Event IDs: 4201, 4227, 5719)
-- **System Crashes** (Event IDs: 6008, 41, 1001)
-- And more...
+### Warnings & Errors Tab
+- **Level Column**: Error/Warning badges (red/yellow)
+- **Event ID**: Windows Event ID
+- **Source**: Event provider/source
+- **Severity**: Critical/High/Medium/Low badges
+- **Message**: Event description
+- **Timestamp**: When the event occurred
+- **Remediated**: Shows when event was fixed (green timestamp) or "Not Remediated"
+- **Auto-Remediate**: Indicates if event is eligible for auto-remediation
+- **Actions**: Quick "+ Create Rule" button
 
-Each event definition includes:
-- `event_id`: Windows Event ID
-- `event_source`: Event source/provider name
-- `category`: Event category (e.g., "Service Failure", "Disk I/O Error")
-- `severity`: Severity level (Critical, High, Medium, Low, Info)
-- `description`: Human-readable description
-- `recommended_action`: Suggested remediation action
-- `auto_remediate_candidate`: Whether this event is suitable for auto-remediation
+### Retractable Sidebar
+- Click the toggle button to collapse/expand
+- Icons-only mode when collapsed
+- State persists across page refreshes
+- Smooth animations
 
-## API Endpoints
+### Dashboard Tab
+- Total events count
+- Events by severity chart
+- Events by category chart
+- Recent activity list
+
+### Rules Tab
+- Create custom remediation rules
+- Import rules from JSON
+- Enable/disable auto-remediation
+- Test rules manually
+
+### Approvals Tab
+- Review pending remediation requests
+- Approve or deny actions
+- Add decision notes
+
+### History Tab
+- Complete audit trail
+- Remediation success/failure status
+- Script output logs
+- Timestamp tracking
+
+---
+
+## 📋 Event Definitions
+
+The `windows_error_events.json` file contains 40+ common Windows error events:
+
+**Categories:**
+- **Service Failures**: 7031, 7034, 7000, 7001, 7009
+- **Disk Issues**: 2013, 51, 55
+- **Application Crashes**: 1000, 1001, 1026
+- **Driver Failures**: 219, 4101
+- **Security Events**: 4625, 4740
+- **Network Issues**: 4201, 4227, 5719
+- **System Crashes**: 6008, 41, 1001
+
+**Each definition includes:**
+- Event ID and source
+- Category and severity
+- Human-readable description
+- Recommended remediation action
+- Auto-remediation eligibility
+
+## 🔌 API Endpoints
+
+The backend provides a RESTful API for integration with other systems.
 
 ### Events
-- `GET /api/events` - List all events
-- `POST /api/events` - Create a new event (automatically enriched with metadata from JSON)
-- `GET /api/events/<id>/matches` - Get matching rules for an event
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/events` | List all events |
+| `POST` | `/api/events` | Create new event (auto-enriched) |
+| `GET` | `/api/events/<id>/matches` | Get matching rules |
 
 ### Rules
-- `GET /api/rules` - List all rules
-- `POST /api/rules` - Create a new rule
-- `GET /api/rules/<id>` - Get a specific rule
-- `PUT /api/rules/<id>` - Update a rule
-- `DELETE /api/rules/<id>` - Delete a rule
-- `POST /api/rules/<id>/run` - Manually run a rule
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/rules` | List all rules |
+| `POST` | `/api/rules` | Create new rule |
+| `GET` | `/api/rules/<id>` | Get specific rule |
+| `PUT` | `/api/rules/<id>` | Update rule |
+| `DELETE` | `/api/rules/<id>` | Delete rule |
+| `POST` | `/api/rules/<id>/run` | Manually run rule |
 
 ### Event Definitions
-- `GET /api/event-definitions` - Get all event definitions from JSON
-- `GET /api/event-definitions/<event_id>?source=<source>` - Get a specific event definition
-- `POST /api/populate-rules` - Populate rules from JSON file
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/event-definitions` | Get all definitions |
+| `GET` | `/api/event-definitions/<id>` | Get specific definition |
+| `POST` | `/api/populate-rules` | Import rules from JSON |
 
-### Approvals
-- `GET /api/requests` - List remediation requests
-- `POST /api/requests` - Create a remediation request
-- `POST /api/requests/<id>/approve` - Approve a request
-- `POST /api/requests/<id>/deny` - Deny a request
+### Approvals & History
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/requests` | List remediation requests |
+| `POST` | `/api/requests` | Create request |
+| `POST` | `/api/requests/<id>/approve` | Approve request |
+| `POST` | `/api/requests/<id>/deny` | Deny request |
+| `GET` | `/api/history` | Get remediation history |
 
-### History
-- `GET /api/history` - Get remediation history
-
-## Project Structure
+## 📁 Project Structure
 
 ```
 Rule-Based-Auto-Remediation-For-Windows-/
 │
-├── backend/                          # Flask backend application
-│   ├── app.py                       # Main Flask application
-│   ├── models.py                    # Database models and JSON integration
-│   ├── db_init.py                   # Database initialization script
-│   ├── events.db                    # SQLite database (created after init)
-│   ├── requirements.txt             # Python dependencies
-│   └── templates/
-│       └── index.html               # Web dashboard UI
+├── 📄 Configuration Files
+│   ├── .env.example                 # Configuration template
+│   ├── .env                         # Your configuration (created by setup)
+│   └── .gitignore                   # Git ignore rules
 │
-├── collector/                        # Event collection scripts
+├── 🚀 Quick Start Scripts
+│   ├── setup.ps1                    # Automated setup script
+│   ├── start_backend.bat            # Start Flask backend
+│   └── start_event_monitor.bat     # Start event monitor
+│
+├── 🖥️ Backend (Flask Application)
+│   ├── app.py                       # Main Flask application
+│   ├── models.py                    # Database models & business logic
+│   ├── db_init.py                   # Database initialization
+│   ├── requirements.txt             # Python dependencies
+│   ├── rules.db                     # SQLite database (created after init)
+│   ├── templates/
+│   │   └── index.html              # Web dashboard UI
+│   ├── static/
+│   │   └── style.css               # Dashboard styles
+│   └── data/
+│       └── errors_warnings.csv     # Event data export
+│
+├── 📡 Collector (PowerShell Scripts)
+│   ├── event_monitor.ps1            # Main event monitoring script
+│   ├── Load-Config.ps1              # Configuration loader
 │   ├── collector.ps1                # One-time event collector
-│   ├── event_monitor.ps1            # Polling-based monitor
-│   ├── event_monitor_config.ps1     # Config-based monitor (recommended)
+│   ├── event_monitor_config.ps1     # Config-based monitor
 │   ├── event_watcher.ps1            # Subscription-based monitor
-│   ├── monitor_config.json          # Event monitor configuration
+│   ├── monitor_config.json          # Legacy config file
 │   └── install_as_task.ps1          # Scheduled task installer
 │
-├── windows_error_events.json        # Event definitions (40+ events)
-├── start_event_monitor.bat          # Quick start batch file
-├── test_live_monitoring.ps1         # Test script
+├── 📚 Documentation
+│   ├── README.md                    # This file (overview & quick start)
+│   ├── INSTALLATION.md              # Detailed installation guide
+│   ├── DEPLOYMENT_GUIDE.md          # Multi-system deployment
+│   ├── PORTABILITY_UPDATE.md        # Portability features
+│   └── SIDEBAR_AND_REMEDIATED_UPDATE.md  # UI features
 │
-├── LIVE_MONITORING_GUIDE.md         # Detailed monitoring guide
-├── LIVE_MONITORING_SUMMARY.md       # Implementation summary
-├── INTEGRATION_SUMMARY.md           # Integration documentation
-├── QUICK_START_GUIDE.md             # Quick start guide
-└── README.md                        # This file
+├── 📋 Data Files
+│   └── windows_error_events.json   # Event definitions (40+ events)
+│
+└── 🔧 Remediation Scripts
+    └── remediation_scripts/         # Sample remediation scripts
 ```
 
-## Security Considerations
+## 🛠️ Technology Stack
+
+| Component | Technology |
+|-----------|------------|
+| **Backend** | Python 3.8+, Flask, SQLAlchemy |
+| **Database** | SQLite |
+| **Frontend** | HTML5, CSS3, JavaScript (Vanilla) |
+| **Event Collection** | PowerShell 5.1+ |
+| **Data Format** | JSON, CSV |
+| **Configuration** | Environment Variables (.env) |
+| **Deployment** | Windows Scheduled Tasks, NSSM |
+
+---
+
+## 🔒 Security Considerations
 
 ⚠️ **Important:** This is a proof-of-concept system. Before using in production:
 
+### Required Security Enhancements
 1. **Add Authentication**: Implement user authentication and authorization
 2. **Secure API Endpoints**: Add API keys or OAuth for API access
 3. **Validate Scripts**: Review all remediation scripts before enabling auto-remediation
@@ -602,20 +565,101 @@ Rule-Based-Auto-Remediation-For-Windows-/
 6. **Network Security**: Use HTTPS if accessing remotely
 7. **Input Validation**: Validate all user inputs and API requests
 
-## Notes
+### Built-in Security Features
+- ✅ **Approval Workflow**: Manual approval for sensitive operations
+- ✅ **Audit Trail**: Complete history of all remediation actions
+- ✅ **Remediation Tracking**: Timestamp tracking for all actions
+- ✅ **Event Filtering**: Only Errors and Warnings are processed
 
-- This is a starter scaffold. Enhance with authentication, persistent job execution, better rule language, and safe execution controls before using in production.
-- The approval workflow allows manual review of remediation actions before execution
-- Events are automatically enriched with metadata from the JSON file when ingested
-- Rules can be manually created or imported from the JSON file
-- Live monitoring connects directly to Windows Event Viewer for real-time event detection
-- Always test remediation scripts manually before enabling auto-remediation
-- Monitor the system regularly and review the History tab for remediation outcomes
+### Production Recommendations
+- 🔐 Use HTTPS instead of HTTP
+- 🔐 Configure firewall rules to restrict access
+- 🔐 Use Group Managed Service Accounts (gMSA)
+- 🔐 Implement rate limiting
+- 🔐 Regular security audits of remediation scripts
 
-## Support and Contribution
+---
 
-For issues, questions, or contributions, please refer to the project repository.
+## 📝 Important Notes
 
-## License
+- **Proof of Concept**: This is a starter scaffold. Enhance with authentication, persistent job execution, better rule language, and safe execution controls before using in production.
+- **Approval Workflow**: Manual review of remediation actions before execution
+- **Auto-Enrichment**: Events are automatically enriched with metadata from the JSON file
+- **Rule Creation**: Rules can be manually created or imported from JSON
+- **Live Monitoring**: Connects directly to Windows Event Viewer for real-time detection
+- **Testing**: Always test remediation scripts manually before enabling auto-remediation
+- **Monitoring**: Review the History tab regularly for remediation outcomes
 
-[Add your license information here]
+---
+
+## 🚀 Future Enhancements
+
+### Planned Features
+- [ ] User authentication and role-based access control
+- [ ] Email/SMS notifications for critical events
+- [ ] Advanced analytics and reporting dashboards
+- [ ] Machine learning for anomaly detection
+- [ ] Integration with SIEM systems (Splunk, ELK)
+- [ ] Support for remote event collection (WinRM)
+- [ ] Webhook support for external integrations
+- [ ] Multi-tenant support
+- [ ] REST API authentication (API keys/OAuth)
+- [ ] Custom event source plugins
+- [ ] Docker containerization
+- [ ] Cloud deployment support (Azure, AWS)
+
+---
+
+## 🤝 Support and Contribution
+
+### Getting Help
+For issues, questions, or support:
+1. Check the [INSTALLATION.md](INSTALLATION.md) for setup help
+2. Review [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for deployment scenarios
+3. See [Troubleshooting](#-troubleshooting) section above
+4. Open an issue on the repository
+
+### Contributing
+Contributions are welcome! Please feel free to:
+- 🐛 Report bugs and issues
+- 💡 Suggest new features
+- 🔧 Submit pull requests
+- 📖 Improve documentation
+
+---
+
+## 📄 License
+
+This project is provided as-is for educational and internal use.
+
+---
+
+## 🙏 Acknowledgments
+
+Built with:
+- **Flask** - Web framework
+- **SQLAlchemy** - Database ORM
+- **PowerShell** - Event collection
+- **Windows Event Log** - Event source
+
+---
+
+## ✅ Summary
+
+**Rule-Based Auto-Remediation for Windows** is a complete solution for:
+- ✅ Monitoring Windows Event Logs (Errors & Warnings)
+- ✅ Automatically remediating common issues
+- ✅ Tracking remediation history and approvals
+- ✅ Deploying across multiple systems
+- ✅ Providing a modern web dashboard
+
+**Get started in 3 steps:**
+1. Run `.\setup.ps1`
+2. Run `start_backend.bat`
+3. Run `start_event_monitor.bat`
+
+**That's it!** 🎉
+
+---
+
+**Made with ❤️ for Windows System Administrators**
