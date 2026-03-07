@@ -40,6 +40,7 @@ def init_db():
         source TEXT,
         message_regex TEXT,
         remediation_script TEXT,
+        script_type TEXT DEFAULT 'file',
         auto_remediate INTEGER DEFAULT 0,
         category TEXT,
         severity TEXT,
@@ -115,7 +116,8 @@ def migrate_db(conn):
         ('category', 'TEXT'),
         ('severity', 'TEXT'),
         ('description', 'TEXT'),
-        ('recommended_action', 'TEXT')
+        ('recommended_action', 'TEXT'),
+        ('script_type', "TEXT DEFAULT 'file'")
     ]
 
     for col_name, col_type in new_rule_columns:

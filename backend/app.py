@@ -52,16 +52,9 @@ def events():
         matched_info.append({'rule_id': rid, 'rule_name': r[1], 'remediation': remediation_script})
         # Auto-run remediation if configured
         if r[6]:
-            # Attempt to run PowerShell remediation script if present
-            if remediation_script and os.path.exists(remediation_script):
-                try:
-                    proc = subprocess.run(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', remediation_script], capture_output=True, text=True, timeout=60)
-                    status = 'success' if proc.returncode == 0 else 'failed'
-                    models.record_remediation(event_row_id, rid, status, proc.stdout + '\n' + proc.stderr)
-                except Exception as e:
-                    models.record_remediation(event_row_id, rid, 'error', str(e))
-            else:
-                models.record_remediation(event_row_id, rid, 'skipped', 'no script or missing file')
+            result = models.run_remediation(event_row_id, rid)
+            if result.get('status') not in ('skipped', 'error'):
+                pass  # already recorded inside run_remediation
 
     return jsonify({'status': 'ok', 'event_id': event_row_id, 'matched': matched_info})
 
@@ -72,7 +65,8 @@ def rules():
         rows = models.get_rules()
         rules = [dict(id=r[0], name=r[1], event_id=r[2], source=r[3], message_regex=r[4],
                      remediation_script=r[5], auto_remediate=bool(r[6]), category=r[7],
-                     severity=r[8], description=r[9], recommended_action=r[10]) for r in rows]
+                     severity=r[8], description=r[9], recommended_action=r[10],
+                     script_type=r[11] if len(r) > 11 else 'file') for r in rows]
         return jsonify(rules)
 
     data = request.get_json(force=True)
@@ -82,6 +76,7 @@ def rules():
         data.get('source'),
         data.get('message_regex'),
         data.get('remediation_script'),
+        data.get('script_type', 'file'),
         data.get('auto_remediate', False),
         data.get('category'),
         data.get('severity'),
@@ -99,7 +94,8 @@ def rule_detail(rule_id):
             return jsonify({'error': 'not found'}), 404
         rule = dict(id=r[0], name=r[1], event_id=r[2], source=r[3], message_regex=r[4],
                    remediation_script=r[5], auto_remediate=bool(r[6]), category=r[7],
-                   severity=r[8], description=r[9], recommended_action=r[10])
+                   severity=r[8], description=r[9], recommended_action=r[10],
+                   script_type=r[11] if len(r) > 11 else 'file')
         return jsonify(rule)
 
     if request.method == 'PUT':
@@ -111,6 +107,7 @@ def rule_detail(rule_id):
             data.get('source'),
             data.get('message_regex'),
             data.get('remediation_script'),
+            data.get('script_type'),
             data.get('auto_remediate'),
             data.get('category'),
             data.get('severity'),
@@ -124,6 +121,26 @@ def rule_detail(rule_id):
         return jsonify({'status': 'deleted'})
 
 
+@app.route('/api/events/ensure', methods=['POST'])
+def ensure_event():
+    """Find or create a DB event row without triggering auto-remediation.
+    Used by the UI to get a real event_row_id before running/requesting remediation."""
+    data = request.get_json(force=True)
+    event_row_id = models.find_or_create_event(
+        data.get('event_id'),
+        data.get('log_name'),
+        data.get('source'),
+        data.get('message'),
+        data.get('timestamp'),
+        data.get('category'),
+        data.get('severity'),
+        data.get('description'),
+        data.get('recommended_action'),
+        data.get('level')
+    )
+    return jsonify({'event_row_id': event_row_id})
+
+
 @app.route('/api/rules/<int:rule_id>/run', methods=['POST'])
 def run_rule(rule_id):
     data = request.get_json(force=True)
@@ -132,6 +149,29 @@ def run_rule(rule_id):
         return jsonify({'error': 'event_row_id required'}), 400
     result = models.run_remediation(event_row_id, rule_id)
     return jsonify(result)
+
+
+@app.route('/api/rules/<int:rule_id>/test', methods=['POST'])
+def test_rule(rule_id):
+    """Create a synthetic test event and run the rule against it.
+    Allows verifying inline scripts without waiting for a real event."""
+    rule = models.get_rule(rule_id)
+    if not rule:
+        return jsonify({'error': 'rule not found'}), 404
+    # Insert a synthetic test event into the DB
+    event_row_id = models.add_event(
+        event_id=rule[2] or 0,
+        log_name='TestRun',
+        source=rule[3] or 'TestSource',
+        message=f'[Test Run] Manual test of rule: {rule[1]}',
+        level='Test'
+    )
+    result = models.run_remediation(event_row_id, rule_id)
+    return jsonify({
+        'status': result.get('status'),
+        'output': result.get('output'),
+        'event_row_id': event_row_id
+    })
 
 
 @app.route('/api/history', methods=['GET'])

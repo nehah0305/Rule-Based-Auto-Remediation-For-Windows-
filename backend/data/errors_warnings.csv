@@ -3301,3 +3301,4 @@ Disk type: 0x0",2026-03-02T19:29:02,,,,,Error
 32971,1022,Application,.NET Runtime,.NET Runtime version 4.0.30319.0 - There was a failure initializing profiling API attach infrastructure.  This process will not allow a profiler to attach.  HRESULT: 0x80004005.  Process ID (decimal): 20284.  Message ID: [0x2509].,2026-03-03T21:13:26,,,,,Error
 32972,10005,Application,MsiInstaller,"Product: HP Display Control Service -- The installer has encountered an unexpected error installing this package. This may indicate a problem with this package. The error code is 2753. The arguments are: DisplayControl, , ",2026-03-03T21:28:34,,,,,Error
 32973,1013,Application,MsiInstaller,Product: HP Display Control Service -- The device is not a supported system. Aborting installation.,2026-03-03T21:28:34,,,,,Error
+1013,Application,MsiInstaller,Product: HP Display Control Service -- The device is not a supported system. Aborting installation.,2026-03-03T21:28:34,,,,,Error,

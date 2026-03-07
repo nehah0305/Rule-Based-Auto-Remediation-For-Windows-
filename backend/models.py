@@ -4,6 +4,7 @@ import re
 import subprocess
 import json
 import csv
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -170,7 +171,7 @@ def get_events(limit=100):
     return rows
 
 
-def add_rule(name, event_id=None, source=None, message_regex=None, remediation_script=None, auto_remediate=0, category=None, severity=None, description=None, recommended_action=None):
+def add_rule(name, event_id=None, source=None, message_regex=None, remediation_script=None, script_type='file', auto_remediate=0, category=None, severity=None, description=None, recommended_action=None):
     conn = _conn()
     c = conn.cursor()
 
@@ -188,8 +189,8 @@ def add_rule(name, event_id=None, source=None, message_regex=None, remediation_s
                 recommended_action = defn.get('recommended_action')
 
     c.execute(
-        'INSERT INTO rules (name, event_id, source, message_regex, remediation_script, auto_remediate, category, severity, description, recommended_action) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        (name, event_id, source, message_regex, remediation_script, int(auto_remediate), category, severity, description, recommended_action)
+        'INSERT INTO rules (name, event_id, source, message_regex, remediation_script, script_type, auto_remediate, category, severity, description, recommended_action) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        (name, event_id, source, message_regex, remediation_script, script_type or 'file', int(auto_remediate), category, severity, description, recommended_action)
     )
     conn.commit()
     rid = c.lastrowid
@@ -200,7 +201,7 @@ def add_rule(name, event_id=None, source=None, message_regex=None, remediation_s
 def get_rules():
     conn = _conn()
     c = conn.cursor()
-    c.execute('SELECT id, name, event_id, source, message_regex, remediation_script, auto_remediate, category, severity, description, recommended_action FROM rules')
+    c.execute('SELECT id, name, event_id, source, message_regex, remediation_script, auto_remediate, category, severity, description, recommended_action, script_type FROM rules')
     rows = c.fetchall()
     conn.close()
     return rows
@@ -212,8 +213,10 @@ def match_rules_for_event(event):
     rules = get_rules()
     for r in rules:
         # Unpack all fields including new metadata fields
+        # Index: 0=id,1=name,2=event_id,3=source,4=message_regex,5=remediation_script
+        #        6=auto_remediate,7=category,8=severity,9=description,10=recommended_action,11=script_type
         (rid, name, r_event_id, r_source, r_message_regex, remediation_script,
-         auto_remediate, category, severity, description, recommended_action) = r
+         auto_remediate, category, severity, description, recommended_action, script_type) = r
         # event fields: event_id, log_name, source, message
         if r_event_id and r_event_id != event.get('event_id'):
             continue
@@ -244,13 +247,13 @@ def record_remediation(event_row_id, rule_id, status, output=''):
 def get_rule(rule_id):
     conn = _conn()
     c = conn.cursor()
-    c.execute('SELECT id, name, event_id, source, message_regex, remediation_script, auto_remediate, category, severity, description, recommended_action FROM rules WHERE id=?', (rule_id,))
+    c.execute('SELECT id, name, event_id, source, message_regex, remediation_script, auto_remediate, category, severity, description, recommended_action, script_type FROM rules WHERE id=?', (rule_id,))
     r = c.fetchone()
     conn.close()
     return r
 
 
-def update_rule(rule_id, name=None, event_id=None, source=None, message_regex=None, remediation_script=None, auto_remediate=None, category=None, severity=None, description=None, recommended_action=None):
+def update_rule(rule_id, name=None, event_id=None, source=None, message_regex=None, remediation_script=None, script_type=None, auto_remediate=None, category=None, severity=None, description=None, recommended_action=None):
     conn = _conn()
     c = conn.cursor()
     fields = []
@@ -265,6 +268,8 @@ def update_rule(rule_id, name=None, event_id=None, source=None, message_regex=No
         fields.append('message_regex=?'); vals.append(message_regex)
     if remediation_script is not None:
         fields.append('remediation_script=?'); vals.append(remediation_script)
+    if script_type is not None:
+        fields.append('script_type=?'); vals.append(script_type)
     if auto_remediate is not None:
         fields.append('auto_remediate=?'); vals.append(int(bool(auto_remediate)))
     if category is not None:
@@ -293,6 +298,35 @@ def delete_rule(rule_id):
     conn.commit()
     conn.close()
     return True
+
+
+def find_or_create_event(event_id, log_name=None, source=None, message=None,
+                          timestamp=None, category=None, severity=None,
+                          description=None, recommended_action=None, level=None):
+    """Find an existing DB event row matching event_id+source+timestamp, or create a new one.
+    Does NOT trigger auto-remediation. Returns the DB row id."""
+    conn = _conn()
+    c = conn.cursor()
+    # Try to find an existing event with matching key fields
+    if timestamp:
+        c.execute(
+            'SELECT id FROM events WHERE event_id=? AND source=? AND timestamp=? LIMIT 1',
+            (event_id, source or '', timestamp)
+        )
+    else:
+        c.execute(
+            'SELECT id FROM events WHERE event_id=? AND source=? ORDER BY id DESC LIMIT 1',
+            (event_id, source or '')
+        )
+    row = c.fetchone()
+    conn.close()
+    if row:
+        return row[0]
+    # Not found — insert a new event record (no auto-remediation side-effect)
+    return add_event(
+        event_id, log_name or 'System', source or '', message or '',
+        timestamp, category, severity, description, recommended_action, level
+    )
 
 
 def get_history(limit=200):
@@ -325,20 +359,55 @@ def run_remediation(event_row_id, rule_id, timeout=60):
     rule = get_rule(rule_id)
     if not rule:
         return {'status': 'error', 'output': 'rule not found'}
+
+    # Columns: 0=id,1=name,2=event_id,3=source,4=message_regex,5=remediation_script
+    #          6=auto_remediate,7=category,8=severity,9=description,10=recommended_action,11=script_type
     remediation_script = rule[5]
-    if remediation_script and os.path.exists(remediation_script):
-        try:
-            proc = subprocess.run(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', remediation_script], capture_output=True, text=True, timeout=timeout)
-            status = 'success' if proc.returncode == 0 else 'failed'
-            output = proc.stdout + '\n' + proc.stderr
-            record_remediation(event_row_id, rule_id, status, output)
-            return {'status': status, 'output': output}
-        except Exception as e:
-            record_remediation(event_row_id, rule_id, 'error', str(e))
-            return {'status': 'error', 'output': str(e)}
-    else:
-        record_remediation(event_row_id, rule_id, 'skipped', 'no script or missing file')
-        return {'status': 'skipped', 'output': 'no script or missing file'}
+    script_type = rule[11] if len(rule) > 11 else 'file'
+
+    if not remediation_script or not remediation_script.strip():
+        record_remediation(event_row_id, rule_id, 'skipped', 'no script provided')
+        return {'status': 'skipped', 'output': 'no script provided'}
+
+    tmp_path = None
+    try:
+        if script_type == 'inline':
+            # Write inline script content to a temporary .ps1 file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.ps1', delete=False, encoding='utf-8') as tmp:
+                tmp.write(remediation_script)
+                tmp_path = tmp.name
+            script_to_run = tmp_path
+        else:
+            # File path mode — check existence
+            if not os.path.exists(remediation_script):
+                record_remediation(event_row_id, rule_id, 'skipped',
+                                   f'script file not found: {remediation_script}')
+                return {'status': 'skipped', 'output': f'script file not found: {remediation_script}'}
+            script_to_run = remediation_script
+
+        proc = subprocess.run(
+            ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script_to_run],
+            capture_output=True, text=True, timeout=timeout
+        )
+        status = 'success' if proc.returncode == 0 else 'failed'
+        output = proc.stdout + '\n' + proc.stderr
+        record_remediation(event_row_id, rule_id, status, output)
+        return {'status': status, 'output': output}
+
+    except subprocess.TimeoutExpired:
+        msg = f'script timed out after {timeout}s'
+        record_remediation(event_row_id, rule_id, 'error', msg)
+        return {'status': 'error', 'output': msg}
+    except Exception as e:
+        record_remediation(event_row_id, rule_id, 'error', str(e))
+        return {'status': 'error', 'output': str(e)}
+    finally:
+        # Always clean up the temp file if we created one
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
 
 
 def create_remediation_request(event_row_id, rule_id, requested_by='web-ui'):
