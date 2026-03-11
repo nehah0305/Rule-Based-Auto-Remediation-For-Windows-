@@ -13,7 +13,7 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# Ensure DB exists
+# Ensure DB exists and migrations run
 init_db()
 
 
@@ -22,18 +22,28 @@ def index():
     return render_template('index.html')
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Events
+# ─────────────────────────────────────────────────────────────────────────────
+
 @app.route('/api/events', methods=['GET', 'POST'])
 def events():
     if request.method == 'GET':
         rows = models.get_events(limit=200)
-        events = [dict(id=r[0], event_id=r[1], log_name=r[2], source=r[3], message=r[4],
-                      timestamp=r[5], category=r[6], severity=r[7], description=r[8],
-                      recommended_action=r[9]) for r in rows]
-        return jsonify(events)
+        result = []
+        for r in rows:
+            result.append(dict(
+                id=r[0], event_id=r[1], log_name=r[2], source=r[3],
+                message=r[4], timestamp=r[5], category=r[6], severity=r[7],
+                description=r[8], recommended_action=r[9],
+                dedup_count=r[10] if len(r) > 10 else 1,
+                last_seen=r[11] if len(r) > 11 else None,
+                confidence_score=r[12] if len(r) > 12 else 0.0,
+                correlation_id=r[13] if len(r) > 13 else None,
+            ))
+        return jsonify(result)
 
     data = request.get_json(force=True)
-    # expected keys: event_id, log_name, source, message, timestamp (optional), level (Error/Warning)
-    # The add_event function will automatically enrich with metadata from JSON
     event_row_id = models.add_event(
         data.get('event_id'),
         data.get('log_name'),
@@ -44,34 +54,102 @@ def events():
         data.get('severity'),
         data.get('description'),
         data.get('recommended_action'),
-        data.get('level')  # Error or Warning
+        data.get('level'),
     )
 
-    matched = models.match_rules_for_event(data)
+    # Match rules — now returns list of tuples with cooldown_active flag at [-1]
+    matched_tuples = models.match_rules_for_event(data)
     matched_info = []
 
-    for r in matched:
+    for r in matched_tuples:
+        # r structure from match_rules_for_event:
+        # [0-14] = rule cols, [15] = cooldown_active (bool), [16] = regex_captures (dict)
+        cooldown_active = r[15] if len(r) > 15 else False
+        regex_captures = r[16] if len(r) > 16 else {}
         rid = r[0]
-        remediation_script = r[5]
-        matched_info.append({'rule_id': rid, 'rule_name': r[1], 'remediation': remediation_script})
-        # Auto-run remediation if configured
-        if r[6]:
-            result = models.run_remediation(event_row_id, rid)
-            if result.get('status') not in ('skipped', 'error'):
-                pass  # already recorded inside run_remediation
+        matched_info.append({
+            'rule_id': rid,
+            'rule_name': r[1],
+            'remediation': r[5],
+            'cooldown_active': cooldown_active,
+        })
+        # Auto-run only if auto_remediate=True AND not in cooldown
+        if r[6] and not cooldown_active:
+            models.run_remediation(event_row_id, rid, regex_captures=regex_captures)
+        elif r[6] and cooldown_active:
+            # Record a suppressed entry so the user can see it happened
+            models.record_remediation(event_row_id, rid, 'suppressed',
+                                      'Auto-remediation suppressed — rule cooldown active')
 
     return jsonify({'status': 'ok', 'event_id': event_row_id, 'matched': matched_info})
+
+
+@app.route('/api/events/ensure', methods=['POST'])
+def ensure_event():
+    """Find or create a DB event row without triggering auto-remediation."""
+    data = request.get_json(force=True)
+    event_row_id = models.find_or_create_event(
+        data.get('event_id'),
+        data.get('log_name'),
+        data.get('source'),
+        data.get('message'),
+        data.get('timestamp'),
+        data.get('category'),
+        data.get('severity'),
+        data.get('description'),
+        data.get('recommended_action'),
+        data.get('level'),
+    )
+    return jsonify({'event_row_id': event_row_id})
+
+
+@app.route('/api/events/<int:event_id>/matches', methods=['GET'])
+def event_matches(event_id):
+    ev = models.get_event(event_id)
+    if not ev:
+        return jsonify({'error': 'event not found'}), 404
+    event_dict = {
+        'event_id': ev[1], 'log_name': ev[2], 'source': ev[3],
+        'message': ev[4], 'timestamp': ev[5], 'category': ev[6],
+        'severity': ev[7], 'description': ev[8], 'recommended_action': ev[9],
+    }
+    matched_tuples = models.match_rules_for_event(event_dict)
+    matched_info = []
+    for r in matched_tuples:
+        cooldown_active = r[15] if len(r) > 15 else False
+        matched_info.append(dict(
+            id=r[0], name=r[1], event_id=r[2], source=r[3],
+            message_regex=r[4], remediation_script=r[5],
+            auto_remediate=bool(r[6]), category=r[7], severity=r[8],
+            description=r[9], recommended_action=r[10],
+            script_type=r[11], priority=r[12], cooldown_minutes=r[13],
+            stop_processing=bool(r[14]), cooldown_active=cooldown_active,
+        ))
+    return jsonify(matched_info)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Rules
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _rule_to_dict(r):
+    return dict(
+        id=r[0], name=r[1], event_id=r[2], source=r[3],
+        message_regex=r[4], remediation_script=r[5],
+        auto_remediate=bool(r[6]), category=r[7], severity=r[8],
+        description=r[9], recommended_action=r[10],
+        script_type=r[11] if len(r) > 11 else 'file',
+        priority=r[12] if len(r) > 12 else 100,
+        cooldown_minutes=r[13] if len(r) > 13 else 0,
+        stop_processing=bool(r[14] if len(r) > 14 else 0),
+    )
 
 
 @app.route('/api/rules', methods=['GET', 'POST'])
 def rules():
     if request.method == 'GET':
         rows = models.get_rules()
-        rules = [dict(id=r[0], name=r[1], event_id=r[2], source=r[3], message_regex=r[4],
-                     remediation_script=r[5], auto_remediate=bool(r[6]), category=r[7],
-                     severity=r[8], description=r[9], recommended_action=r[10],
-                     script_type=r[11] if len(r) > 11 else 'file') for r in rows]
-        return jsonify(rules)
+        return jsonify([_rule_to_dict(r) for r in rows])
 
     data = request.get_json(force=True)
     rid = models.add_rule(
@@ -82,10 +160,13 @@ def rules():
         data.get('remediation_script'),
         data.get('script_type', 'file'),
         data.get('auto_remediate', False),
+        data.get('stop_processing', False),
         data.get('category'),
         data.get('severity'),
         data.get('description'),
-        data.get('recommended_action')
+        data.get('recommended_action'),
+        data.get('priority', 100),
+        data.get('cooldown_minutes', 0),
     )
     return jsonify({'status': 'created', 'rule_id': rid}), 201
 
@@ -96,11 +177,7 @@ def rule_detail(rule_id):
         r = models.get_rule(rule_id)
         if not r:
             return jsonify({'error': 'not found'}), 404
-        rule = dict(id=r[0], name=r[1], event_id=r[2], source=r[3], message_regex=r[4],
-                   remediation_script=r[5], auto_remediate=bool(r[6]), category=r[7],
-                   severity=r[8], description=r[9], recommended_action=r[10],
-                   script_type=r[11] if len(r) > 11 else 'file')
-        return jsonify(rule)
+        return jsonify(_rule_to_dict(r))
 
     if request.method == 'PUT':
         data = request.get_json(force=True)
@@ -113,36 +190,19 @@ def rule_detail(rule_id):
             data.get('remediation_script'),
             data.get('script_type'),
             data.get('auto_remediate'),
+            data.get('stop_processing'),
             data.get('category'),
             data.get('severity'),
             data.get('description'),
-            data.get('recommended_action')
+            data.get('recommended_action'),
+            data.get('priority'),
+            data.get('cooldown_minutes'),
         )
         return jsonify({'status': 'updated' if ok else 'nochange'})
 
     if request.method == 'DELETE':
         models.delete_rule(rule_id)
         return jsonify({'status': 'deleted'})
-
-
-@app.route('/api/events/ensure', methods=['POST'])
-def ensure_event():
-    """Find or create a DB event row without triggering auto-remediation.
-    Used by the UI to get a real event_row_id before running/requesting remediation."""
-    data = request.get_json(force=True)
-    event_row_id = models.find_or_create_event(
-        data.get('event_id'),
-        data.get('log_name'),
-        data.get('source'),
-        data.get('message'),
-        data.get('timestamp'),
-        data.get('category'),
-        data.get('severity'),
-        data.get('description'),
-        data.get('recommended_action'),
-        data.get('level')
-    )
-    return jsonify({'event_row_id': event_row_id})
 
 
 @app.route('/api/rules/<int:rule_id>/run', methods=['POST'])
@@ -157,53 +217,46 @@ def run_rule(rule_id):
 
 @app.route('/api/rules/<int:rule_id>/test', methods=['POST'])
 def test_rule(rule_id):
-    """Create a synthetic test event and run the rule against it.
-    Allows verifying inline scripts without waiting for a real event."""
+    """Create a synthetic test event and run the rule against it."""
     rule = models.get_rule(rule_id)
     if not rule:
         return jsonify({'error': 'rule not found'}), 404
-    # Insert a synthetic test event into the DB
     event_row_id = models.add_event(
         event_id=rule[2] or 0,
         log_name='TestRun',
         source=rule[3] or 'TestSource',
         message=f'[Test Run] Manual test of rule: {rule[1]}',
-        level='Test'
+        level='Test',
     )
     result = models.run_remediation(event_row_id, rule_id)
     return jsonify({
         'status': result.get('status'),
         'output': result.get('output'),
-        'event_row_id': event_row_id
+        'event_row_id': event_row_id,
     })
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  History
+# ─────────────────────────────────────────────────────────────────────────────
 
 @app.route('/api/history', methods=['GET'])
 def history():
     rows = models.get_history(limit=500)
     hist = []
     for h in rows:
-        hist.append(dict(id=h[0], event_row_id=h[1], rule_id=h[2], status=h[3], output=h[4], timestamp=h[5], event_id=h[6], event_source=h[7], rule_name=h[8], event_timestamp=h[9]))
+        hist.append(dict(
+            id=h[0], event_row_id=h[1], rule_id=h[2],
+            status=h[3], output=h[4], timestamp=h[5],
+            event_id=h[6], event_source=h[7],
+            rule_name=h[8], event_timestamp=h[9],
+        ))
     return jsonify(hist)
 
 
-@app.route('/api/events/<int:event_id>/matches', methods=['GET'])
-def event_matches(event_id):
-    ev = models.get_event(event_id)
-    if not ev:
-        return jsonify({'error': 'event not found'}), 404
-    event_dict = {'event_id': ev[1], 'log_name': ev[2], 'source': ev[3], 'message': ev[4],
-                  'timestamp': ev[5], 'category': ev[6], 'severity': ev[7],
-                  'description': ev[8], 'recommended_action': ev[9]}
-    matched = models.match_rules_for_event(event_dict)
-    matched_info = []
-    for r in matched:
-        matched_info.append(dict(id=r[0], name=r[1], event_id=r[2], source=r[3],
-                                message_regex=r[4], remediation_script=r[5], auto_remediate=bool(r[6]),
-                                category=r[7], severity=r[8], description=r[9],
-                                recommended_action=r[10]))
-    return jsonify(matched_info)
-
+# ─────────────────────────────────────────────────────────────────────────────
+#  Approvals / Requests
+# ─────────────────────────────────────────────────────────────────────────────
 
 @app.route('/api/requests', methods=['GET', 'POST'])
 def requests_list():
@@ -212,13 +265,21 @@ def requests_list():
         rows = models.get_requests(status)
         reqs = []
         for r in rows:
-            reqs.append(dict(id=r[0], event_row_id=r[1], rule_id=r[2], status=r[3], requested_by=r[4], requested_at=r[5], processed_by=r[6], processed_at=r[7], decision_note=r[8], event_id=r[9], event_source=r[10], rule_name=r[11]))
+            reqs.append(dict(
+                id=r[0], event_row_id=r[1], rule_id=r[2], status=r[3],
+                requested_by=r[4], requested_at=r[5], processed_by=r[6],
+                processed_at=r[7], decision_note=r[8],
+                event_id=r[9], event_source=r[10], rule_name=r[11],
+            ))
         return jsonify(reqs)
 
     data = request.get_json(force=True)
     if not data.get('event_row_id') or not data.get('rule_id'):
         return jsonify({'error': 'event_row_id and rule_id required'}), 400
-    rid = models.create_remediation_request(data.get('event_row_id'), data.get('rule_id'), data.get('requested_by', 'web-ui'))
+    rid = models.create_remediation_request(
+        data.get('event_row_id'), data.get('rule_id'),
+        data.get('requested_by', 'web-ui'),
+    )
     return jsonify({'status': 'requested', 'request_id': rid}), 201
 
 
@@ -247,11 +308,22 @@ def deny_request(req_id):
     return jsonify({'status': 'denied'})
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Event definitions & filtered events (CSV)
+# ─────────────────────────────────────────────────────────────────────────────
+
 @app.route('/api/event-definitions', methods=['GET'])
 def event_definitions():
-    """Get all event definitions from the JSON file."""
-    definitions = models.get_all_event_definitions()
-    return jsonify(definitions)
+    return jsonify(models.get_all_event_definitions())
+
+
+@app.route('/api/event-definitions/<int:event_id>', methods=['GET'])
+def event_definition_detail(event_id):
+    source = request.args.get('source')
+    defn = models.get_event_definition(event_id, source)
+    if not defn:
+        return jsonify({'error': 'event definition not found'}), 404
+    return jsonify(defn)
 
 
 @app.route('/api/filtered-events', methods=['GET'])
@@ -272,22 +344,10 @@ def last_processed():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/event-definitions/<int:event_id>', methods=['GET'])
-def event_definition_detail(event_id):
-    """Get a specific event definition by event_id."""
-    source = request.args.get('source')
-    defn = models.get_event_definition(event_id, source)
-    if not defn:
-        return jsonify({'error': 'event definition not found'}), 404
-    return jsonify(defn)
-
-
 @app.route('/api/populate-rules', methods=['POST'])
 def populate_rules():
-    """Populate rules from the JSON event definitions file."""
     data = request.get_json(force=True) if request.is_json else {}
     overwrite = data.get('overwrite', False)
-
     try:
         count = models.populate_rules_from_json(overwrite=overwrite)
         return jsonify({'status': 'success', 'rules_created': count})
@@ -295,10 +355,29 @@ def populate_rules():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Alert Intelligence summary
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/api/intelligence/summary', methods=['GET'])
+def intelligence_summary():
+    """
+    Returns aggregated Alert Intelligence metrics for the Dashboard card.
+    """
+    try:
+        summary = models.get_intelligence_summary()
+        return jsonify(summary)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Server entry point
+# ─────────────────────────────────────────────────────────────────────────────
+
 if __name__ == '__main__':
-    # Get configuration from environment variables with defaults
-    host = os.getenv('FLASK_HOST', '0.0.0.0')
-    port = int(os.getenv('FLASK_PORT', '5000'))
+    host  = os.getenv('FLASK_HOST', '0.0.0.0')
+    port  = int(os.getenv('FLASK_PORT', '5000'))
     debug = os.getenv('FLASK_DEBUG', 'True').lower() in ('true', '1', 'yes')
 
     print(f"Starting Flask server on {host}:{port}")

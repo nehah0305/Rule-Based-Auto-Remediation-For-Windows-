@@ -42,6 +42,7 @@ def init_db():
         remediation_script TEXT,
         script_type TEXT DEFAULT 'file',
         auto_remediate INTEGER DEFAULT 0,
+        stop_processing INTEGER DEFAULT 0,
         category TEXT,
         severity TEXT,
         description TEXT,
@@ -92,11 +93,16 @@ def migrate_db(conn):
 
     # Add missing columns to events table
     new_event_columns = [
-        ('category', 'TEXT'),
-        ('severity', 'TEXT'),
-        ('description', 'TEXT'),
-        ('recommended_action', 'TEXT'),
-        ('level', 'TEXT')
+        ('category',         'TEXT'),
+        ('severity',         'TEXT'),
+        ('description',      'TEXT'),
+        ('recommended_action','TEXT'),
+        ('level',            'TEXT'),
+        # --- Alert Intelligence columns ---
+        ('dedup_count',      'INTEGER DEFAULT 1'),   # collapsed duplicate count
+        ('last_seen',        'TEXT'),                # last occurrence timestamp
+        ('confidence_score', 'REAL DEFAULT 0.0'),    # 0-100 urgency score
+        ('correlation_id',   'TEXT'),                # groups related events
     ]
 
     for col_name, col_type in new_event_columns:
@@ -104,8 +110,8 @@ def migrate_db(conn):
             try:
                 c.execute(f'ALTER TABLE events ADD COLUMN {col_name} {col_type}')
                 print(f'Added column {col_name} to events table')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
+            except Exception:
+                pass
 
     # Get existing columns in rules table
     c.execute("PRAGMA table_info(rules)")
@@ -113,11 +119,15 @@ def migrate_db(conn):
 
     # Add missing columns to rules table
     new_rule_columns = [
-        ('category', 'TEXT'),
-        ('severity', 'TEXT'),
-        ('description', 'TEXT'),
-        ('recommended_action', 'TEXT'),
-        ('script_type', "TEXT DEFAULT 'file'")
+        ('category',          'TEXT'),
+        ('severity',          'TEXT'),
+        ('description',       'TEXT'),
+        ('recommended_action','TEXT'),
+        ("script_type",       "TEXT DEFAULT 'file'"),
+        # --- Rule Matching Engine columns ---
+        ('priority',          'INTEGER DEFAULT 100'), # lower = higher priority
+        ('cooldown_minutes',  'INTEGER DEFAULT 0'),   # suppress re-run within N min
+        ('stop_processing',   'INTEGER DEFAULT 0'),   # skip lower priority matching rules
     ]
 
     for col_name, col_type in new_rule_columns:
@@ -125,8 +135,8 @@ def migrate_db(conn):
             try:
                 c.execute(f'ALTER TABLE rules ADD COLUMN {col_name} {col_type}')
                 print(f'Added column {col_name} to rules table')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
+            except Exception:
+                pass
 
     conn.commit()
 

@@ -3309,3 +3309,12 @@ Disk type: 0x0",2026-03-02T19:29:02,,,,,Error
 0,,TestSource,Simulated event for demo,2026-03-07T12:23:23.157764,,,,,Error,
 ,TestSource,Simulated event for demo,2026-03-07T12:23:23.157764,,,,,Error,,
 TestSource,Simulated event for demo,2026-03-07T12:23:23.157764,,,,,Error,,,
+88881,System,EngineTestSrc,Service MyWebApp entered running state via SCM,2026-03-11T20:26:12.671762,,,,,,,10.0,730ace2c0b6f
+QA1,System,QA_Src,QA test message alpha,2026-03-11T20:36:47.3491985Z,,Warning,,,,,20.0,7983457bcce9
+QA_H,System,QA_Conf,Crash,2026-03-11T20:36:53.8048517Z,,Critical,,,,,40.0,fdb930ec793e
+QA_L,System,QA_Conf,Info startup,2026-03-11T20:36:53.8048517Z,,Information,,,,,8.0,fdb930ec793e
+QAMATCH,Application,QASrc,Error 503: Service temporarily unavailable due to overload,2026-03-11T20:36:59.9233334Z,,Error,,,,,32.0,5066ac6170fc
+QAPRI,System,QAPriSrc,priority test,2026-03-11T20:37:07.146042,,,,,,,10.0,8bcc2908f2da
+QASTRIC,System,QAStr,wrong sev,2026-03-11T20:37:09.742383,,Warning,,,,,20.0,3b8421822053
+QAPRI2,System,QAPri2,priority test,2026-03-11T20:39:07.434337,,,,,,,10.0,4b6fca4c7a59
+QARG,Application,QARgSrc,Error 404: Page not found in server,2026-03-11T20:39:59.1293488Z,,Error,,,,,32.0,43cd1122eefb

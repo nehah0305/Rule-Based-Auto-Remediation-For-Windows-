@@ -198,6 +198,77 @@
               </div>
             </div>
           </div>
+
+          <!-- Intelligence Summary Card -->
+          <div class="row mb-4">
+            <div class="col-12">
+              <div class="card card-modern" style="border-left: 4px solid #9d4edd;">
+                <div class="card-header border-0 d-flex justify-content-between align-items-center"
+                     style="background:linear-gradient(135deg,rgba(157,78,221,0.2),rgba(100,50,180,0.1));">
+                  <h5 class="mb-0 text-white">
+                    <i class="fas fa-brain me-2" style="color:#c77dff"></i>Alert Intelligence Summary
+                  </h5>
+                  <small class="text-muted">Auto-updated every 5s</small>
+                </div>
+                <div class="card-body">
+                  <div class="row g-3 text-center">
+                    <div class="col-6 col-md-3">
+                      <div class="p-3" style="background:rgba(157,78,221,0.1);border-radius:12px;border:1px solid rgba(157,78,221,0.3);">
+                        <div class="fw-bold" style="font-size:1.8rem;color:#c77dff" id="intel-total-events">—</div>
+                        <div class="text-muted small">Total Unique Events</div>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <div class="p-3" style="background:rgba(0,212,255,0.1);border-radius:12px;border:1px solid rgba(0,212,255,0.3);">
+                        <div class="fw-bold" style="font-size:1.8rem;color:#00d4ff" id="intel-suppressed">—</div>
+                        <div class="text-muted small">Duplicate Occurrences Collapsed</div>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <div class="p-3" style="background:rgba(255,170,0,0.1);border-radius:12px;border:1px solid rgba(255,170,0,0.3);">
+                        <div class="fw-bold" style="font-size:1.8rem;color:#ffaa00" id="intel-avg-confidence">—</div>
+                        <div class="text-muted small">Avg Confidence Score</div>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <div class="p-3" style="background:rgba(74,158,255,0.1);border-radius:12px;border:1px solid rgba(74,158,255,0.3);">
+                        <div class="fw-bold" style="font-size:1.8rem;color:#4a9eff" id="intel-cooldown-rules">—</div>
+                        <div class="text-muted small">Rules with Cooldown</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recent Activity -->
+          <div class="row">
+            <div class="col-md-6">
+              <div class="card card-modern">
+                <div class="card-header bg-gradient-info border-0">
+                  <h5 class="mb-0 text-white"><i class="fas fa-clock me-2"></i>Recent Events</h5>
+                </div>
+                <div class="card-body p-0">
+                  <div class="list-group list-group-flush" id="recent-events-list">
+                    <div class="list-group-item text-center text-muted">Loading...</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="card card-modern">
+                <div class="card-header bg-gradient-secondary border-0">
+                  <h5 class="mb-0 text-white"><i class="fas fa-tasks me-2"></i>Recent Remediations</h5>
+                </div>
+                <div class="card-body p-0">
+                  <div class="list-group list-group-flush" id="recent-remediations-list">
+                    <div class="list-group-item text-center text-muted">Loading...</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Filtered Warnings & Errors -->
@@ -217,15 +288,18 @@
                 <table class="table table-hover mb-0" id="filtered-events-table">
                   <thead class="table-light">
                     <tr>
-                      <th style="width:7%">Level</th>
-                      <th style="width:8%">Event ID</th>
-                      <th style="width:13%">Source</th>
-                      <th style="width:8%">Severity</th>
-                      <th style="width:24%">Message / Description</th>
-                      <th style="width:10%">Timestamp</th>
-                      <th style="width:10%">Remediated</th>
-                      <th style="width:9%" class="text-center">Auto-Remediate</th>
-                      <th style="width:11%" class="text-center">Actions</th>
+                      <th style="min-width:70px">Level</th>
+                      <th style="min-width:80px">Event ID</th>
+                      <th style="min-width:130px">Source</th>
+                      <th style="min-width:80px">Severity</th>
+                      <th style="min-width:200px">Message / Description</th>
+                      <th style="min-width:100px">Timestamp</th>
+                      <th style="min-width:90px">Remediated</th>
+                      <th style="min-width:90px" class="text-center">
+                        <i class="fas fa-brain me-1" style="color:#c77dff" title="Alert Intelligence"></i>Confidence
+                      </th>
+                      <th style="min-width:70px" class="text-center">Dedup</th>
+                      <th style="min-width:140px" class="text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -263,10 +337,12 @@
                     <table class="table table-hover mb-0" id="rules-table">
                       <thead class="table-light">
                         <tr>
-                          <th style="min-width:180px">Rule Name</th>
-                          <th style="min-width:160px">Criteria</th>
-                          <th style="min-width:100px">Severity</th>
-                          <th style="min-width:80px">Auto</th>
+                          <th style="min-width:160px">Rule Name</th>
+                          <th style="min-width:70px" class="text-center" title="Lower = higher priority">Priority</th>
+                          <th style="min-width:150px">Criteria</th>
+                          <th style="min-width:90px">Severity</th>
+                          <th style="min-width:65px">Auto</th>
+                          <th style="min-width:85px" class="text-center" title="Cooldown suppression window">Cooldown</th>
                           <th style="min-width:220px" class="text-center">Actions</th>
                         </tr>
                       </thead>
@@ -398,13 +474,40 @@
                   <span id="script-hint-text">Enter the full path to a .ps1 file on this machine.</span>
                 </small>
               </div>
-              <div class="col-12">
+              <div class="col-md-6">
                 <div class="form-check">
                   <input type="checkbox" class="form-check-input" id="rule-auto" />
                   <label class="form-check-label" for="rule-auto">Enable Auto-Remediation</label>
-                  <small class="d-block text-muted mt-1">When enabled, the script runs automatically on every matching
-                    event</small>
+                  <small class="d-block text-muted mt-1">When enabled, the script runs automatically on every matching event</small>
                 </div>
+              </div>
+              <div class="col-md-6">
+                <div class="form-check">
+                  <input type="checkbox" class="form-check-input" id="rule-stop_processing" />
+                  <label class="form-check-label text-warning fw-500" for="rule-stop_processing" title="Rule Short-circuiting">
+                    <i class="fas fa-hand-paper me-1"></i>Stop Processing Further Rules
+                  </label>
+                  <small class="d-block text-muted mt-1">If this rule matches, engine will skip any lower-priority rules for this event.</small>
+                </div>
+              </div>
+              <!-- Intelligence fields -->
+              <div class="col-md-6">
+                <label class="form-label fw-500">
+                  <i class="fas fa-sort-numeric-up me-1 text-primary"></i>Priority
+                  <small class="text-muted ms-1">(lower = runs first)</small>
+                </label>
+                <input type="number" class="form-control form-control-modern" id="rule-priority"
+                  min="1" max="999" value="100" placeholder="100" />
+                <small class="text-muted">When multiple rules match one event, lower priority value runs first.</small>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-500">
+                  <i class="fas fa-clock me-1 text-warning"></i>Cooldown
+                  <small class="text-muted ms-1">(minutes, 0 = off)</small>
+                </label>
+                <input type="number" class="form-control form-control-modern" id="rule-cooldown"
+                  min="0" max="1440" value="0" placeholder="0" />
+                <small class="text-muted">Suppress auto-remediation re-runs for this duration after each execution.</small>
               </div>
             </div>
           </form>
@@ -472,15 +575,25 @@
 
     function getStatusBadge(status) {
       const badges = {
-        'success': '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Success</span>',
-        'failed': '<span class="badge bg-danger"><i class="fas fa-times me-1"></i>Failed</span>',
-        'error': '<span class="badge bg-danger"><i class="fas fa-exclamation me-1"></i>Error</span>',
-        'pending': '<span class="badge bg-warning"><i class="fas fa-clock me-1"></i>Pending</span>',
-        'approved': '<span class="badge bg-success"><i class="fas fa-thumbs-up me-1"></i>Approved</span>',
-        'denied': '<span class="badge bg-secondary"><i class="fas fa-ban me-1"></i>Denied</span>',
-        'skipped': '<span class="badge bg-info"><i class="fas fa-forward me-1"></i>Skipped</span>'
+        'success':   '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Success</span>',
+        'failed':    '<span class="badge bg-danger"><i class="fas fa-times me-1"></i>Failed</span>',
+        'error':     '<span class="badge bg-danger"><i class="fas fa-exclamation me-1"></i>Error</span>',
+        'pending':   '<span class="badge bg-warning"><i class="fas fa-clock me-1"></i>Pending</span>',
+        'approved':  '<span class="badge bg-success"><i class="fas fa-thumbs-up me-1"></i>Approved</span>',
+        'denied':    '<span class="badge bg-secondary"><i class="fas fa-ban me-1"></i>Denied</span>',
+        'skipped':   '<span class="badge bg-info"><i class="fas fa-forward me-1"></i>Skipped</span>',
+        'suppressed':'<span class="badge" style="background:#9d4edd"><i class="fas fa-pause me-1"></i>Suppressed</span>',
       };
       return badges[status] || `<span class="badge bg-secondary">${status}</span>`;
+    }
+
+    // Returns a color-coded confidence badge (0-100)
+    function getConfidenceBadge(score) {
+      const s = parseFloat(score) || 0;
+      if (s >= 70) return `<span class="badge" style="background:#dc3545;font-weight:600" title="High urgency">${s}</span>`;
+      if (s >= 40) return `<span class="badge" style="background:#fd7e14;font-weight:600" title="Medium urgency">${s}</span>`;
+      if (s > 0)   return `<span class="badge" style="background:#6c757d;font-weight:600" title="Low urgency">${s}</span>`;
+      return `<span class="badge bg-secondary" title="Unscored">—</span>`;
     }
 
     function getSeverityBadge(severity) {
@@ -777,20 +890,30 @@
         const tbody = document.querySelector('#rules-table tbody');
         tbody.innerHTML = '';
         if (rules.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No rules configured. Click "Import from JSON" to load predefined rules.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No rules configured. Click "Import from JSON" to load predefined rules.</td></tr>';
           return;
         }
         for (const r of rules) {
           const tr = document.createElement('tr');
           const criteria = [];
           if (r.event_id) criteria.push(`Event: <code>${r.event_id}</code>`);
-          if (r.source) criteria.push(`Source: <code>${r.source}</code>`);
+          if (r.source)   criteria.push(`Source: <code>${r.source}</code>`);
           const title = r.description ? `title="${r.description}"` : '';
+          const priorityBadge = `<span class="badge ${r.priority <= 50 ? 'bg-danger' : r.priority <= 100 ? 'bg-primary' : 'bg-secondary'}" title="Priority">${r.priority ?? 100}</span>`;
+          const cooldownBadge = r.cooldown_minutes > 0
+            ? `<span class="badge" style="background:#fd7e14" title="Auto-run suppressed for ${r.cooldown_minutes} min after each run"><i class="fas fa-clock me-1"></i>${r.cooldown_minutes}m</span>`
+            : `<span class="badge bg-secondary">Off</span>`;
           tr.innerHTML = `
-        <td ${title}><strong>${r.name}</strong>${r.category ? `<br>${getCategoryBadge(r.category)}` : ''}</td>
+        <td ${title}>
+          <strong>${r.name}</strong>
+          ${r.category ? `<br>${getCategoryBadge(r.category)}` : ''}
+          ${r.stop_processing ? '<br><span class="badge bg-warning text-dark mt-1" title="Stops processing lower priority rules"><i class="fas fa-hand-paper me-1"></i>Terminal</span>' : ''}
+        </td>
+        <td class="text-center">${priorityBadge}</td>
         <td><small>${criteria.length > 0 ? criteria.join('<br>') : '<em>All events</em>'}</small></td>
         <td>${r.severity ? getSeverityBadge(r.severity) : '<span class="badge bg-secondary">N/A</span>'}</td>
         <td>${r.auto_remediate ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>'}</td>
+        <td class="text-center">${cooldownBadge}</td>
         <td class="text-center">
           <button class="btn btn-sm btn-outline-success" onclick="testRule(${r.id})" title="Run a test execution of this rule">
             <i class="fas fa-play me-1"></i>Test
@@ -818,6 +941,9 @@
       document.getElementById('rule-message_regex').value = r.message_regex || '';
       document.getElementById('rule-remediation_script').value = r.remediation_script || '';
       document.getElementById('rule-auto').checked = r.auto_remediate;
+      document.getElementById('rule-stop_processing').checked = r.stop_processing || false;
+      document.getElementById('rule-priority').value = r.priority ?? 100;
+      document.getElementById('rule-cooldown').value  = r.cooldown_minutes ?? 0;
       const scriptType = r.script_type || 'file';
       document.getElementById(scriptType === 'inline' ? 'script-type-inline' : 'script-type-file').checked = true;
       updateScriptTypeHint(scriptType);
@@ -828,21 +954,22 @@
     function openNewRuleModal() {
       document.getElementById('rule-form').reset();
       document.getElementById('rule-id').value = '';
+      document.getElementById('rule-priority').value = 100;
+      document.getElementById('rule-cooldown').value  = 0;
       updateScriptTypeHint('file');
       document.getElementById('ruleModalTitle').innerHTML = '<i class="fas fa-plus-circle me-2"></i>Create Rule';
       new bootstrap.Modal(document.getElementById('ruleModal')).show();
     }
 
-    // Script type toggle hint
     function updateScriptTypeHint(type) {
       const textarea = document.getElementById('rule-remediation_script');
       const hintText = document.getElementById('script-hint-text');
       if (type === 'inline') {
-        textarea.placeholder = 'Write-Output "Remediation complete"\nRestart-Service -Name "MyService"';
-        hintText.textContent = 'Enter PowerShell commands directly. They will be saved and executed in a temporary script file.';
+        textarea.placeholder = 'Write-Output "Remediation complete for $env:RM_EVENT_ID"\nRestart-Service -Name "MyService"';
+        hintText.innerHTML = 'Enter PowerShell commands directly. <br><span class="text-primary mt-1 d-inline-block"><i class="fas fa-magic me-1"></i>Available variables: <code>$env:RM_EVENT_ID</code>, <code>$env:RM_SOURCE</code>, <code>$env:RM_MESSAGE</code>, <code>$env:RM_SEVERITY</code>, plus any regex captures like <code>$env:RM_MATCH_GroupName</code></span>';
       } else {
         textarea.placeholder = 'C:\\scripts\\fix.ps1';
-        hintText.textContent = 'Enter the full path to a .ps1 file on this machine.';
+        hintText.innerHTML = 'Enter the full path to a .ps1 file on this machine. <br><span class="text-primary mt-1 d-inline-block"><i class="fas fa-magic me-1"></i>Event is passed via environment variables (e.g. <code>$env:RM_EVENT_ID</code>).</span>';
       }
     }
 
@@ -868,7 +995,10 @@
           message_regex: document.getElementById('rule-message_regex').value || null,
           remediation_script: document.getElementById('rule-remediation_script').value || null,
           script_type: selectedType,
-          auto_remediate: document.getElementById('rule-auto').checked
+          auto_remediate: document.getElementById('rule-auto').checked,
+          stop_processing: document.getElementById('rule-stop_processing').checked,
+          priority: parseInt(document.getElementById('rule-priority').value) || 100,
+          cooldown_minutes: parseInt(document.getElementById('rule-cooldown').value) || 0,
         };
         const ruleId = document.getElementById('rule-id').value;
         if (ruleId) {
@@ -952,23 +1082,34 @@
           api('/api/history')
         ]);
 
-        // Update statistics - now showing errors/warnings only
+        // Update statistics
         document.getElementById('stat-total-events').textContent = filteredEvents.length;
         document.getElementById('stat-total-rules').textContent = rules.length;
         document.getElementById('stat-pending-approvals').textContent = requests.filter(r => r.status === 'pending').length;
         document.getElementById('stat-total-remediations').textContent = history.length;
 
-        // Update charts with errors/warnings data
+        // Update charts
         updateSeverityChart(filteredEvents);
         updateCategoryChart(filteredEvents);
-
-        // Update recent events with errors/warnings
         updateRecentEvents(filteredEvents.slice(0, 5));
-
-        // Update recent remediations (history is already DESC from API, slice first 5)
         updateRecentRemediations(history.slice(0, 5));
+
+        // Load intelligence summary
+        loadIntelligenceSummary();
       } catch (e) {
         console.error('Failed to load dashboard:', e);
+      }
+    }
+
+    async function loadIntelligenceSummary() {
+      try {
+        const s = await api('/api/intelligence/summary');
+        document.getElementById('intel-total-events').textContent    = s.total_events ?? '—';
+        document.getElementById('intel-suppressed').textContent       = s.total_suppressed ?? '—';
+        document.getElementById('intel-avg-confidence').textContent   = s.avg_confidence ? s.avg_confidence + '/100' : '—';
+        document.getElementById('intel-cooldown-rules').textContent   = s.rules_with_cooldown ?? '—';
+      } catch (e) {
+        console.error('Intelligence summary failed:', e);
       }
     }
 
@@ -1268,10 +1409,12 @@
 
     async function loadFilteredEvents() {
       try {
-        const rows = await api('/api/filtered-events');
+        // Use DB events endpoint so we have confidence_score + dedup_count
+        const rows = await api('/api/events');
         displayFilteredEvents(rows);
         const el = document.getElementById('filtered-last-updated');
-        if (el) el.textContent = rows && rows.length > 0 ? `Last: ${new Date(rows[0].timestamp).toLocaleString()}` : '';
+        if (el && rows && rows.length > 0)
+          el.textContent = `Last: ${new Date(rows[0].timestamp).toLocaleString()}`;
       } catch (e) {
         console.error('Failed to load filtered events:', e);
       }
@@ -1282,44 +1425,40 @@
       if (!tbody) return;
       tbody.innerHTML = '';
       if (!rows || rows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">No warnings or errors yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">No events yet.</td></tr>';
         return;
       }
       for (const r of rows) {
         const tr = document.createElement('tr');
         const msg = (r.description || r.message || '').replace(/</g, '&lt;').substring(0, 200);
+        const dedup = parseInt(r.dedup_count) || 1;
+        const dedupBadge = dedup > 1
+          ? `<span class="badge" style="background:#6610f2" title="Last seen: ${r.last_seen || ''}">×${dedup}</span>`
+          : `<span class="badge bg-secondary">1</span>`;
+        const confBadge = getConfidenceBadge(r.confidence_score);
 
-        // Determine if auto-remediate candidate based on category/severity
-        const autoRemediateCandidate = r.category && r.severity &&
-          (r.severity.toLowerCase() === 'high' || r.severity.toLowerCase() === 'critical');
-
-        // Format remediated timestamp
         let remediatedDisplay = '<span class="badge bg-secondary">Not Remediated</span>';
         if (r.remediated_at) {
-          const remediatedDate = new Date(r.remediated_at);
-          remediatedDisplay = `<small class="text-success"><i class="fas fa-check-circle me-1"></i>${remediatedDate.toLocaleString()}</small>`;
+          remediatedDisplay = `<small class="text-success"><i class="fas fa-check-circle me-1"></i>${new Date(r.remediated_at).toLocaleString()}</small>`;
         }
 
         tr.innerHTML = `
       <td>${getLevelBadge(r.level)}</td>
       <td><code>${r.event_id}</code></td>
-      <td>${r.source}</td>
+      <td>${r.source || ''}</td>
       <td>${getSeverityBadge(r.severity)}</td>
       <td class="small" title="${(r.message || '').replace(/"/g, '&quot;')}">${msg}</td>
       <td><small class="text-muted">${r.timestamp ? new Date(r.timestamp).toLocaleString() : ''}</small></td>
       <td>${remediatedDisplay}</td>
-      <td class="text-center">
-        ${autoRemediateCandidate ?
-            '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Yes</span>' :
-            '<span class="badge bg-secondary">No</span>'}
-      </td>
+      <td class="text-center">${confBadge}</td>
+      <td class="text-center">${dedupBadge}</td>
       <td class="text-center">
         <div class="d-flex gap-1 justify-content-center flex-wrap">
-          <button class="btn btn-sm btn-outline-info" onclick='showMatches(${JSON.stringify(r)})' title="View matching rules for this event">
+          <button class="btn btn-sm btn-outline-info" onclick='showMatches(${r.id || JSON.stringify(r)})' title="View matching rules">
             <i class="fas fa-link me-1"></i>Matches
           </button>
-          <button class="btn btn-sm btn-outline-primary" onclick='createRuleFromEvent(${JSON.stringify(r)})' title="Create a new rule from this event">
-            <i class="fas fa-plus me-1"></i>Create Rule
+          <button class="btn btn-sm btn-outline-primary" onclick='createRuleFromEvent(${JSON.stringify(r)})' title="Create a new rule">
+            <i class="fas fa-plus me-1"></i>Rule
           </button>
         </div>
       </td>
