@@ -427,6 +427,16 @@ body::before {
   border-color: rgba(255, 193, 7, 0.45);
 }
 
+.timeline-item.warning {
+  border-color: rgba(253, 126, 20, 0.6);
+  background: rgba(253, 126, 20, 0.08);
+}
+
+.timeline-item.failed {
+  border-color: rgba(220, 53, 69, 0.6);
+  background: rgba(220, 53, 69, 0.1);
+}
+
 .timeline-dot {
   width: 10px;
   height: 10px;
@@ -444,6 +454,16 @@ body::before {
 .timeline-item.simulated .timeline-dot {
   background: #ffc107;
   box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.2);
+}
+
+.timeline-item.warning .timeline-dot {
+  background: #fd7e14;
+  box-shadow: 0 0 0 3px rgba(253, 126, 20, 0.22);
+}
+
+.timeline-item.failed .timeline-dot {
+  background: #dc3545;
+  box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.22);
 }
 
 .timeline-title {
@@ -467,6 +487,37 @@ body::before {
   color: #b6ffc7;
   font-size: 0.85rem;
   line-height: 1.5;
+}
+
+.sim-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.sim-metric-card {
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  padding: 0.55rem 0.6rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sim-metric-label {
+  font-size: 0.72rem;
+  color: #9fb3cb;
+}
+
+.sim-metric-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #e0e7ff;
+}
+
+.sim-playback-controls {
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  padding: 0.65rem 0.7rem;
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .windows-sim-surface {
@@ -579,6 +630,12 @@ body::before {
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 768px) {
+  .sim-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

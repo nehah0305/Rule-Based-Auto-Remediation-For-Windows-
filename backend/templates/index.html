@@ -451,6 +451,24 @@
                     <label class="form-label fw-500" for="simulation-count">Simulated Events</label>
                     <input type="number" id="simulation-count" class="form-control form-control-modern" min="1" max="5" value="1" />
                   </div>
+                  <div>
+                    <label class="form-label fw-500" for="simulation-profile">Incident Profile</label>
+                    <select id="simulation-profile" class="form-select form-control-modern">
+                      <option value="stable">Stable (quick recovery)</option>
+                      <option value="degraded" selected>Degraded (intermittent crashes)</option>
+                      <option value="critical">Critical (persistent crash loop)</option>
+                    </select>
+                  </div>
+                  <div class="d-flex flex-column gap-2">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="simulation-retry" checked />
+                      <label class="form-check-label" for="simulation-retry">Enable auto-retry on failed recovery</label>
+                    </div>
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="simulation-verify" checked />
+                      <label class="form-check-label" for="simulation-verify">Verify recovery after each attempt</label>
+                    </div>
+                  </div>
                   <div class="small">
                     <div class="mb-1"><strong>Script:</strong> <code>remediation_scripts/Error1000_ApplicationCrash.ps1</code></div>
                     <div><strong>Fix Command:</strong> <code id="sim-fix-command">sfc /scannow</code></div>
@@ -458,6 +476,18 @@
                   <button class="btn btn-primary btn-modern" id="sim-run-btn" onclick="runError1000Simulation()">
                     <i class="fas fa-play me-1"></i>Run Simulation
                   </button>
+                  <div class="sim-playback-controls">
+                    <div class="form-check mb-2">
+                      <input class="form-check-input" type="checkbox" id="simulation-live-playback" checked />
+                      <label class="form-check-label" for="simulation-live-playback">Live step-by-step playback</label>
+                    </div>
+                    <label class="form-label fw-500 mb-1" for="simulation-playback-speed">Playback Speed</label>
+                    <select id="simulation-playback-speed" class="form-select form-control-modern form-select-sm">
+                      <option value="1.35">Fast</option>
+                      <option value="1" selected>Normal</option>
+                      <option value="0.7">Detailed</option>
+                    </select>
+                  </div>
                   <div class="alert alert-info mb-0 small" id="sim-status-box">
                     <i class="fas fa-info-circle me-2"></i>
                     Waiting to run simulation.
@@ -519,6 +549,24 @@
                   <span class="badge bg-dark" id="sim-summary-badge">No run yet</span>
                 </div>
                 <div class="card-body">
+                  <div class="sim-metrics-grid mb-3" id="sim-metrics-grid">
+                    <div class="sim-metric-card">
+                      <div class="sim-metric-label">Resolved Incidents</div>
+                      <div class="sim-metric-value" id="sim-metric-resolved">0</div>
+                    </div>
+                    <div class="sim-metric-card">
+                      <div class="sim-metric-label">Escalated Incidents</div>
+                      <div class="sim-metric-value" id="sim-metric-escalated">0</div>
+                    </div>
+                    <div class="sim-metric-card">
+                      <div class="sim-metric-label">Retries</div>
+                      <div class="sim-metric-value" id="sim-metric-retries">0</div>
+                    </div>
+                    <div class="sim-metric-card">
+                      <div class="sim-metric-label">Mean Recovery (s)</div>
+                      <div class="sim-metric-value" id="sim-metric-mttr">0</div>
+                    </div>
+                  </div>
                   <div class="simulation-timeline" id="sim-timeline">
                     <div class="text-muted">Run the simulation to see step-by-step flow.</div>
                   </div>
@@ -1475,6 +1523,65 @@
       return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    function classifyTimelineClass(status) {
+      if (status === 'completed' || status === 'success') return 'completed';
+      if (status === 'warning' || status === 'suppressed') return 'warning';
+      if (status === 'failed' || status === 'error') return 'failed';
+      return 'simulated';
+    }
+
+    function renderTimelineSteps(steps, uptoIndex = null) {
+      const timeline = document.getElementById('sim-timeline');
+      if (!timeline) return;
+      const list = (steps || []).filter((_, idx) => uptoIndex === null || idx <= uptoIndex);
+      const html = list.map(step => {
+        const cls = classifyTimelineClass(step.status);
+        return `
+          <div class="timeline-item ${cls}">
+            <div class="timeline-dot"></div>
+            <div class="timeline-content">
+              <div class="timeline-title">${step.title}</div>
+              <div class="timeline-detail">${step.detail}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      timeline.innerHTML = html || '<div class="text-muted">No timeline details provided.</div>';
+    }
+
+    async function playbackTimeline(steps, speedMultiplier, statusBox, simContext) {
+      const baseDelay = Math.max(180, Math.round(420 / Math.max(0.25, speedMultiplier || 1)));
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        renderTimelineSteps(steps, i);
+
+        if (statusBox) {
+          const icon = classifyTimelineClass(step.status) === 'failed' ? 'fa-exclamation-circle' : 'fa-radar';
+          statusBox.className = 'alert alert-warning mb-0 small';
+          statusBox.innerHTML = `<i class="fas ${icon} me-2"></i>${step.title}`;
+        }
+
+        // Keep the Windows simulator synchronized with current phase.
+        if (step.phase === 'detect' || step.phase === 'triage') {
+          setWindowsSimState('crashed', simContext);
+        }
+        if (step.phase === 'remediate' || step.phase === 'retry' || step.phase === 'verify') {
+          setWindowsSimState('remediating', simContext);
+        }
+        if (step.phase === 'close') {
+          setWindowsSimState('recovered', simContext);
+        }
+        if (step.phase === 'escalate') {
+          setWindowsSimState('failed', simContext);
+        }
+
+        let delay = baseDelay;
+        if (step.phase === 'verify') delay += 120;
+        if (step.phase === 'retry') delay += 150;
+        await sleep(delay);
+      }
+    }
+
     function setWindowsSimState(state, opts = {}) {
       const stateBadge = document.getElementById('sim-app-state-badge');
       const title = document.getElementById('sim-app-message-title');
@@ -1558,6 +1665,11 @@
       const appNameInput = document.getElementById('simulation-app-name');
       const moduleInput = document.getElementById('simulation-module');
       const exceptionInput = document.getElementById('simulation-exception');
+      const profileInput = document.getElementById('simulation-profile');
+      const retryInput = document.getElementById('simulation-retry');
+      const verifyInput = document.getElementById('simulation-verify');
+      const livePlaybackInput = document.getElementById('simulation-live-playback');
+      const playbackSpeedInput = document.getElementById('simulation-playback-speed');
       const timeline = document.getElementById('sim-timeline');
       const output = document.getElementById('sim-terminal-output');
       const summaryBadge = document.getElementById('sim-summary-badge');
@@ -1565,6 +1677,16 @@
       const appName = (appNameInput.value || 'DemoCrashApp').trim();
       const moduleName = (moduleInput.value || 'ntdll.dll').trim();
       const exceptionCode = (exceptionInput.value || '0xc0000005').trim();
+      const profile = (profileInput.value || 'degraded').trim();
+      const retryOnFailure = !!retryInput.checked;
+      const verifyRecovery = !!verifyInput.checked;
+      const livePlayback = !!(livePlaybackInput && livePlaybackInput.checked);
+      const playbackSpeed = parseFloat(playbackSpeedInput?.value || '1') || 1;
+
+      const metricResolved = document.getElementById('sim-metric-resolved');
+      const metricEscalated = document.getElementById('sim-metric-escalated');
+      const metricRetries = document.getElementById('sim-metric-retries');
+      const metricMttr = document.getElementById('sim-metric-mttr');
 
       const eventCount = Math.max(1, Math.min(5, parseInt(countInput.value || '1', 10)));
       countInput.value = eventCount;
@@ -1572,10 +1694,14 @@
       btn.disabled = true;
       btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Running...';
       statusBox.className = 'alert alert-warning mb-0 small';
-      statusBox.innerHTML = '<i class="fas fa-hourglass-half me-2"></i>Injecting crash events and triggering auto-remediation...';
+      statusBox.innerHTML = `<i class="fas fa-hourglass-half me-2"></i>Running ${profile} incident simulation with remediation pipeline...`;
       timeline.innerHTML = '<div class="text-muted">Generating timeline...</div>';
       output.textContent = 'Running simulation...';
       resultCards.innerHTML = '<div class="text-muted">Collecting event and rule results...</div>';
+      if (metricResolved) metricResolved.textContent = '0';
+      if (metricEscalated) metricEscalated.textContent = '0';
+      if (metricRetries) metricRetries.textContent = '0';
+      if (metricMttr) metricMttr.textContent = '0';
       setWindowsSimState('idle', { appName, moduleName, exceptionCode });
       await sleep(350);
       setWindowsSimState('crashed', { appName, moduleName, exceptionCode });
@@ -1590,26 +1716,21 @@
             count: eventCount,
             app_name: appName,
             module_name: moduleName,
-            exception_code: exceptionCode
+            exception_code: exceptionCode,
+            profile: profile,
+            retry_on_failure: retryOnFailure,
+            verify_recovery: verifyRecovery
           })
         });
 
         document.getElementById('sim-fix-command').textContent = result.fix_script || 'sfc /scannow';
-
-        const timelineItems = (result.timeline || []).map(step => {
-          const cls = (step.status === 'completed' || step.status === 'success') ? 'completed' : 'simulated';
-          return `
-            <div class="timeline-item ${cls}">
-              <div class="timeline-dot"></div>
-              <div class="timeline-content">
-                <div class="timeline-title">${step.title}</div>
-                <div class="timeline-detail">${step.detail}</div>
-              </div>
-            </div>
-          `;
-        }).join('');
-
-        timeline.innerHTML = timelineItems || '<div class="text-muted">No timeline details provided.</div>';
+        const timelineSteps = result.timeline || [];
+        if (livePlayback) {
+          timeline.innerHTML = '<div class="text-muted">Streaming timeline playback...</div>';
+          await playbackTimeline(timelineSteps, playbackSpeed, statusBox, { appName, moduleName, exceptionCode });
+        } else {
+          renderTimelineSteps(timelineSteps);
+        }
         output.textContent = result.latest_output || 'No script output generated.';
 
         const events = result.events || [];
@@ -1617,8 +1738,14 @@
           resultCards.innerHTML = '<div class="text-muted">No events generated.</div>';
         } else {
           resultCards.innerHTML = events.map((ev, idx) => {
-            const remediation = (ev.remediations && ev.remediations[0]) || null;
-            const remStatus = remediation ? getStatusBadge(remediation.status || 'unknown') : '<span class="badge bg-secondary">No Auto-Run</span>';
+            const remediation = (ev.remediations && ev.remediations[ev.remediations.length - 1]) || null;
+            const remStatus = remediation
+              ? getStatusBadge(remediation.verification_passed ? 'success' : (remediation.status || 'unknown'))
+              : '<span class="badge bg-secondary">No Auto-Run</span>';
+            const attempts = (ev.remediations || []).length;
+            const resolutionText = ev.resolved
+              ? '<span class="badge bg-success">Resolved</span>'
+              : '<span class="badge bg-danger">Escalated</span>';
             return `
               <div class="p-3" style="border:1px solid var(--glass-border);border-radius:10px;background:rgba(255,255,255,0.02)">
                 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -1626,16 +1753,21 @@
                   ${remStatus}
                 </div>
                 <div class="small text-muted mb-2">${ev.message || ''}</div>
-                <div class="small">Matched Rules: ${(ev.matches || []).length}</div>
+                <div class="small">Matched Rules: ${(ev.matches || []).length} | Attempts: ${attempts} | ${resolutionText}</div>
               </div>
             `;
           }).join('');
         }
 
         const summary = result.summary || {};
-        summaryBadge.textContent = `${summary.events_created || 0} crashes | ${summary.auto_remediation_success || 0} fixed | ${summary.auto_remediation_failed || 0} failed`;
+        summaryBadge.textContent = `${summary.events_created || 0} crashes | ${summary.incident_resolved || 0} resolved | ${summary.incident_unresolved || 0} escalated`;
 
-        if ((summary.auto_remediation_failed || 0) > 0) {
+        if (metricResolved) metricResolved.textContent = `${summary.incident_resolved || 0}`;
+        if (metricEscalated) metricEscalated.textContent = `${summary.incident_unresolved || 0}`;
+        if (metricRetries) metricRetries.textContent = `${summary.retries_performed || 0}`;
+        if (metricMttr) metricMttr.textContent = `${summary.mean_time_to_recover_seconds || 0}`;
+
+        if ((summary.incident_unresolved || 0) > 0) {
           setWindowsSimState('failed', { appName, moduleName, exceptionCode });
         } else {
           setWindowsSimState('recovered', { appName, moduleName, exceptionCode });

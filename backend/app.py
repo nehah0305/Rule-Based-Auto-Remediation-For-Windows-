@@ -3,6 +3,7 @@ import subprocess
 import os
 import json
 import re
+import random
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
@@ -483,6 +484,12 @@ def simulate_error1000_auto_fix():
     app_name = (data.get('app_name') or 'DemoCrashApp').strip()
     module_name = (data.get('module_name') or 'ntdll.dll').strip()
     exception_code = (data.get('exception_code') or '0xc0000005').strip()
+    profile = (data.get('profile') or 'degraded').strip().lower()
+    if profile not in ('stable', 'degraded', 'critical'):
+        profile = 'degraded'
+
+    retry_on_failure = bool(data.get('retry_on_failure', True))
+    verify_recovery = bool(data.get('verify_recovery', True))
 
     try:
         count = int(data.get('count', 1))
@@ -535,13 +542,19 @@ def simulate_error1000_auto_fix():
         'auto_remediation_success': 0,
         'auto_remediation_failed': 0,
         'auto_remediation_suppressed': 0,
+        'retries_performed': 0,
+        'verification_failed': 0,
+        'incident_resolved': 0,
+        'incident_unresolved': 0,
+        'mean_time_to_recover_seconds': 0,
     }
+    mttr_samples = []
 
     timeline.append({
         'phase': 'prepare',
         'title': 'Prepare Simulation Environment',
         'status': 'completed',
-        'detail': f'Using rule #{demo_rule_id} and script {script_path}'
+        'detail': f'Using rule #{demo_rule_id} and script {script_path}. Profile: {profile.title()}.'
     })
 
     for idx in range(count):
@@ -586,9 +599,19 @@ def simulate_error1000_auto_fix():
             'detail': f'Event row #{event_row_id} created for {app_name}.exe crash.'
         })
 
+        severity_hint = 'High' if profile == 'critical' else ('Medium' if profile == 'degraded' else 'Low')
+        timeline.append({
+            'phase': 'triage',
+            'title': f'Triage Event {idx + 1}',
+            'status': 'completed',
+            'detail': f'Crash signature {exception_code} in {module_name}; triage severity: {severity_hint}.'
+        })
+
         matched_tuples = models.match_rules_for_event(event_payload)
         rule_matches = []
         remediation_results = []
+        event_resolved = False
+        event_start = datetime.utcnow()
 
         for r in matched_tuples:
             cooldown_active = r[15] if len(r) > 15 else False
@@ -603,25 +626,71 @@ def simulate_error1000_auto_fix():
             totals['rules_matched'] += 1
 
             if r[6] and not cooldown_active:
-                result = models.run_remediation(event_row_id, r[0], regex_captures=regex_captures)
-                remediation_results.append({
-                    'rule_id': r[0],
-                    'rule_name': r[1],
-                    'status': result.get('status'),
-                    'output': result.get('output'),
-                })
-                totals['auto_remediations_run'] += 1
-                if result.get('status') == 'success':
-                    totals['auto_remediation_success'] += 1
-                else:
-                    totals['auto_remediation_failed'] += 1
+                max_attempts = 2 if retry_on_failure else 1
+                last_status = 'failed'
+                verification_ok = False
+                for attempt in range(1, max_attempts + 1):
+                    result = models.run_remediation(event_row_id, r[0], regex_captures=regex_captures)
+                    totals['auto_remediations_run'] += 1
 
-                timeline.append({
-                    'phase': 'remediate',
-                    'title': f'Auto-Remediate Event {idx + 1}',
-                    'status': result.get('status', 'failed'),
-                    'detail': f"Rule #{r[0]} executed with status: {result.get('status', 'unknown')}"
-                })
+                    if result.get('status') == 'success':
+                        totals['auto_remediation_success'] += 1
+                    else:
+                        totals['auto_remediation_failed'] += 1
+
+                    # Simulate post-remediation health validation realism.
+                    if verify_recovery and result.get('status') == 'success':
+                        # More unstable profiles are less likely to pass first verification.
+                        fail_chance = 0.05 if profile == 'stable' else (0.2 if profile == 'degraded' else 0.4)
+                        # Make first attempt of critical incidents especially brittle.
+                        if profile == 'critical' and attempt == 1:
+                            fail_chance = max(fail_chance, 0.55)
+                        verification_ok = random.random() > fail_chance
+                    else:
+                        verification_ok = (result.get('status') == 'success')
+
+                    remediation_results.append({
+                        'attempt': attempt,
+                        'rule_id': r[0],
+                        'rule_name': r[1],
+                        'status': result.get('status'),
+                        'verification_passed': verification_ok,
+                        'output': result.get('output'),
+                    })
+
+                    last_status = result.get('status', 'failed')
+                    timeline.append({
+                        'phase': 'remediate',
+                        'title': f'Auto-Remediate Event {idx + 1} (Attempt {attempt})',
+                        'status': last_status,
+                        'detail': f"Rule #{r[0]} execution status: {last_status}"
+                    })
+
+                    if verify_recovery:
+                        verify_status = 'completed' if verification_ok else 'warning'
+                        verify_detail = 'Health check passed: app process responsive and error burst stopped.' if verification_ok else 'Health check failed: crash signature still observed in telemetry window.'
+                        timeline.append({
+                            'phase': 'verify',
+                            'title': f'Verify Recovery Event {idx + 1} (Attempt {attempt})',
+                            'status': verify_status,
+                            'detail': verify_detail
+                        })
+
+                    if last_status == 'success' and verification_ok:
+                        event_resolved = True
+                        break
+
+                    if attempt < max_attempts:
+                        totals['retries_performed'] += 1
+                        timeline.append({
+                            'phase': 'retry',
+                            'title': f'Retry Remediation Event {idx + 1}',
+                            'status': 'warning',
+                            'detail': 'Automatic retry scheduled due to failed verification or script failure.'
+                        })
+
+                if verify_recovery and not event_resolved:
+                    totals['verification_failed'] += 1
             elif r[6] and cooldown_active:
                 models.record_remediation(
                     event_row_id,
@@ -637,12 +706,31 @@ def simulate_error1000_auto_fix():
                     'detail': f'Rule #{r[0]} suppressed due to cooldown.'
                 })
 
+        if event_resolved:
+            totals['incident_resolved'] += 1
+            mttr_samples.append((datetime.utcnow() - event_start).total_seconds())
+            timeline.append({
+                'phase': 'close',
+                'title': f'Close Incident Event {idx + 1}',
+                'status': 'completed',
+                'detail': 'Incident resolved and monitored workload stabilized.'
+            })
+        else:
+            totals['incident_unresolved'] += 1
+            timeline.append({
+                'phase': 'escalate',
+                'title': f'Escalate Incident Event {idx + 1}',
+                'status': 'failed',
+                'detail': 'Incident remains unstable after remediation attempts. Manual escalation required.'
+            })
+
         events_summary.append({
             'event_row_id': event_row_id,
             'timestamp': event_payload['timestamp'],
             'message': crash_message,
             'matches': rule_matches,
             'remediations': remediation_results,
+            'resolved': event_resolved,
         })
 
     latest_output = ''
@@ -650,6 +738,9 @@ def simulate_error1000_auto_fix():
         rems = events_summary[-1].get('remediations') or []
         if rems:
             latest_output = rems[-1].get('output') or ''
+
+    if mttr_samples:
+        totals['mean_time_to_recover_seconds'] = round(sum(mttr_samples) / len(mttr_samples), 2)
 
     return jsonify({
         'scenario': 'Crash Lab - Event ID 1000 Auto-Fix',
@@ -660,6 +751,9 @@ def simulate_error1000_auto_fix():
         'rule_id': demo_rule_id,
         'app_name': app_name,
         'count': count,
+        'profile': profile,
+        'retry_on_failure': retry_on_failure,
+        'verify_recovery': verify_recovery,
         'timeline': timeline,
         'events': events_summary,
         'latest_output': latest_output,
