@@ -1,6 +1,6 @@
 # Rule-Based Auto Remediation for Windows
 
-A lightweight, intelligent system for monitoring Windows Event Logs and automatically remediating common issues. Built with Flask (backend) and PowerShell (event collector), this system provides real-time monitoring, rule-based automation, and a modern web dashboard.
+A lightweight, intelligent system for monitoring Windows Event Logs and automatically remediating common issues. Built with Flask (backend) and PowerShell (event collector), this system provides real-time monitoring, rule-based automation, and a modern dynamic & interactive web dashboard.
 
 **🎯 Focus:** Monitors **Errors and Warnings only** (Administrative Events) - matching the "Administrative Events" view in Windows Event Viewer.
 
