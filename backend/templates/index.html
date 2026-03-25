@@ -53,6 +53,11 @@
             <i class="fas fa-history me-2"></i><span class="sidebar-text">History</span>
           </a>
         </li>
+        <li class="nav-item mb-2">
+          <a class="nav-link rounded-3" data-bs-toggle="tab" href="#simulationTab">
+            <i class="fas fa-flask me-2"></i><span class="sidebar-text">Simulation</span>
+          </a>
+        </li>
       </ul>
     </div>
   </nav>
@@ -411,6 +416,67 @@
                   </thead>
                   <tbody></tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Simulation Tab -->
+        <div class="tab-pane fade" id="simulationTab">
+          <div class="row g-4">
+            <div class="col-lg-4">
+              <div class="card card-modern h-100">
+                <div class="card-header bg-gradient-primary border-0">
+                  <h5 class="mb-0 text-white">
+                    <i class="fas fa-flask me-2"></i>Error 1000 Demo Controls
+                  </h5>
+                </div>
+                <div class="card-body d-flex flex-column gap-3">
+                  <div class="small text-muted">
+                    Demonstrates how <strong>Event ID 1000 (Application Crash)</strong> is detected, analyzed, and auto-remediated.
+                  </div>
+                  <div>
+                    <label class="form-label fw-500" for="simulation-count">Simulated Events</label>
+                    <input type="number" id="simulation-count" class="form-control form-control-modern" min="1" max="10" value="3" />
+                  </div>
+                  <div class="small">
+                    <div class="mb-1"><strong>Script:</strong> <code>remediation_scripts/Error1000_ApplicationCrash.ps1</code></div>
+                    <div><strong>Fix Command:</strong> <code id="sim-fix-command">sfc /scannow</code></div>
+                  </div>
+                  <button class="btn btn-primary btn-modern" id="sim-run-btn" onclick="runError1000Simulation()">
+                    <i class="fas fa-play me-1"></i>Run Simulation
+                  </button>
+                  <div class="alert alert-info mb-0 small" id="sim-status-box">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Waiting to run simulation.
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-lg-8">
+              <div class="card card-modern mb-4">
+                <div class="card-header bg-gradient-success border-0 d-flex justify-content-between align-items-center">
+                  <h5 class="mb-0 text-white">
+                    <i class="fas fa-project-diagram me-2"></i>Execution Timeline
+                  </h5>
+                  <span class="badge bg-dark" id="sim-summary-badge">No run yet</span>
+                </div>
+                <div class="card-body">
+                  <div class="simulation-timeline" id="sim-timeline">
+                    <div class="text-muted">Run the simulation to see step-by-step flow.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card card-modern">
+                <div class="card-header bg-gradient-secondary border-0">
+                  <h5 class="mb-0 text-white">
+                    <i class="fas fa-terminal me-2"></i>Simulated Script Output
+                  </h5>
+                </div>
+                <div class="card-body">
+                  <pre class="simulation-log" id="sim-terminal-output">No simulation output yet.</pre>
+                </div>
               </div>
             </div>
           </div>
@@ -1333,6 +1399,66 @@
       document.getElementById('filter-category').value = '';
       document.getElementById('filter-auto-remediate').value = '';
       filterEventDefinitions();
+    }
+
+    async function runError1000Simulation() {
+      const btn = document.getElementById('sim-run-btn');
+      const statusBox = document.getElementById('sim-status-box');
+      const countInput = document.getElementById('simulation-count');
+      const timeline = document.getElementById('sim-timeline');
+      const output = document.getElementById('sim-terminal-output');
+      const summaryBadge = document.getElementById('sim-summary-badge');
+
+      const eventCount = Math.max(1, Math.min(10, parseInt(countInput.value || '3', 10)));
+      countInput.value = eventCount;
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Running...';
+      statusBox.className = 'alert alert-warning mb-0 small';
+      statusBox.innerHTML = '<i class="fas fa-hourglass-half me-2"></i>Simulating detection and auto-remediation flow...';
+      timeline.innerHTML = '<div class="text-muted">Generating timeline...</div>';
+      output.textContent = 'Running simulation...';
+
+      try {
+        const result = await api('/api/simulations/error1000', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ count: eventCount })
+        });
+
+        document.getElementById('sim-fix-command').textContent = result.fix_script || 'sfc /scannow';
+
+        const timelineItems = (result.timeline || []).map(step => {
+          const cls = step.status === 'completed' ? 'completed' : 'simulated';
+          return `
+            <div class="timeline-item ${cls}">
+              <div class="timeline-dot"></div>
+              <div class="timeline-content">
+                <div class="timeline-title">${step.title}</div>
+                <div class="timeline-detail">${step.detail}</div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        timeline.innerHTML = timelineItems || '<div class="text-muted">No timeline details provided.</div>';
+        output.textContent = result.terminal_output || 'No terminal output generated.';
+
+        const summary = result.summary || {};
+        summaryBadge.textContent = `${summary.events_detected || 0} detected | ${summary.fixes_simulated || 0} simulated fixes`;
+
+        statusBox.className = 'alert alert-success mb-0 small';
+        statusBox.innerHTML = '<i class="fas fa-check-circle me-2"></i>Simulation complete. No real system changes were executed.';
+      } catch (e) {
+        statusBox.className = 'alert alert-danger mb-0 small';
+        statusBox.innerHTML = `<i class="fas fa-exclamation-circle me-2"></i>Simulation failed: ${e.message}`;
+        summaryBadge.textContent = 'Simulation failed';
+        timeline.innerHTML = '<div class="text-danger">Unable to generate simulation timeline.</div>';
+        output.textContent = 'Simulation failed.';
+      }
+
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-play me-1"></i>Run Simulation';
     }
 
     async function createRuleFromDefinition(definition) {

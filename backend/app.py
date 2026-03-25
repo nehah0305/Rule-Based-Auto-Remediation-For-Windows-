@@ -3,6 +3,7 @@ import subprocess
 import os
 import json
 import re
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 from db_init import init_db
@@ -369,6 +370,105 @@ def intelligence_summary():
         return jsonify(summary)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Simulations
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/api/simulations/error1000', methods=['POST'])
+def simulate_error1000():
+    """
+    Simulates the Event ID 1000 (Application Crash) auto-remediation flow.
+    This endpoint never executes the real fix command; it demonstrates behavior
+    for UI walkthroughs and demos.
+    """
+    data = request.get_json(silent=True) or {}
+    try:
+        count = int(data.get('count', 3))
+    except (TypeError, ValueError):
+        count = 3
+    count = max(1, min(count, 10))
+
+    now = datetime.utcnow()
+    fix_script = 'sfc /scannow'
+    description = 'Application Crash'
+
+    events = []
+    timeline = [
+        {
+            'phase': 'fetch',
+            'title': 'Fetch Recent Errors',
+            'status': 'completed',
+            'detail': f'Collected {count} recent System log events for Event ID 1000 (Level 1/2).'
+        }
+    ]
+
+    terminal_lines = [
+        'Fetching recent errors for Event ID 1000...',
+        f'Simulation mode ON: {fix_script} will not be executed on this machine.'
+    ]
+
+    for idx in range(count):
+        event_time = now - timedelta(minutes=(idx + 1) * 4)
+        message = (
+            f'Faulting application name: DemoCrashApp{idx + 1}.exe, version: 1.0.{idx + 1}.0, '
+            f'faulting module: ntdll.dll, exception code: 0xc0000005, process id: 0x{1000 + idx:04x}'
+        )
+        message_preview = message[:100] + ('...' if len(message) > 100 else '')
+
+        events.append({
+            'event_id': 1000,
+            'time_created': event_time.isoformat() + 'Z',
+            'source': 'Application Error',
+            'description': description,
+            'message': message,
+            'message_preview': message_preview,
+        })
+
+        timeline.extend([
+            {
+                'phase': 'analyze',
+                'title': f'Analyze Event {idx + 1}',
+                'status': 'completed',
+                'detail': f'Event ID 1000 at {event_time.isoformat()}Z classified as {description}.'
+            },
+            {
+                'phase': 'remediate',
+                'title': f'Apply Fix for Event {idx + 1}',
+                'status': 'simulated',
+                'detail': f'Would execute: {fix_script}'
+            }
+        ])
+
+        terminal_lines.extend([
+            f'Event ID: 1000 at {event_time.isoformat()}Z',
+            f'Message: {message_preview}',
+            f'Classified as: {description}',
+            f'Executing Fix: {fix_script} [SIMULATED]',
+            '-------------------'
+        ])
+
+    terminal_lines.append('Analysis and simulated fixes complete.')
+
+    return jsonify({
+        'scenario': 'Event ID 1000 - Application Crash',
+        'event_id': 1000,
+        'description': description,
+        'fix_script': fix_script,
+        'script_path': 'remediation_scripts/Error1000_ApplicationCrash.ps1',
+        'simulation_mode': True,
+        'generated_at': datetime.utcnow().isoformat() + 'Z',
+        'events': events,
+        'timeline': timeline,
+        'terminal_output': '\n'.join(terminal_lines),
+        'summary': {
+            'events_detected': len(events),
+            'events_analyzed': len(events),
+            'fixes_simulated': len(events),
+            'actual_fixes_executed': 0,
+        }
+    })
 
 
 # ─────────────────────────────────────────────────────────────────────────────
