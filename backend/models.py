@@ -719,6 +719,7 @@ def run_remediation(event_row_id, rule_id, timeout=60, regex_captures=None):
     env['RM_TIMESTAMP'] = str(event_data[5] or '')
     env['RM_CATEGORY'] = str(event_data[6] or '')
     env['RM_SEVERITY'] = str(event_data[7] or '')
+    env['RM_SIMULATION_MODE'] = '1' if (str(event_data[2] or '').lower() == 'simulation') else '0'
     
     if regex_captures:
         for k, v in regex_captures.items():

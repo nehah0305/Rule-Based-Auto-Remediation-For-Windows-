@@ -469,6 +469,119 @@ body::before {
   line-height: 1.5;
 }
 
+.windows-sim-surface {
+  position: relative;
+  min-height: 240px;
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  background: linear-gradient(145deg, rgba(50, 95, 160, 0.18), rgba(8, 20, 40, 0.45));
+}
+
+.windows-app-window {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  background: rgba(240, 245, 255, 0.06);
+}
+
+.windows-titlebar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.45rem 0.7rem;
+  background: linear-gradient(90deg, rgba(32, 80, 140, 0.8), rgba(20, 60, 110, 0.8));
+  font-size: 0.85rem;
+}
+
+.windows-title-left {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  color: #e8f3ff;
+}
+
+.windows-title-actions span {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-left: 0.35rem;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.windows-window-content {
+  padding: 1rem;
+  background: rgba(10, 18, 30, 0.75);
+}
+
+.sim-app-state {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  margin-bottom: 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.sim-app-state.state-ok {
+  background: rgba(25, 135, 84, 0.25);
+  color: #9ef0c1;
+  border: 1px solid rgba(25, 135, 84, 0.5);
+}
+
+.sim-app-state.state-crash {
+  background: rgba(220, 53, 69, 0.22);
+  color: #ffb3bb;
+  border: 1px solid rgba(220, 53, 69, 0.5);
+}
+
+.sim-app-state.state-fixing {
+  background: rgba(255, 193, 7, 0.22);
+  color: #ffe8a1;
+  border: 1px solid rgba(255, 193, 7, 0.45);
+}
+
+.windows-crash-dialog {
+  position: absolute;
+  right: 1.2rem;
+  bottom: 1.2rem;
+  width: min(360px, calc(100% - 2.4rem));
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(8, 14, 24, 0.95);
+  box-shadow: var(--shadow-lg);
+  animation: sim-pop 0.25s ease-out;
+}
+
+.windows-dialog-header {
+  padding: 0.55rem 0.75rem;
+  font-weight: 600;
+  background: rgba(35, 50, 70, 0.9);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.windows-dialog-body {
+  padding: 0.75rem;
+}
+
+.sim-fix-progress-wrap {
+  margin-top: 0.4rem;
+}
+
+@keyframes sim-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .btn-warning,
 .btn-warning:hover {
   background: linear-gradient(135deg, rgba(255, 170, 0, 0.3) 0%, rgba(255, 140, 0, 0.2) 100%);

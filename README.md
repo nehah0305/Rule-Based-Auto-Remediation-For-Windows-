@@ -259,6 +259,26 @@ MAX_EVENTS_PER_POLL=200
 
 ### Quick Test
 
+### Crash Lab Simulation (Event ID 1000)
+
+Use the built-in Simulation tab to demonstrate a realistic application crash workflow with automatic remediation.
+
+What it does:
+- Creates synthetic Event ID 1000 (`Application Error`) crash events.
+- Passes those events through the same rule-matching pipeline used by live monitoring.
+- Automatically executes `remediation_scripts/Error1000_ApplicationCrash.ps1` via the remediation engine.
+- Shows timeline, rule matches, and script output in the UI.
+
+Safety behavior:
+- Simulation events are tagged with `log_name=Simulation`.
+- The script detects this context and runs in simulation-safe mode (`RM_SIMULATION_MODE=1`), so the demo shows remediation behavior without applying the real `sfc /scannow` change.
+
+How to run:
+1. Start backend with `start_backend.bat`.
+2. Open `http://localhost:5000`.
+3. Go to **Simulation** tab.
+4. Enter app/module/exception details and click **Run Simulation**.
+
 ```powershell
 # Generate a test event
 Write-EventLog -LogName Application -Source "Application" -EventId 1000 -EntryType Error -Message "Test event"

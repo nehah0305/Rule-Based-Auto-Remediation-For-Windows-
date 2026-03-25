@@ -6,6 +6,7 @@
 $EVENT_ID = 1000
 $DESCRIPTION = 'Application Crash'
 $FIX_SCRIPT = 'sfc /scannow'
+$SIMULATION_MODE = ($env:RM_SIMULATION_MODE -eq '1')
 
 function Fetch-RecentErrors {
     param (
@@ -41,7 +42,13 @@ function Analyze-AndFixError {
     Write-Host "Classified as: $DESCRIPTION"
     Write-Host "Executing Fix: $FIX_SCRIPT"
 
-    Invoke-Expression $FIX_SCRIPT
+    if ($SIMULATION_MODE) {
+        Write-Host "[SIMULATION MODE] Skipping real command execution for safety."
+        Write-Host "[SIMULATION MODE] Would run: $FIX_SCRIPT"
+    }
+    else {
+        Invoke-Expression $FIX_SCRIPT
+    }
     Write-Host "-------------------"
 }
 

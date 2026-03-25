@@ -3318,3 +3318,5 @@ QAPRI,System,QAPriSrc,priority test,2026-03-11T20:37:07.146042,,,,,,,10.0,8bcc29
 QASTRIC,System,QAStr,wrong sev,2026-03-11T20:37:09.742383,,Warning,,,,,20.0,3b8421822053
 QAPRI2,System,QAPri2,priority test,2026-03-11T20:39:07.434337,,,,,,,10.0,4b6fca4c7a59
 QARG,Application,QARgSrc,Error 404: Page not found in server,2026-03-11T20:39:59.1293488Z,,Error,,,,,32.0,43cd1122eefb
+1000,Simulation,Application Error,"Faulting application name: DemoCrashApp.exe, version: 1.0.1.0, faulting module name: ntdll.dll, exception code: 0xc0000005, fault offset: 0x000004b0, process id: 0x1388",2026-03-25T16:42:32.274094,Application Crash,Medium,Simulated application crash event,Execute remediation for Event ID 1000,Error,,30.0,d3be342e2f3a
+1000,Simulation,Application Error,"Faulting application name: DemoCrashApp.exe, version: 1.0.1.0, faulting module name: ntdll.dll, exception code: 0xc0000005, fault offset: 0x000004b0, process id: 0x1388",2026-03-25T17:02:56.459945,Application Crash,Medium,Simulated application crash event,Execute remediation for Event ID 1000,Error,,30.0,b2011ca92865

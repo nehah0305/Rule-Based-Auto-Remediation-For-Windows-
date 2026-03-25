@@ -428,16 +428,28 @@
               <div class="card card-modern h-100">
                 <div class="card-header bg-gradient-primary border-0">
                   <h5 class="mb-0 text-white">
-                    <i class="fas fa-flask me-2"></i>Error 1000 Demo Controls
+                    <i class="fas fa-flask me-2"></i>Crash Lab Controls
                   </h5>
                 </div>
                 <div class="card-body d-flex flex-column gap-3">
                   <div class="small text-muted">
-                    Demonstrates how <strong>Event ID 1000 (Application Crash)</strong> is detected, analyzed, and auto-remediated.
+                    Simulates a realistic <strong>Event ID 1000 Application Crash</strong>, injects it into the remediation engine, and auto-runs the configured fix script.
+                  </div>
+                  <div>
+                    <label class="form-label fw-500" for="simulation-app-name">Application Name</label>
+                    <input type="text" id="simulation-app-name" class="form-control form-control-modern" value="DemoCrashApp" />
+                  </div>
+                  <div>
+                    <label class="form-label fw-500" for="simulation-module">Faulting Module</label>
+                    <input type="text" id="simulation-module" class="form-control form-control-modern" value="ntdll.dll" />
+                  </div>
+                  <div>
+                    <label class="form-label fw-500" for="simulation-exception">Exception Code</label>
+                    <input type="text" id="simulation-exception" class="form-control form-control-modern" value="0xc0000005" />
                   </div>
                   <div>
                     <label class="form-label fw-500" for="simulation-count">Simulated Events</label>
-                    <input type="number" id="simulation-count" class="form-control form-control-modern" min="1" max="10" value="3" />
+                    <input type="number" id="simulation-count" class="form-control form-control-modern" min="1" max="5" value="1" />
                   </div>
                   <div class="small">
                     <div class="mb-1"><strong>Script:</strong> <code>remediation_scripts/Error1000_ApplicationCrash.ps1</code></div>
@@ -455,6 +467,51 @@
             </div>
             <div class="col-lg-8">
               <div class="card card-modern mb-4">
+                <div class="card-header bg-gradient-warning border-0">
+                  <h5 class="mb-0 text-white">
+                    <i class="fab fa-windows me-2"></i>Windows Crash Simulator
+                  </h5>
+                </div>
+                <div class="card-body">
+                  <div class="windows-sim-surface">
+                    <div class="windows-app-window">
+                      <div class="windows-titlebar">
+                        <div class="windows-title-left">
+                          <i class="fas fa-window-maximize me-2"></i>
+                          <span id="sim-app-title">DemoCrashApp.exe</span>
+                        </div>
+                        <div class="windows-title-actions">
+                          <span></span><span></span><span></span>
+                        </div>
+                      </div>
+                      <div class="windows-window-content">
+                        <div class="sim-app-state" id="sim-app-state-badge">Running Normally</div>
+                        <h6 class="mb-2" id="sim-app-message-title">Application Running</h6>
+                        <p class="mb-0 text-muted" id="sim-app-message-body">The application is stable and responding.</p>
+                      </div>
+                    </div>
+
+                    <div class="windows-crash-dialog" id="windowsCrashDialog" style="display:none;">
+                      <div class="windows-dialog-header">
+                        <i class="fas fa-exclamation-triangle me-2 text-warning"></i>
+                        Application Error
+                      </div>
+                      <div class="windows-dialog-body">
+                        <p class="mb-2"><strong id="sim-crash-app-label">DemoCrashApp.exe</strong> has stopped working.</p>
+                        <p class="small text-muted mb-2" id="sim-crash-detail">Faulting module: ntdll.dll | Exception: 0xc0000005</p>
+                        <div class="sim-fix-progress-wrap">
+                          <div class="small mb-1" id="sim-fix-status">Awaiting remediation...</div>
+                          <div class="progress" style="height:8px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" id="sim-fix-progress" role="progressbar" style="width:0%"></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card card-modern mb-4">
                 <div class="card-header bg-gradient-success border-0 d-flex justify-content-between align-items-center">
                   <h5 class="mb-0 text-white">
                     <i class="fas fa-project-diagram me-2"></i>Execution Timeline
@@ -464,6 +521,19 @@
                 <div class="card-body">
                   <div class="simulation-timeline" id="sim-timeline">
                     <div class="text-muted">Run the simulation to see step-by-step flow.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card card-modern mb-4">
+                <div class="card-header bg-gradient-info border-0">
+                  <h5 class="mb-0 text-white">
+                    <i class="fas fa-list-check me-2"></i>Event + Rule Result
+                  </h5>
+                </div>
+                <div class="card-body">
+                  <div id="sim-result-cards" class="d-flex flex-column gap-2">
+                    <div class="text-muted">No simulation result yet.</div>
                   </div>
                 </div>
               </div>
@@ -1401,35 +1471,133 @@
       filterEventDefinitions();
     }
 
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function setWindowsSimState(state, opts = {}) {
+      const stateBadge = document.getElementById('sim-app-state-badge');
+      const title = document.getElementById('sim-app-message-title');
+      const body = document.getElementById('sim-app-message-body');
+      const crashDialog = document.getElementById('windowsCrashDialog');
+      const crashAppLabel = document.getElementById('sim-crash-app-label');
+      const crashDetail = document.getElementById('sim-crash-detail');
+      const fixStatus = document.getElementById('sim-fix-status');
+      const fixProgress = document.getElementById('sim-fix-progress');
+      const appTitle = document.getElementById('sim-app-title');
+
+      if (!stateBadge || !title || !body || !crashDialog || !fixStatus || !fixProgress || !appTitle) return;
+
+      const appName = opts.appName || 'DemoCrashApp';
+      const moduleName = opts.moduleName || 'ntdll.dll';
+      const exceptionCode = opts.exceptionCode || '0xc0000005';
+
+      appTitle.textContent = `${appName}.exe`;
+      crashAppLabel.textContent = `${appName}.exe`;
+      crashDetail.textContent = `Faulting module: ${moduleName} | Exception: ${exceptionCode}`;
+
+      if (state === 'idle') {
+        stateBadge.textContent = 'Running Normally';
+        stateBadge.className = 'sim-app-state state-ok';
+        title.textContent = 'Application Running';
+        body.textContent = 'The application is stable and responding.';
+        crashDialog.style.display = 'none';
+        fixStatus.textContent = 'Awaiting remediation...';
+        fixProgress.style.width = '0%';
+        return;
+      }
+
+      if (state === 'crashed') {
+        stateBadge.textContent = 'Crash Detected';
+        stateBadge.className = 'sim-app-state state-crash';
+        title.textContent = 'Unhandled Exception';
+        body.textContent = `Crash signature generated for ${appName}.exe.`;
+        crashDialog.style.display = 'block';
+        fixStatus.textContent = 'Crash captured. Matching remediation rule...';
+        fixProgress.style.width = '18%';
+        return;
+      }
+
+      if (state === 'remediating') {
+        stateBadge.textContent = 'Auto-Remediating';
+        stateBadge.className = 'sim-app-state state-fixing';
+        title.textContent = 'Recovery In Progress';
+        body.textContent = 'Executing Error1000_ApplicationCrash.ps1 via remediation engine.';
+        crashDialog.style.display = 'block';
+        fixStatus.textContent = 'Running fix script...';
+        fixProgress.style.width = '72%';
+        return;
+      }
+
+      if (state === 'recovered') {
+        stateBadge.textContent = 'Recovered';
+        stateBadge.className = 'sim-app-state state-ok';
+        title.textContent = 'Application Restored';
+        body.textContent = `${appName}.exe recovered after script execution.`;
+        crashDialog.style.display = 'block';
+        fixStatus.textContent = 'Remediation succeeded. Service restored.';
+        fixProgress.style.width = '100%';
+        return;
+      }
+
+      if (state === 'failed') {
+        stateBadge.textContent = 'Recovery Failed';
+        stateBadge.className = 'sim-app-state state-crash';
+        title.textContent = 'Manual Intervention Required';
+        body.textContent = 'Remediation script finished with errors.';
+        crashDialog.style.display = 'block';
+        fixStatus.textContent = 'Remediation failed. Review output below.';
+        fixProgress.style.width = '100%';
+      }
+    }
+
     async function runError1000Simulation() {
       const btn = document.getElementById('sim-run-btn');
       const statusBox = document.getElementById('sim-status-box');
       const countInput = document.getElementById('simulation-count');
+      const appNameInput = document.getElementById('simulation-app-name');
+      const moduleInput = document.getElementById('simulation-module');
+      const exceptionInput = document.getElementById('simulation-exception');
       const timeline = document.getElementById('sim-timeline');
       const output = document.getElementById('sim-terminal-output');
       const summaryBadge = document.getElementById('sim-summary-badge');
+      const resultCards = document.getElementById('sim-result-cards');
+      const appName = (appNameInput.value || 'DemoCrashApp').trim();
+      const moduleName = (moduleInput.value || 'ntdll.dll').trim();
+      const exceptionCode = (exceptionInput.value || '0xc0000005').trim();
 
-      const eventCount = Math.max(1, Math.min(10, parseInt(countInput.value || '3', 10)));
+      const eventCount = Math.max(1, Math.min(5, parseInt(countInput.value || '1', 10)));
       countInput.value = eventCount;
 
       btn.disabled = true;
       btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Running...';
       statusBox.className = 'alert alert-warning mb-0 small';
-      statusBox.innerHTML = '<i class="fas fa-hourglass-half me-2"></i>Simulating detection and auto-remediation flow...';
+      statusBox.innerHTML = '<i class="fas fa-hourglass-half me-2"></i>Injecting crash events and triggering auto-remediation...';
       timeline.innerHTML = '<div class="text-muted">Generating timeline...</div>';
       output.textContent = 'Running simulation...';
+      resultCards.innerHTML = '<div class="text-muted">Collecting event and rule results...</div>';
+      setWindowsSimState('idle', { appName, moduleName, exceptionCode });
+      await sleep(350);
+      setWindowsSimState('crashed', { appName, moduleName, exceptionCode });
+      await sleep(450);
+      setWindowsSimState('remediating', { appName, moduleName, exceptionCode });
 
       try {
-        const result = await api('/api/simulations/error1000', {
+        const result = await api('/api/simulations/error1000/auto-fix', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ count: eventCount })
+          body: JSON.stringify({
+            count: eventCount,
+            app_name: appName,
+            module_name: moduleName,
+            exception_code: exceptionCode
+          })
         });
 
         document.getElementById('sim-fix-command').textContent = result.fix_script || 'sfc /scannow';
 
         const timelineItems = (result.timeline || []).map(step => {
-          const cls = step.status === 'completed' ? 'completed' : 'simulated';
+          const cls = (step.status === 'completed' || step.status === 'success') ? 'completed' : 'simulated';
           return `
             <div class="timeline-item ${cls}">
               <div class="timeline-dot"></div>
@@ -1442,19 +1610,51 @@
         }).join('');
 
         timeline.innerHTML = timelineItems || '<div class="text-muted">No timeline details provided.</div>';
-        output.textContent = result.terminal_output || 'No terminal output generated.';
+        output.textContent = result.latest_output || 'No script output generated.';
+
+        const events = result.events || [];
+        if (events.length === 0) {
+          resultCards.innerHTML = '<div class="text-muted">No events generated.</div>';
+        } else {
+          resultCards.innerHTML = events.map((ev, idx) => {
+            const remediation = (ev.remediations && ev.remediations[0]) || null;
+            const remStatus = remediation ? getStatusBadge(remediation.status || 'unknown') : '<span class="badge bg-secondary">No Auto-Run</span>';
+            return `
+              <div class="p-3" style="border:1px solid var(--glass-border);border-radius:10px;background:rgba(255,255,255,0.02)">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <strong>Crash Event ${idx + 1} (Row ${ev.event_row_id})</strong>
+                  ${remStatus}
+                </div>
+                <div class="small text-muted mb-2">${ev.message || ''}</div>
+                <div class="small">Matched Rules: ${(ev.matches || []).length}</div>
+              </div>
+            `;
+          }).join('');
+        }
 
         const summary = result.summary || {};
-        summaryBadge.textContent = `${summary.events_detected || 0} detected | ${summary.fixes_simulated || 0} simulated fixes`;
+        summaryBadge.textContent = `${summary.events_created || 0} crashes | ${summary.auto_remediation_success || 0} fixed | ${summary.auto_remediation_failed || 0} failed`;
+
+        if ((summary.auto_remediation_failed || 0) > 0) {
+          setWindowsSimState('failed', { appName, moduleName, exceptionCode });
+        } else {
+          setWindowsSimState('recovered', { appName, moduleName, exceptionCode });
+        }
 
         statusBox.className = 'alert alert-success mb-0 small';
-        statusBox.innerHTML = '<i class="fas fa-check-circle me-2"></i>Simulation complete. No real system changes were executed.';
+        statusBox.innerHTML = '<i class="fas fa-check-circle me-2"></i>Crash simulation complete and auto-remediation pipeline executed.';
+
+        loadHistory();
+        loadDashboard();
+        loadFilteredEvents();
       } catch (e) {
         statusBox.className = 'alert alert-danger mb-0 small';
         statusBox.innerHTML = `<i class="fas fa-exclamation-circle me-2"></i>Simulation failed: ${e.message}`;
         summaryBadge.textContent = 'Simulation failed';
         timeline.innerHTML = '<div class="text-danger">Unable to generate simulation timeline.</div>';
         output.textContent = 'Simulation failed.';
+        resultCards.innerHTML = '<div class="text-danger">No result cards available.</div>';
+        setWindowsSimState('failed', { appName, moduleName, exceptionCode });
       }
 
       btn.disabled = false;

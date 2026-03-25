@@ -471,6 +471,202 @@ def simulate_error1000():
     })
 
 
+@app.route('/api/simulations/error1000/auto-fix', methods=['POST'])
+def simulate_error1000_auto_fix():
+    """
+    End-to-end crash simulation:
+      1) creates synthetic Event ID 1000 entries,
+      2) passes them through rule matching,
+      3) triggers auto-remediation via run_remediation.
+    """
+    data = request.get_json(silent=True) or {}
+    app_name = (data.get('app_name') or 'DemoCrashApp').strip()
+    module_name = (data.get('module_name') or 'ntdll.dll').strip()
+    exception_code = (data.get('exception_code') or '0xc0000005').strip()
+
+    try:
+        count = int(data.get('count', 1))
+    except (TypeError, ValueError):
+        count = 1
+    count = max(1, min(count, 5))
+
+    script_path = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), '..', 'remediation_scripts', 'Error1000_ApplicationCrash.ps1'
+    ))
+
+    if not os.path.exists(script_path):
+        return jsonify({'error': f'remediation script not found at {script_path}'}), 404
+
+    # Ensure a dedicated auto-remediation rule for the simulation scenario exists.
+    demo_rule = None
+    for r in models.get_rules():
+        if r[2] == 1000 and (r[3] or '').lower() == 'application error' and (r[5] or '') == script_path:
+            demo_rule = r
+            break
+
+    if not demo_rule:
+        rid = models.add_rule(
+            name='AutoFix Demo - Event ID 1000 Application Crash',
+            event_id=1000,
+            source='Application Error',
+            message_regex=None,
+            remediation_script=script_path,
+            script_type='file',
+            auto_remediate=True,
+            stop_processing=False,
+            category='Application Crash',
+            severity='Medium',
+            description='Auto-fix rule for crash simulation demos.',
+            recommended_action='Run script-based remediation for simulated crash events.',
+            priority=20,
+            cooldown_minutes=0,
+        )
+        demo_rule = models.get_rule(rid)
+
+    demo_rule_id = demo_rule[0]
+
+    now = datetime.utcnow()
+    timeline = []
+    events_summary = []
+    totals = {
+        'events_created': 0,
+        'rules_matched': 0,
+        'auto_remediations_run': 0,
+        'auto_remediation_success': 0,
+        'auto_remediation_failed': 0,
+        'auto_remediation_suppressed': 0,
+    }
+
+    timeline.append({
+        'phase': 'prepare',
+        'title': 'Prepare Simulation Environment',
+        'status': 'completed',
+        'detail': f'Using rule #{demo_rule_id} and script {script_path}'
+    })
+
+    for idx in range(count):
+        crash_time = now - timedelta(seconds=idx * 45)
+        crash_message = (
+            f'Faulting application name: {app_name}.exe, version: 1.0.{idx + 1}.0, '
+            f'faulting module name: {module_name}, exception code: {exception_code}, '
+            f'fault offset: 0x0000{(1200 + idx):04x}, process id: 0x{(5000 + idx):04x}'
+        )
+
+        event_payload = {
+            'event_id': 1000,
+            'log_name': 'Simulation',
+            'source': 'Application Error',
+            'message': crash_message,
+            'timestamp': crash_time.isoformat(),
+            'category': 'Application Crash',
+            'severity': 'Medium',
+            'description': 'Simulated application crash event',
+            'recommended_action': 'Execute remediation for Event ID 1000',
+            'level': 'Error',
+        }
+
+        event_row_id = models.add_event(
+            event_payload['event_id'],
+            event_payload['log_name'],
+            event_payload['source'],
+            event_payload['message'],
+            event_payload['timestamp'],
+            event_payload['category'],
+            event_payload['severity'],
+            event_payload['description'],
+            event_payload['recommended_action'],
+            event_payload['level'],
+        )
+        totals['events_created'] += 1
+
+        timeline.append({
+            'phase': 'detect',
+            'title': f'Detect Crash Event {idx + 1}',
+            'status': 'completed',
+            'detail': f'Event row #{event_row_id} created for {app_name}.exe crash.'
+        })
+
+        matched_tuples = models.match_rules_for_event(event_payload)
+        rule_matches = []
+        remediation_results = []
+
+        for r in matched_tuples:
+            cooldown_active = r[15] if len(r) > 15 else False
+            regex_captures = r[16] if len(r) > 16 else {}
+            rule_info = {
+                'rule_id': r[0],
+                'rule_name': r[1],
+                'auto_remediate': bool(r[6]),
+                'cooldown_active': bool(cooldown_active),
+            }
+            rule_matches.append(rule_info)
+            totals['rules_matched'] += 1
+
+            if r[6] and not cooldown_active:
+                result = models.run_remediation(event_row_id, r[0], regex_captures=regex_captures)
+                remediation_results.append({
+                    'rule_id': r[0],
+                    'rule_name': r[1],
+                    'status': result.get('status'),
+                    'output': result.get('output'),
+                })
+                totals['auto_remediations_run'] += 1
+                if result.get('status') == 'success':
+                    totals['auto_remediation_success'] += 1
+                else:
+                    totals['auto_remediation_failed'] += 1
+
+                timeline.append({
+                    'phase': 'remediate',
+                    'title': f'Auto-Remediate Event {idx + 1}',
+                    'status': result.get('status', 'failed'),
+                    'detail': f"Rule #{r[0]} executed with status: {result.get('status', 'unknown')}"
+                })
+            elif r[6] and cooldown_active:
+                models.record_remediation(
+                    event_row_id,
+                    r[0],
+                    'suppressed',
+                    'Auto-remediation suppressed - rule cooldown active'
+                )
+                totals['auto_remediation_suppressed'] += 1
+                timeline.append({
+                    'phase': 'remediate',
+                    'title': f'Auto-Remediation Suppressed for Event {idx + 1}',
+                    'status': 'suppressed',
+                    'detail': f'Rule #{r[0]} suppressed due to cooldown.'
+                })
+
+        events_summary.append({
+            'event_row_id': event_row_id,
+            'timestamp': event_payload['timestamp'],
+            'message': crash_message,
+            'matches': rule_matches,
+            'remediations': remediation_results,
+        })
+
+    latest_output = ''
+    if events_summary:
+        rems = events_summary[-1].get('remediations') or []
+        if rems:
+            latest_output = rems[-1].get('output') or ''
+
+    return jsonify({
+        'scenario': 'Crash Lab - Event ID 1000 Auto-Fix',
+        'simulation_mode': True,
+        'event_id': 1000,
+        'fix_script': 'sfc /scannow',
+        'script_path': script_path,
+        'rule_id': demo_rule_id,
+        'app_name': app_name,
+        'count': count,
+        'timeline': timeline,
+        'events': events_summary,
+        'latest_output': latest_output,
+        'summary': totals,
+    })
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  Server entry point
 # ─────────────────────────────────────────────────────────────────────────────
