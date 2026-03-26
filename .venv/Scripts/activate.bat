@@ -8,7 +8,7 @@ if defined _OLD_CODEPAGE (
     "%SystemRoot%\System32\chcp.com" 65001 > nul
 )
 
-set VIRTUAL_ENV=C:\Users\bios\Desktop\unisys-ab\Rule-Based-Auto-Remediation-For-Windows-\.venv
+set VIRTUAL_ENV=C:\Users\nehah\OneDrive\Desktop\projects\Rule-Based-Auto-Remediation-For-Windows-\.venv
 
 if not defined PROMPT set PROMPT=$P$G
 
