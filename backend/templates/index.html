@@ -2048,9 +2048,13 @@
     }
 
     async function runError1000Simulation() {
-      // Check for saved preferences or ask user
+      // Check for saved preferences
       let pref = await checkSimulationPreference('crash');
-      if (!pref) {
+      
+      // Show dialog if:
+      // 1. No preference exists yet, OR
+      // 2. Preference exists but auto_remediate is OFF (ask every time)
+      if (!pref || !pref.auto_remediate) {
         pref = await showSimulationPreferencesModal('crash');
         if (!pref) return; // User skipped
       }
@@ -2243,9 +2247,13 @@
     switchSimulation('crash');
 
     async function runLowDiskSpaceSimulation() {
-      // Check for saved preferences or ask user
+      // Check for saved preferences
       let pref = await checkSimulationPreference('diskspace');
-      if (!pref) {
+      
+      // Show dialog if:
+      // 1. No preference exists yet, OR
+      // 2. Preference exists but auto_remediate is OFF (ask every time)
+      if (!pref || !pref.auto_remediate) {
         pref = await showSimulationPreferencesModal('diskspace');
         if (!pref) return; // User skipped
       }
@@ -2403,9 +2411,13 @@
     }
 
     async function runEventLogSimulation() {
-      // Check for saved preferences or ask user
+      // Check for saved preferences
       let pref = await checkSimulationPreference('eventlog');
-      if (!pref) {
+      
+      // Show dialog if:
+      // 1. No preference exists yet, OR
+      // 2. Preference exists but auto_remediate is OFF (ask every time)
+      if (!pref || !pref.auto_remediate) {
         pref = await showSimulationPreferencesModal('eventlog');
         if (!pref) return; // User skipped
       }
@@ -2575,9 +2587,13 @@
     }
 
     async function runAuditEventsSimulation() {
-      // Check for saved preferences or ask user
+      // Check for saved preferences
       let pref = await checkSimulationPreference('auditevents');
-      if (!pref) {
+      
+      // Show dialog if:
+      // 1. No preference exists yet, OR
+      // 2. Preference exists but auto_remediate is OFF (ask every time)
+      if (!pref || !pref.auto_remediate) {
         pref = await showSimulationPreferencesModal('auditevents');
         if (!pref) return; // User skipped
       }
