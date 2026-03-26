@@ -433,14 +433,19 @@
                 </div>
                 <div class="card-body">
                   <div class="row g-2">
-                    <div class="col-md-6">
-                      <button class="btn btn-outline-primary w-100 simulation-type-btn" data-simulation="crash" onclick="switchSimulation('crash')">
-                        <i class="fas fa-bomb me-2"></i>Event 1000 - Application Crash
+                    <div class="col-md-4">
+                      <button class="btn btn-primary w-100 simulation-type-btn" data-simulation="crash" onclick="switchSimulation('crash')">
+                        <i class="fas fa-bomb me-2"></i>Event 1000 - Crash
                       </button>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                       <button class="btn btn-outline-primary w-100 simulation-type-btn" data-simulation="diskspace" onclick="switchSimulation('diskspace')">
-                        <i class="fas fa-hdd me-2"></i>Event 2013 - Low Disk Space
+                        <i class="fas fa-hdd me-2"></i>Event 2013 - Disk Space
+                      </button>
+                    </div>
+                    <div class="col-md-4">
+                      <button class="btn btn-outline-primary w-100 simulation-type-btn" data-simulation="eventlog" onclick="switchSimulation('eventlog')">
+                        <i class="fas fa-list me-2"></i>Event 1100 - Event Log
                       </button>
                     </div>
                   </div>
@@ -580,6 +585,65 @@
                   </div>
                 </div>
               </div>
+
+              <!-- Event Log Lab Controls -->
+              <div class="card card-modern h-100" id="eventlogLabCard" style="display:none;">
+                <div class="card-header bg-gradient-primary border-0">
+                  <h5 class="mb-0 text-white">
+                    <i class="fas fa-list me-2"></i>Event Log Lab Controls
+                  </h5>
+                </div>
+                <div class="card-body d-flex flex-column gap-3">
+                  <div class="small text-muted">
+                    Simulates a realistic <strong>Event ID 1100 Event Log Shutdown</strong>, injects it into the remediation engine, and auto-runs service recovery.
+                  </div>
+                  <div>
+                    <label class="form-label fw-500" for="eventlog-simulation-count">Simulated Events</label>
+                    <input type="number" id="eventlog-simulation-count" class="form-control form-control-modern" min="1" max="3" value="1" />
+                  </div>
+                  <div>
+                    <label class="form-label fw-500" for="eventlog-simulation-profile">Recovery Profile</label>
+                    <select id="eventlog-simulation-profile" class="form-select form-control-modern">
+                      <option value="stable">Stable (quick recovery)</option>
+                      <option value="degraded" selected>Degraded (partial recovery)</option>
+                      <option value="critical">Critical (service failure)</option>
+                    </select>
+                  </div>
+                  <div class="d-flex flex-column gap-2">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="eventlog-simulation-retry" checked />
+                      <label class="form-check-label" for="eventlog-simulation-retry">Enable auto-retry on failed recovery</label>
+                    </div>
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="eventlog-simulation-verify" checked />
+                      <label class="form-check-label" for="eventlog-simulation-verify">Verify recovery after each attempt</label>
+                    </div>
+                  </div>
+                  <div class="small">
+                    <div class="mb-1"><strong>Script:</strong> <code>remediation_scripts/Error1100_EventLogShutdown.ps1</code></div>
+                    <div><strong>Recovery Actions:</strong> <code id="eventlog-sim-fix-command">Restart service, Run SFC/DISM</code></div>
+                  </div>
+                  <button class="btn btn-primary btn-modern" id="eventlog-sim-run-btn" onclick="runEventLogSimulation()">
+                    <i class="fas fa-play me-1"></i>Run Simulation
+                  </button>
+                  <div class="sim-playback-controls">
+                    <div class="form-check mb-2">
+                      <input class="form-check-input" type="checkbox" id="eventlog-simulation-live-playback" checked />
+                      <label class="form-check-label" for="eventlog-simulation-live-playback">Live step-by-step playback</label>
+                    </div>
+                    <label class="form-label fw-500 mb-1" for="eventlog-simulation-playback-speed">Playback Speed</label>
+                    <select id="eventlog-simulation-playback-speed" class="form-select form-control-modern form-select-sm">
+                      <option value="1.35">Fast</option>
+                      <option value="1" selected>Normal</option>
+                      <option value="0.7">Detailed</option>
+                    </select>
+                  </div>
+                  <div class="alert alert-info mb-0 small" id="eventlog-sim-status-box">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Waiting to run simulation.
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="col-lg-8">
               <div class="card card-modern mb-4" id="crashSimCard">
@@ -653,6 +717,37 @@
                         </div>
                       </div>
                       <div class="small" id="disk-sim-status-detail">Awaiting cleanup simulation...</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Event Log Service Monitor -->
+              <div class="card card-modern mb-4" id="eventlogSimCard" style="display:none;">
+                <div class="card-header bg-gradient-warning border-0">
+                  <h5 class="mb-0 text-white">
+                    <i class="fas fa-list me-2"></i>Event Log Service Status
+                  </h5>
+                </div>
+                <div class="card-body">
+                  <div class="eventlog-sim-surface">
+                    <div style="border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:20px;background:rgba(0,0,0,0.2);">
+                      <div class="mb-3">
+                        <div class="small text-muted mb-2">Service Health Status</div>
+                        <div class="eventlog-sim-status" id="eventlog-sim-status-display">
+                          <div style="padding:10px;background:rgba(44,62,80,0.3);border-radius:8px;margin-bottom:10px;border:1px solid rgba(248,196,45,0.5);">
+                            <div class="d-flex justify-content-between align-items-center">
+                              <span>EventLog Service</span>
+                              <span class="badge bg-danger">Offline</span>
+                            </div>
+                            <div class="small text-muted mt-1">Status: Stopped | Startup: Automatic | Last Restart: Never</div>
+                            <div style="height:8px;background:rgba(255,255,255,0.1);border-radius:4px;margin-top:8px;overflow:hidden;">
+                              <div style="height:100%;width:0%;background:#dc3545;border-radius:4px;"></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="small" id="eventlog-sim-status-detail">Awaiting service recovery simulation...</div>
                     </div>
                   </div>
                 </div>
@@ -1914,29 +2009,53 @@
       // Update button states
       const crashBtn = document.querySelector('[data-simulation="crash"]');
       const diskBtn = document.querySelector('[data-simulation="diskspace"]');
+      const eventlogBtn = document.querySelector('[data-simulation="eventlog"]');
       
       if (type === 'crash') {
         crashBtn.classList.add('btn-primary');
         crashBtn.classList.remove('btn-outline-primary');
         diskBtn.classList.remove('btn-primary');
         diskBtn.classList.add('btn-outline-primary');
+        eventlogBtn.classList.remove('btn-primary');
+        eventlogBtn.classList.add('btn-outline-primary');
         
-        // Hide disk controls, show crash controls
+        // Hide disk/eventlog controls, show crash controls
         document.getElementById('crashLabCard').style.display = '';
         document.getElementById('diskLabCard').style.display = 'none';
+        document.getElementById('eventlogLabCard').style.display = 'none';
         document.getElementById('crashSimCard').style.display = '';
         document.getElementById('diskSimCard').style.display = 'none';
+        document.getElementById('eventlogSimCard').style.display = 'none';
       } else if (type === 'diskspace') {
         diskBtn.classList.add('btn-primary');
         diskBtn.classList.remove('btn-outline-primary');
         crashBtn.classList.remove('btn-primary');
         crashBtn.classList.add('btn-outline-primary');
+        eventlogBtn.classList.remove('btn-primary');
+        eventlogBtn.classList.add('btn-outline-primary');
         
-        // Hide crash controls, show disk controls
+        // Hide crash/eventlog controls, show disk controls
         document.getElementById('crashLabCard').style.display = 'none';
         document.getElementById('diskLabCard').style.display = '';
+        document.getElementById('eventlogLabCard').style.display = 'none';
         document.getElementById('crashSimCard').style.display = 'none';
         document.getElementById('diskSimCard').style.display = '';
+        document.getElementById('eventlogSimCard').style.display = 'none';
+      } else if (type === 'eventlog') {
+        eventlogBtn.classList.add('btn-primary');
+        eventlogBtn.classList.remove('btn-outline-primary');
+        crashBtn.classList.remove('btn-primary');
+        crashBtn.classList.add('btn-outline-primary');
+        diskBtn.classList.remove('btn-primary');
+        diskBtn.classList.add('btn-outline-primary');
+        
+        // Hide crash/disk controls, show eventlog controls
+        document.getElementById('crashLabCard').style.display = 'none';
+        document.getElementById('diskLabCard').style.display = 'none';
+        document.getElementById('eventlogLabCard').style.display = '';
+        document.getElementById('crashSimCard').style.display = 'none';
+        document.getElementById('diskSimCard').style.display = 'none';
+        document.getElementById('eventlogSimCard').style.display = '';
       }
     }
 
@@ -2091,6 +2210,171 @@
         statusDetail.textContent = 'Cleanup completed successfully. Drive space freed.';
       } else if (state === 'failed') {
         statusDetail.textContent = 'Cleanup failed - manual intervention required.';
+      } else if (state === 'error') {
+        statusDetail.textContent = 'Simulation error occurred.';
+      }
+    }
+
+    async function runEventLogSimulation() {
+      const btn = document.getElementById('eventlog-sim-run-btn');
+      const statusBox = document.getElementById('eventlog-sim-status-box');
+      const countInput = document.getElementById('eventlog-simulation-count');
+      const profileInput = document.getElementById('eventlog-simulation-profile');
+      const retryInput = document.getElementById('eventlog-simulation-retry');
+      const verifyInput = document.getElementById('eventlog-simulation-verify');
+      const livePlaybackInput = document.getElementById('eventlog-simulation-live-playback');
+      const playbackSpeedInput = document.getElementById('eventlog-simulation-playback-speed');
+      const timeline = document.getElementById('sim-timeline');
+      const output = document.getElementById('sim-terminal-output');
+      const summaryBadge = document.getElementById('sim-summary-badge');
+      const resultCards = document.getElementById('sim-result-cards');
+
+      const profile = (profileInput.value || 'degraded').trim();
+      const retryOnFailure = !!retryInput.checked;
+      const verifyRecovery = !!verifyInput.checked;
+      const livePlayback = !!(livePlaybackInput && livePlaybackInput.checked);
+      const playbackSpeed = parseFloat(playbackSpeedInput?.value || '1') || 1;
+
+      const metricResolved = document.getElementById('sim-metric-resolved');
+      const metricEscalated = document.getElementById('sim-metric-escalated');
+      const metricRetries = document.getElementById('sim-metric-retries');
+      const metricMttr = document.getElementById('sim-metric-mttr');
+
+      const eventCount = Math.max(1, Math.min(3, parseInt(countInput.value || '1', 10)));
+      countInput.value = eventCount;
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Running...';
+      statusBox.className = 'alert alert-warning mb-0 small';
+      statusBox.innerHTML = `<i class="fas fa-hourglass-half me-2"></i>Running ${profile} event log recovery simulation with remediation pipeline...`;
+      timeline.innerHTML = '<div class="text-muted">Generating timeline...</div>';
+      output.textContent = 'Running simulation...';
+      resultCards.innerHTML = '<div class="text-muted">Collecting service recovery results...</div>';
+      if (metricResolved) metricResolved.textContent = '0';
+      if (metricEscalated) metricEscalated.textContent = '0';
+      if (metricRetries) metricRetries.textContent = '0';
+      if (metricMttr) metricMttr.textContent = '0';
+      
+      // Update event log simulator display
+      await updateEventLogSimulatorState('detecting');
+      await sleep(350);
+
+      try {
+        const result = await api('/api/simulations/eventlog/auto-fix', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            count: eventCount,
+            profile: profile,
+            retry_on_failure: retryOnFailure,
+            verify_recovery: verifyRecovery
+          })
+        });
+
+        document.getElementById('eventlog-sim-fix-command').textContent = result.fix_script || 'Service recovery';
+        const timelineSteps = result.timeline || [];
+        if (livePlayback) {
+          timeline.innerHTML = '<div class="text-muted">Streaming timeline playback...</div>';
+          await playbackTimeline(timelineSteps, playbackSpeed, statusBox);
+        } else {
+          renderTimelineSteps(timelineSteps);
+        }
+        output.textContent = result.latest_output || 'No script output generated.';
+
+        const events = result.events || [];
+        if (events.length === 0) {
+          resultCards.innerHTML = '<div class="text-muted">No events generated.</div>';
+        } else {
+          resultCards.innerHTML = events.map((ev, idx) => {
+            const remediation = (ev.remediations && ev.remediations[ev.remediations.length - 1]) || null;
+            const remStatus = remediation
+              ? getStatusBadge(remediation.verification_passed ? 'success' : (remediation.status || 'unknown'))
+              : '<span class="badge bg-secondary">No Auto-Run</span>';
+            const attempts = (ev.remediations || []).length;
+            const resolutionText = ev.resolved
+              ? '<span class="badge bg-success">Recovered</span>'
+              : '<span class="badge bg-danger">Failed</span>';
+            return `
+              <div class="p-3" style="border:1px solid var(--glass-border);border-radius:10px;background:rgba(255,255,255,0.02)">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <strong>Event Log Event ${idx + 1} (Row ${ev.event_row_id})</strong>
+                  ${remStatus}
+                </div>
+                <div class="small text-muted mb-2">${ev.message || ''}</div>
+                <div class="small">Matched Rules: ${(ev.matches || []).length} | Attempts: ${attempts} | ${resolutionText}</div>
+              </div>
+            `;
+          }).join('');
+        }
+
+        const summary = result.summary || {};
+        summaryBadge.textContent = `${summary.events_created || 0} shutdowns | ${summary.incident_resolved || 0} recovered | ${summary.incident_unresolved || 0} failed`;
+
+        if (metricResolved) metricResolved.textContent = `${summary.incident_resolved || 0}`;
+        if (metricEscalated) metricEscalated.textContent = `${summary.incident_unresolved || 0}`;
+        if (metricRetries) metricRetries.textContent = `${summary.retries_performed || 0}`;
+        if (metricMttr) metricMttr.textContent = `${summary.mean_time_to_recover_seconds || 0}`;
+
+        if ((summary.incident_unresolved || 0) > 0) {
+          await updateEventLogSimulatorState('failed');
+        } else {
+          await updateEventLogSimulatorState('recovered');
+        }
+
+        statusBox.className = 'alert alert-success mb-0 small';
+        statusBox.innerHTML = '<i class="fas fa-check-circle me-2"></i>Event Log recovery simulation complete and auto-remediation pipeline executed.';
+
+        loadHistory();
+        loadDashboard();
+        loadFilteredEvents();
+      } catch (e) {
+        statusBox.className = 'alert alert-danger mb-0 small';
+        statusBox.innerHTML = `<i class="fas fa-exclamation-circle me-2"></i>Simulation failed: ${e.message}`;
+        summaryBadge.textContent = 'Simulation failed';
+        timeline.innerHTML = '<div class="text-danger">Unable to generate simulation timeline.</div>';
+        output.textContent = 'Simulation failed.';
+        resultCards.innerHTML = '<div class="text-danger">No result cards available.</div>';
+        await updateEventLogSimulatorState('error');
+      }
+
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-play me-1"></i>Run Simulation';
+    }
+
+    async function updateEventLogSimulatorState(state) {
+      const statusDisplay = document.getElementById('eventlog-sim-status-display');
+      const statusDetail = document.getElementById('eventlog-sim-status-detail');
+      
+      if (state === 'detecting') {
+        statusDetail.textContent = 'Detecting Event Log service status...';
+      } else if (state === 'recovered') {
+        statusDisplay.innerHTML = `
+          <div style="padding:10px;background:rgba(76,175,80,0.1);border-radius:8px;margin-bottom:10px;border:1px solid rgba(76,175,80,0.3);">
+            <div class="d-flex justify-content-between align-items-center">
+              <span>EventLog Service</span>
+              <span class="badge bg-success">Online</span>
+            </div>
+            <div class="small text-muted mt-1">Status: Running | Startup: Automatic | Last Restart: Just now</div>
+            <div style="height:8px;background:rgba(255,255,255,0.1);border-radius:4px;margin-top:8px;overflow:hidden;">
+              <div style="height:100%;width:100%;background:#4caf50;border-radius:4px;"></div>
+            </div>
+          </div>
+        `;
+        statusDetail.textContent = 'Service recovery successful. Event logging resumed.';
+      } else if (state === 'failed') {
+        statusDisplay.innerHTML = `
+          <div style="padding:10px;background:rgba(220,51,68,0.1);border-radius:8px;margin-bottom:10px;border:1px solid rgba(220,51,68,0.3);">
+            <div class="d-flex justify-content-between align-items-center">
+              <span>EventLog Service</span>
+              <span class="badge bg-danger">Failed</span>
+            </div>
+            <div class="small text-muted mt-1">Status: Stopped | Startup: Automatic | Last Restart: Failed</div>
+            <div style="height:8px;background:rgba(255,255,255,0.1);border-radius:4px;margin-top:8px;overflow:hidden;">
+              <div style="height:100%;width:0%;background:#dc3545;border-radius:4px;"></div>
+            </div>
+          </div>
+        `;
+        statusDetail.textContent = 'Service recovery failed - manual intervention required.';
       } else if (state === 'error') {
         statusDetail.textContent = 'Simulation error occurred.';
       }

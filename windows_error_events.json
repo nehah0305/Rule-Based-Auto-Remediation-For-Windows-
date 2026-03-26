@@ -390,5 +390,14 @@
         "severity": "Critical",
         "description": "Volume Shadow Copy Service encountered a critical failure.",
         "auto_remediate_candidate": false
+    },
+    {
+        "event_id": 1100,
+        "event_source": "EventLog",
+        "category": "Event Logging Failure",
+        "severity": "High",
+        "description": "The Event Logging service has shut down unexpectedly.",
+        "recommended_action": "Restart the Event Log service and verify system integrity",
+        "auto_remediate_candidate": true
     }
 ]
