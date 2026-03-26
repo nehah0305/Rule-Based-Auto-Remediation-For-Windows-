@@ -1030,8 +1030,53 @@
     </div>
   </div>
 
+  <!-- Simulation Preferences Modal -->
+  <div class="modal fade" tabindex="-1" id="simulationPreferencesModal" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content modal-modern">
+        <div class="modal-header bg-gradient-primary border-0">
+          <h5 class="modal-title text-white">
+            <i class="fas fa-flask me-2"></i>Simulation Preferences
+          </h5>
+        </div>
+        <div class="modal-body">
+          <p class="mb-3">Configure your simulation preferences:</p>
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="simPrefRunScript" checked />
+            <label class="form-check-label" for="simPrefRunScript">
+              <strong>Run the remediation script</strong>
+              <div class="small text-muted">Execute the fix script when running simulations</div>
+            </label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="simPrefAutoRemediate" checked />
+            <label class="form-check-label" for="simPrefAutoRemediate">
+              <strong>Auto-remediate on future runs</strong>
+              <div class="small text-muted">Remember this choice and use it automatically next time</div>
+            </label>
+          </div>
+          <div class="alert alert-info mt-3 mb-0">
+            <i class="fas fa-info-circle me-2"></i>
+            You can change these preferences anytime by running a new simulation.
+          </div>
+        </div>
+        <div class="modal-footer border-top">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" id="simPrefSkipBtn">
+            <i class="fas fa-times me-1"></i>Skip Simulation
+          </button>
+          <button type="button" class="btn btn-primary" id="simPrefConfirmBtn">
+            <i class="fas fa-check me-1"></i>Continue
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script>
+    let _simulationInProgress = false;
+    let _pendingSimulation = null;
+
     async function api(path, opts) {
       const res = await fetch(path, opts);
       if (!res.ok) throw new Error(await res.text());
@@ -1049,6 +1094,56 @@
   `;
       const modal = new bootstrap.Modal(document.getElementById('statusModal'));
       modal.show();
+    }
+
+    async function checkSimulationPreference(simType) {
+      try {
+        const resp = await api(`/api/simulations/preferences/${simType}`);
+        return resp.has_preference ? resp.preference : null;
+      } catch (e) {
+        console.warn('Could not fetch preference:', e);
+        return null;
+      }
+    }
+
+    async function saveSimulationPreference(simType, runScript, autoRemediate) {
+      try {
+        await api(`/api/simulations/preferences/${simType}`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({run_script: runScript, auto_remediate: autoRemediate})
+        });
+      } catch (e) {
+        console.warn('Could not save preference:', e);
+      }
+    }
+
+    async function showSimulationPreferencesModal(simType, callback) {
+      return new Promise((resolve) => {
+        const prefRunScript = document.getElementById('simPrefRunScript');
+        const prefAutoRemediate = document.getElementById('simPrefAutoRemediate');
+        const prefConfirmBtn = document.getElementById('simPrefConfirmBtn');
+        const prefSkipBtn = document.getElementById('simPrefSkipBtn');
+        const modal = new bootstrap.Modal(document.getElementById('simulationPreferencesModal'));
+
+        prefRunScript.checked = true;
+        prefAutoRemediate.checked = true;
+
+        prefConfirmBtn.onclick = async () => {
+          const runScript = prefRunScript.checked;
+          const autoRemediate = prefAutoRemediate.checked;
+          await saveSimulationPreference(simType, runScript, autoRemediate);
+          modal.hide();
+          resolve({run_script: runScript, auto_remediate: autoRemediate});
+        };
+
+        prefSkipBtn.onclick = () => {
+          modal.hide();
+          resolve(null);
+        };
+
+        modal.show();
+      });
     }
 
     function getStatusBadge(status) {
@@ -1953,6 +2048,13 @@
     }
 
     async function runError1000Simulation() {
+      // Check for saved preferences or ask user
+      let pref = await checkSimulationPreference('crash');
+      if (!pref) {
+        pref = await showSimulationPreferencesModal('crash');
+        if (!pref) return; // User skipped
+      }
+
       const btn = document.getElementById('sim-run-btn');
       const statusBox = document.getElementById('sim-status-box');
       const countInput = document.getElementById('simulation-count');
@@ -2141,6 +2243,13 @@
     switchSimulation('crash');
 
     async function runLowDiskSpaceSimulation() {
+      // Check for saved preferences or ask user
+      let pref = await checkSimulationPreference('diskspace');
+      if (!pref) {
+        pref = await showSimulationPreferencesModal('diskspace');
+        if (!pref) return; // User skipped
+      }
+
       const btn = document.getElementById('disk-sim-run-btn');
       const statusBox = document.getElementById('disk-sim-status-box');
       const countInput = document.getElementById('disk-simulation-count');
@@ -2294,6 +2403,13 @@
     }
 
     async function runEventLogSimulation() {
+      // Check for saved preferences or ask user
+      let pref = await checkSimulationPreference('eventlog');
+      if (!pref) {
+        pref = await showSimulationPreferencesModal('eventlog');
+        if (!pref) return; // User skipped
+      }
+
       const btn = document.getElementById('eventlog-sim-run-btn');
       const statusBox = document.getElementById('eventlog-sim-status-box');
       const countInput = document.getElementById('eventlog-simulation-count');
@@ -2459,6 +2575,13 @@
     }
 
     async function runAuditEventsSimulation() {
+      // Check for saved preferences or ask user
+      let pref = await checkSimulationPreference('auditevents');
+      if (!pref) {
+        pref = await showSimulationPreferencesModal('auditevents');
+        if (!pref) return; // User skipped
+      }
+
       const btn = document.getElementById('auditevents-sim-run-btn');
       const statusBox = document.getElementById('auditevents-sim-status-box');
       const countInput = document.getElementById('auditevents-simulation-count');

@@ -377,6 +377,26 @@ def intelligence_summary():
 #  Simulations
 # ─────────────────────────────────────────────────────────────────────────────
 
+@app.route('/api/simulations/preferences/<sim_type>', methods=['GET'])
+def get_simulation_preference(sim_type):
+    """Get stored preference for a simulation type."""
+    pref = models.get_simulation_preference(sim_type)
+    if pref:
+        return jsonify({'has_preference': True, 'preference': pref})
+    return jsonify({'has_preference': False})
+
+
+@app.route('/api/simulations/preferences/<sim_type>', methods=['POST'])
+def set_simulation_preference(sim_type):
+    """Set/update preference for a simulation type."""
+    data = request.get_json(force=True)
+    run_script = data.get('run_script', False)
+    auto_remediate = data.get('auto_remediate', False)
+    
+    models.set_simulation_preference(sim_type, run_script, auto_remediate)
+    return jsonify({'status': 'ok', 'simulation_type': sim_type})
+
+
 @app.route('/api/simulations/error1000', methods=['POST'])
 def simulate_error1000():
     """

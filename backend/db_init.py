@@ -75,6 +75,17 @@ def init_db():
     )
     ''')
 
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS simulation_preferences (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        simulation_type TEXT UNIQUE,
+        run_script INTEGER DEFAULT 0,
+        auto_remediate INTEGER DEFAULT 0,
+        created_at TEXT,
+        updated_at TEXT
+    )
+    ''')
+
     conn.commit()
 
     # Migrate existing tables to add new columns if they don't exist

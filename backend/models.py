@@ -805,5 +805,56 @@ def populate_rules_from_json(overwrite=False):
     return created_count
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Simulation Preferences
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_simulation_preference(simulation_type):
+    """Get simulation preference for a given type (crash, diskspace, eventlog, auditevents)."""
+    conn = _conn()
+    c = conn.cursor()
+    c.execute(
+        'SELECT run_script, auto_remediate FROM simulation_preferences WHERE simulation_type = ?',
+        (simulation_type,)
+    )
+    row = c.fetchone()
+    conn.close()
+    
+    if row:
+        return {'run_script': bool(row[0]), 'auto_remediate': bool(row[1])}
+    return None
+
+
+def set_simulation_preference(simulation_type, run_script, auto_remediate):
+    """Set/update simulation preference for a given type."""
+    conn = _conn()
+    c = conn.cursor()
+    now = datetime.utcnow().isoformat() + 'Z'
+    
+    # Check if preference already exists
+    c.execute('SELECT id FROM simulation_preferences WHERE simulation_type = ?', (simulation_type,))
+    existing = c.fetchone()
+    
+    if existing:
+        # Update existing
+        c.execute(
+            '''UPDATE simulation_preferences 
+               SET run_script = ?, auto_remediate = ?, updated_at = ?
+               WHERE simulation_type = ?''',
+            (int(run_script), int(auto_remediate), now, simulation_type)
+        )
+    else:
+        # Insert new
+        c.execute(
+            '''INSERT INTO simulation_preferences 
+               (simulation_type, run_script, auto_remediate, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?)''',
+            (simulation_type, int(run_script), int(auto_remediate), now, now)
+        )
+    
+    conn.commit()
+    conn.close()
+
+
 if __name__ == '__main__':
     print('models.py — import and use as a module')
