@@ -1526,6 +1526,386 @@ def simulate_eventlog_auto_fix():
     })
 
 
+@app.route('/api/simulations/auditevents', methods=['POST'])
+def simulate_auditevents():
+    """
+    Simulates the Event ID 1101 (Audit Events Dropped) detection flow.
+    This endpoint demonstrates audit log recovery behavior for UI walkthroughs.
+    """
+    data = request.get_json(silent=True) or {}
+    try:
+        count = int(data.get('count', 2))
+    except (TypeError, ValueError):
+        count = 2
+    count = max(1, min(count, 5))
+
+    now = datetime.utcnow()
+    fix_script = 'Increase audit log size and check system resources'
+    description = 'Audit Events Dropped'
+
+    events = []
+    timeline = [
+        {
+            'phase': 'detect',
+            'title': 'Detect Dropped Audit Events',
+            'status': 'completed',
+            'detail': f'Detected {count} audit event drop incident(s).'
+        }
+    ]
+
+    terminal_lines = [
+        'Audit Events Dropped Detection',
+        'Checking audit log capacity...',
+        f'Simulation mode ON: Demonstrating audit log recovery.'
+    ]
+
+    for idx in range(count):
+        drop_time = now - timedelta(minutes=(idx + 1) * 6)
+        message = (
+            f'Audit events have been dropped by the transport. '
+            f'Event log capacity exceeded at {drop_time.strftime("%H:%M:%S")}. '
+            f'Audit system detection triggered.'
+        )
+        message_preview = message[:100] + ('...' if len(message) > 100 else '')
+
+        events.append({
+            'event_id': 1101,
+            'time_created': drop_time.isoformat() + 'Z',
+            'source': 'EventLog',
+            'description': description,
+            'message': message,
+            'message_preview': message_preview,
+        })
+
+        timeline.extend([
+            {
+                'phase': 'analyze',
+                'title': f'Analyze Audit Drop Event {idx + 1}',
+                'status': 'completed',
+                'detail': f'Event ID 1101 at {drop_time.isoformat()}Z classified as {description}.'
+            },
+            {
+                'phase': 'remediate',
+                'title': f'Remediate Audit Log {idx + 1}',
+                'status': 'simulated',
+                'detail': f'Would execute: {fix_script}'
+            }
+        ])
+
+        terminal_lines.extend([
+            f'Event ID: 1101 at {drop_time.isoformat()}Z',
+            f'Message: {message_preview}',
+            f'Classified as: {description}',
+            f'Executing Recovery: {fix_script} [SIMULATED]',
+            '-------------------'
+        ])
+
+    terminal_lines.append('Audit log remediation and verification complete.')
+
+    return jsonify({
+        'scenario': 'Event ID 1101 - Audit Events Dropped',
+        'event_id': 1101,
+        'description': description,
+        'fix_script': fix_script,
+        'script_path': 'remediation_scripts/Error1101_AuditEventsDropped.ps1',
+        'simulation_mode': True,
+        'generated_at': datetime.utcnow().isoformat() + 'Z',
+        'events': events,
+        'timeline': timeline,
+        'terminal_output': '\n'.join(terminal_lines),
+        'summary': {
+            'events_detected': len(events),
+            'events_analyzed': len(events),
+            'remediations_simulated': len(events),
+            'actual_remediations_executed': 0,
+        }
+    })
+
+
+@app.route('/api/simulations/auditevents/auto-fix', methods=['POST'])
+def simulate_auditevents_auto_fix():
+    """
+    End-to-end audit events simulation:
+      1) creates synthetic Event ID 1101 entries,
+      2) passes them through rule matching,
+      3) triggers auto-remediation via run_remediation.
+    """
+    data = request.get_json(silent=True) or {}
+    profile = (data.get('profile') or 'degraded').strip().lower()
+    if profile not in ('stable', 'degraded', 'critical'):
+        profile = 'degraded'
+
+    retry_on_failure = bool(data.get('retry_on_failure', True))
+    verify_recovery = bool(data.get('verify_recovery', True))
+
+    try:
+        count = int(data.get('count', 1))
+    except (TypeError, ValueError):
+        count = 1
+    count = max(1, min(count, 3))
+
+    script_path = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), '..', 'remediation_scripts', 'Error1101_AuditEventsDropped.ps1'
+    ))
+
+    if not os.path.exists(script_path):
+        return jsonify({'error': f'remediation script not found at {script_path}'}), 404
+
+    # Ensure a dedicated auto-remediation rule exists
+    demo_rule = None
+    for r in models.get_rules():
+        if r[2] == 1101 and (r[3] or '').lower() == 'eventlog' and (r[5] or '') == script_path:
+            demo_rule = r
+            break
+
+    if not demo_rule:
+        rid = models.add_rule(
+            name='AutoFix Demo - Event ID 1101 Audit Events Dropped',
+            event_id=1101,
+            source='EventLog',
+            message_regex=None,
+            remediation_script=script_path,
+            script_type='file',
+            auto_remediate=True,
+            stop_processing=False,
+            category='Audit Events Dropped',
+            severity='High',
+            description='Auto-fix rule for audit events dropped simulation demos.',
+            recommended_action='Run script-based recovery for simulated audit log issues.',
+            priority=24,
+            cooldown_minutes=0,
+        )
+        demo_rule = models.get_rule(rid)
+
+    demo_rule_id = demo_rule[0]
+
+    now = datetime.utcnow()
+    timeline = []
+    events_summary = []
+    totals = {
+        'events_created': 0,
+        'rules_matched': 0,
+        'auto_remediations_run': 0,
+        'auto_remediation_success': 0,
+        'auto_remediation_failed': 0,
+        'auto_remediation_suppressed': 0,
+        'retries_performed': 0,
+        'verification_failed': 0,
+        'incident_resolved': 0,
+        'incident_unresolved': 0,
+        'mean_time_to_recover_seconds': 0,
+    }
+    mttr_samples = []
+
+    timeline.append({
+        'phase': 'prepare',
+        'title': 'Prepare Audit Events Recovery Environment',
+        'status': 'completed',
+        'detail': f'Using rule #{demo_rule_id} and script {script_path}. Profile: {profile.title()}.'
+    })
+
+    for idx in range(count):
+        drop_time = now - timedelta(seconds=idx * 25)
+        
+        audit_message = (
+            f'Audit events have been dropped by the transport. '
+            f'Insufficient audit log buffer space detected. '
+            f'Recovery action initiated for {profile} profile.'
+        )
+
+        event_payload = {
+            'event_id': 1101,
+            'log_name': 'Simulation',
+            'source': 'EventLog',
+            'message': audit_message,
+            'timestamp': drop_time.isoformat(),
+            'category': 'Audit Events Dropped',
+            'severity': 'High',
+            'description': 'Simulated audit events dropped event',
+            'recommended_action': 'Increase audit log size and ensure sufficient disk space',
+            'level': 'Warning',
+        }
+
+        event_row_id = models.add_event(
+            event_payload['event_id'],
+            event_payload['log_name'],
+            event_payload['source'],
+            event_payload['message'],
+            event_payload['timestamp'],
+            event_payload['category'],
+            event_payload['severity'],
+            event_payload['description'],
+            event_payload['recommended_action'],
+            event_payload['level'],
+        )
+        totals['events_created'] += 1
+
+        timeline.append({
+            'phase': 'detect',
+            'title': f'Detect Audit Drop Event {idx + 1}',
+            'status': 'completed',
+            'detail': f'Event row #{event_row_id} created for audit log capacity issue.'
+        })
+
+        severity_hint = 'Critical' if profile == 'critical' else ('High' if profile == 'degraded' else 'Medium')
+        timeline.append({
+            'phase': 'triage',
+            'title': f'Triage Event {idx + 1}',
+            'status': 'completed',
+            'detail': f'Audit drop severity: {severity_hint}; recovery attempt: {"Enabled" if retry_on_failure else "Disabled"}.'
+        })
+
+        matched_tuples = models.match_rules_for_event(event_payload)
+        rule_matches = []
+        remediation_results = []
+        event_resolved = False
+        event_start = datetime.utcnow()
+
+        for r in matched_tuples:
+            cooldown_active = r[15] if len(r) > 15 else False
+            regex_captures = r[16] if len(r) > 16 else {}
+            rule_info = {
+                'rule_id': r[0],
+                'rule_name': r[1],
+                'auto_remediate': bool(r[6]),
+                'cooldown_active': bool(cooldown_active),
+            }
+            rule_matches.append(rule_info)
+            totals['rules_matched'] += 1
+
+            if r[6] and not cooldown_active:
+                max_attempts = 2 if retry_on_failure else 1
+                last_status = 'failed'
+                verification_ok = False
+                for attempt in range(1, max_attempts + 1):
+                    result = models.run_remediation(event_row_id, r[0], regex_captures=regex_captures)
+                    totals['auto_remediations_run'] += 1
+
+                    if result.get('status') == 'success':
+                        totals['auto_remediation_success'] += 1
+                    else:
+                        totals['auto_remediation_failed'] += 1
+
+                    # Simulate post-remediation verification
+                    if verify_recovery and result.get('status') == 'success':
+                        fail_chance = 0.10 if profile == 'stable' else (0.25 if profile == 'degraded' else 0.55)
+                        if profile == 'critical' and attempt == 1:
+                            fail_chance = max(fail_chance, 0.65)
+                        verification_ok = random.random() > fail_chance
+                    else:
+                        verification_ok = (result.get('status') == 'success')
+
+                    remediation_results.append({
+                        'attempt': attempt,
+                        'rule_id': r[0],
+                        'rule_name': r[1],
+                        'status': result.get('status'),
+                        'verification_passed': verification_ok,
+                        'output': result.get('output'),
+                    })
+
+                    last_status = result.get('status', 'failed')
+                    timeline.append({
+                        'phase': 'remediate',
+                        'title': f'Auto-Remediate Event {idx + 1} (Attempt {attempt})',
+                        'status': last_status,
+                        'detail': f"Rule #{r[0]} execution status: {last_status}"
+                    })
+
+                    if verify_recovery:
+                        verify_status = 'completed' if verification_ok else 'warning'
+                        verify_detail = 'Audit log capacity restored and audit pipeline resumed.' if verification_ok else 'Audit log capacity still insufficient.'
+                        timeline.append({
+                            'phase': 'verify',
+                            'title': f'Verify Recovery Event {idx + 1} (Attempt {attempt})',
+                            'status': verify_status,
+                            'detail': verify_detail
+                        })
+
+                    if last_status == 'success' and verification_ok:
+                        event_resolved = True
+                        break
+
+                    if attempt < max_attempts:
+                        totals['retries_performed'] += 1
+                        timeline.append({
+                            'phase': 'retry',
+                            'title': f'Retry Remediation Event {idx + 1}',
+                            'status': 'warning',
+                            'detail': 'Automatic retry scheduled due to failed verification or script failure.'
+                        })
+
+                if verify_recovery and not event_resolved:
+                    totals['verification_failed'] += 1
+            elif r[6] and cooldown_active:
+                models.record_remediation(
+                    event_row_id,
+                    r[0],
+                    'suppressed',
+                    'Auto-remediation suppressed - rule cooldown active'
+                )
+                totals['auto_remediation_suppressed'] += 1
+                timeline.append({
+                    'phase': 'remediate',
+                    'title': f'Auto-Remediation Suppressed for Event {idx + 1}',
+                    'status': 'suppressed',
+                    'detail': f'Rule #{r[0]} suppressed due to cooldown.'
+                })
+
+        if event_resolved:
+            totals['incident_resolved'] += 1
+            mttr_samples.append((datetime.utcnow() - event_start).total_seconds())
+            timeline.append({
+                'phase': 'close',
+                'title': f'Close Incident Event {idx + 1}',
+                'status': 'completed',
+                'detail': 'Audit log capacity restored and auditing resumed.'
+            })
+        else:
+            totals['incident_unresolved'] += 1
+            timeline.append({
+                'phase': 'escalate',
+                'title': f'Escalate Incident Event {idx + 1}',
+                'status': 'failed',
+                'detail': 'Audit log recovery failed. Manual escalation required.'
+            })
+
+        events_summary.append({
+            'event_row_id': event_row_id,
+            'timestamp': event_payload['timestamp'],
+            'message': audit_message,
+            'matches': rule_matches,
+            'remediations': remediation_results,
+            'resolved': event_resolved,
+        })
+
+    latest_output = ''
+    if events_summary:
+        rems = events_summary[-1].get('remediations') or []
+        if rems:
+            latest_output = rems[-1].get('output') or ''
+
+    if mttr_samples:
+        totals['mean_time_to_recover_seconds'] = round(sum(mttr_samples) / len(mttr_samples), 2)
+
+    return jsonify({
+        'scenario': 'Audit Events Lab - Event ID 1101 Auto-Fix',
+        'simulation_mode': True,
+        'event_id': 1101,
+        'fix_script': 'Increase audit log size and check system resources',
+        'script_path': script_path,
+        'rule_id': demo_rule_id,
+        'count': count,
+        'profile': profile,
+        'retry_on_failure': retry_on_failure,
+        'verify_recovery': verify_recovery,
+        'timeline': timeline,
+        'events': events_summary,
+        'latest_output': latest_output,
+        'summary': totals,
+    })
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  Server entry point
 # ─────────────────────────────────────────────────────────────────────────────

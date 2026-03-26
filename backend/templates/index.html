@@ -421,8 +421,6 @@
           </div>
         </div>
 
-        <!-- Simulation Tab -->
-        <div class="tab-pane fade" id="simulationTab">
           <div class="row g-4 mb-4">
             <div class="col-md-12">
               <div class="card card-modern">
@@ -432,21 +430,15 @@
                   </h5>
                 </div>
                 <div class="card-body">
-                  <div class="row g-2">
-                    <div class="col-md-4">
-                      <button class="btn btn-primary w-100 simulation-type-btn" data-simulation="crash" onclick="switchSimulation('crash')">
-                        <i class="fas fa-bomb me-2"></i>Event 1000 - Crash
-                      </button>
-                    </div>
-                    <div class="col-md-4">
-                      <button class="btn btn-outline-primary w-100 simulation-type-btn" data-simulation="diskspace" onclick="switchSimulation('diskspace')">
-                        <i class="fas fa-hdd me-2"></i>Event 2013 - Disk Space
-                      </button>
-                    </div>
-                    <div class="col-md-4">
-                      <button class="btn btn-outline-primary w-100 simulation-type-btn" data-simulation="eventlog" onclick="switchSimulation('eventlog')">
-                        <i class="fas fa-list me-2"></i>Event 1100 - Event Log
-                      </button>
+                  <div class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                      <label class="form-label fw-500">Choose Simulation:</label>
+                      <select id="simulation-type-selector" class="form-select form-control-modern" onchange="switchSimulation(this.value)">
+                        <option value="crash">Event 1000 - Application Crash</option>
+                        <option value="diskspace">Event 2013 - Low Disk Space</option>
+                        <option value="eventlog">Event 1100 - Event Log Shutdown</option>
+                        <option value="auditevents">Event 1101 - Audit Events Dropped</option>
+                      </select>
                     </div>
                   </div>
                 </div>
@@ -645,6 +637,68 @@
                 </div>
               </div>
             </div>
+
+            <!-- Audit Events Lab Card -->
+            <div class="col-lg-4">
+              <div class="card card-modern h-100" id="auditeventsLabCard" style="display:none;">
+                <div class="card-header bg-gradient-primary border-0">
+                  <h5 class="mb-0 text-white">
+                    <i class="fas fa-shield-alt me-2"></i>Audit Events Lab Controls
+                  </h5>
+                </div>
+                <div class="card-body d-flex flex-column gap-3">
+                  <div class="small text-muted">
+                    Simulates a realistic <strong>Event ID 1101 Audit Events Dropped</strong>, injects it into the remediation engine, and auto-runs audit log expansion.
+                  </div>
+                  <div>
+                    <label class="form-label fw-500" for="auditevents-simulation-count">Simulated Events</label>
+                    <input type="number" id="auditevents-simulation-count" class="form-control form-control-modern" min="1" max="3" value="1" />
+                  </div>
+                  <div>
+                    <label class="form-label fw-500" for="auditevents-simulation-profile">Recovery Profile</label>
+                    <select id="auditevents-simulation-profile" class="form-select form-control-modern">
+                      <option value="stable">Stable (quick log expansion)</option>
+                      <option value="degraded" selected>Degraded (partial recovery)</option>
+                      <option value="critical">Critical (policy failure)</option>
+                    </select>
+                  </div>
+                  <div class="d-flex flex-column gap-2">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="auditevents-simulation-retry" checked />
+                      <label class="form-check-label" for="auditevents-simulation-retry">Enable auto-retry on failed recovery</label>
+                    </div>
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="auditevents-simulation-verify" checked />
+                      <label class="form-check-label" for="auditevents-simulation-verify">Verify recovery after each attempt</label>
+                    </div>
+                  </div>
+                  <div class="small">
+                    <div class="mb-1"><strong>Script:</strong> <code>remediation_scripts/Error1101_AuditEventsDropped.ps1</code></div>
+                    <div><strong>Recovery Actions:</strong> <code id="auditevents-sim-fix-command">Expand log size, Set audit policy, Run SFC/DISM</code></div>
+                  </div>
+                  <button class="btn btn-primary btn-modern" id="auditevents-sim-run-btn" onclick="runAuditEventsSimulation()">
+                    <i class="fas fa-play me-1"></i>Run Simulation
+                  </button>
+                  <div class="sim-playback-controls">
+                    <div class="form-check mb-2">
+                      <input class="form-check-input" type="checkbox" id="auditevents-simulation-live-playback" checked />
+                      <label class="form-check-label" for="auditevents-simulation-live-playback">Live step-by-step playback</label>
+                    </div>
+                    <label class="form-label fw-500 mb-1" for="auditevents-simulation-playback-speed">Playback Speed</label>
+                    <select id="auditevents-simulation-playback-speed" class="form-select form-control-modern form-select-sm">
+                      <option value="1.35">Fast</option>
+                      <option value="1" selected>Normal</option>
+                      <option value="0.7">Detailed</option>
+                    </select>
+                  </div>
+                  <div class="alert alert-info mb-0 small" id="auditevents-sim-status-box">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Waiting to run simulation.
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div class="col-lg-8">
               <div class="card card-modern mb-4" id="crashSimCard">
                 <div class="card-header bg-gradient-warning border-0">
@@ -748,6 +802,37 @@
                         </div>
                       </div>
                       <div class="small" id="eventlog-sim-status-detail">Awaiting service recovery simulation...</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Audit Events Log Monitor -->
+              <div class="card card-modern mb-4" id="auditeventsSimCard" style="display:none;">
+                <div class="card-header bg-gradient-warning border-0">
+                  <h5 class="mb-0 text-white">
+                    <i class="fas fa-shield-alt me-2"></i>Audit Log Health Status
+                  </h5>
+                </div>
+                <div class="card-body">
+                  <div class="auditevents-sim-surface">
+                    <div style="border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:20px;background:rgba(0,0,0,0.2);">
+                      <div class="mb-3">
+                        <div class="small text-muted mb-2">Audit Log Buffer Status</div>
+                        <div class="auditevents-sim-status" id="auditevents-sim-status-display">
+                          <div style="padding:10px;background:rgba(44,62,80,0.3);border-radius:8px;margin-bottom:10px;border:1px solid rgba(220,53,69,0.5);">
+                            <div class="d-flex justify-content-between align-items-center">
+                              <span>Security Audit Log</span>
+                              <span class="badge bg-danger">Drops Detected</span>
+                            </div>
+                            <div class="small text-muted mt-1">Capacity: 20 MB | Usage: 19.8 MB (99%) | Drop Rate: 45%</div>
+                            <div style="height:8px;background:rgba(255,255,255,0.1);border-radius:4px;margin-top:8px;overflow:hidden;">
+                              <div style="height:100%;width:99%;background:#dc3545;border-radius:4px;"></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="small" id="auditevents-sim-status-detail">Awaiting audit log recovery simulation...</div>
                     </div>
                   </div>
                 </div>
@@ -2006,56 +2091,52 @@
     }
 
     function switchSimulation(type) {
-      // Update button states
-      const crashBtn = document.querySelector('[data-simulation="crash"]');
-      const diskBtn = document.querySelector('[data-simulation="diskspace"]');
-      const eventlogBtn = document.querySelector('[data-simulation="eventlog"]');
+      // Update dropdown selection
+      const selector = document.getElementById('simulation-type-selector');
+      if (selector) {
+        selector.value = type;
+      }
       
       if (type === 'crash') {
-        crashBtn.classList.add('btn-primary');
-        crashBtn.classList.remove('btn-outline-primary');
-        diskBtn.classList.remove('btn-primary');
-        diskBtn.classList.add('btn-outline-primary');
-        eventlogBtn.classList.remove('btn-primary');
-        eventlogBtn.classList.add('btn-outline-primary');
-        
-        // Hide disk/eventlog controls, show crash controls
+        // Hide disk/eventlog/auditevents controls, show crash controls
         document.getElementById('crashLabCard').style.display = '';
         document.getElementById('diskLabCard').style.display = 'none';
         document.getElementById('eventlogLabCard').style.display = 'none';
+        document.getElementById('auditeventsLabCard').style.display = 'none';
         document.getElementById('crashSimCard').style.display = '';
         document.getElementById('diskSimCard').style.display = 'none';
         document.getElementById('eventlogSimCard').style.display = 'none';
+        document.getElementById('auditeventsSimCard').style.display = 'none';
       } else if (type === 'diskspace') {
-        diskBtn.classList.add('btn-primary');
-        diskBtn.classList.remove('btn-outline-primary');
-        crashBtn.classList.remove('btn-primary');
-        crashBtn.classList.add('btn-outline-primary');
-        eventlogBtn.classList.remove('btn-primary');
-        eventlogBtn.classList.add('btn-outline-primary');
-        
-        // Hide crash/eventlog controls, show disk controls
+        // Hide crash/eventlog/auditevents controls, show disk controls
         document.getElementById('crashLabCard').style.display = 'none';
         document.getElementById('diskLabCard').style.display = '';
         document.getElementById('eventlogLabCard').style.display = 'none';
+        document.getElementById('auditeventsLabCard').style.display = 'none';
         document.getElementById('crashSimCard').style.display = 'none';
         document.getElementById('diskSimCard').style.display = '';
         document.getElementById('eventlogSimCard').style.display = 'none';
+        document.getElementById('auditeventsSimCard').style.display = 'none';
       } else if (type === 'eventlog') {
-        eventlogBtn.classList.add('btn-primary');
-        eventlogBtn.classList.remove('btn-outline-primary');
-        crashBtn.classList.remove('btn-primary');
-        crashBtn.classList.add('btn-outline-primary');
-        diskBtn.classList.remove('btn-primary');
-        diskBtn.classList.add('btn-outline-primary');
-        
-        // Hide crash/disk controls, show eventlog controls
+        // Hide crash/disk/auditevents controls, show eventlog controls
         document.getElementById('crashLabCard').style.display = 'none';
         document.getElementById('diskLabCard').style.display = 'none';
         document.getElementById('eventlogLabCard').style.display = '';
+        document.getElementById('auditeventsLabCard').style.display = 'none';
         document.getElementById('crashSimCard').style.display = 'none';
         document.getElementById('diskSimCard').style.display = 'none';
         document.getElementById('eventlogSimCard').style.display = '';
+        document.getElementById('auditeventsSimCard').style.display = 'none';
+      } else if (type === 'auditevents') {
+        // Hide crash/disk/eventlog controls, show auditevents controls
+        document.getElementById('crashLabCard').style.display = 'none';
+        document.getElementById('diskLabCard').style.display = 'none';
+        document.getElementById('eventlogLabCard').style.display = 'none';
+        document.getElementById('auditeventsLabCard').style.display = '';
+        document.getElementById('crashSimCard').style.display = 'none';
+        document.getElementById('diskSimCard').style.display = 'none';
+        document.getElementById('eventlogSimCard').style.display = 'none';
+        document.getElementById('auditeventsSimCard').style.display = '';
       }
     }
 
@@ -2375,6 +2456,171 @@
           </div>
         `;
         statusDetail.textContent = 'Service recovery failed - manual intervention required.';
+      } else if (state === 'error') {
+        statusDetail.textContent = 'Simulation error occurred.';
+      }
+    }
+
+    async function runAuditEventsSimulation() {
+      const btn = document.getElementById('auditevents-sim-run-btn');
+      const statusBox = document.getElementById('auditevents-sim-status-box');
+      const countInput = document.getElementById('auditevents-simulation-count');
+      const profileInput = document.getElementById('auditevents-simulation-profile');
+      const retryInput = document.getElementById('auditevents-simulation-retry');
+      const verifyInput = document.getElementById('auditevents-simulation-verify');
+      const livePlaybackInput = document.getElementById('auditevents-simulation-live-playback');
+      const playbackSpeedInput = document.getElementById('auditevents-simulation-playback-speed');
+      const timeline = document.getElementById('sim-timeline');
+      const output = document.getElementById('sim-terminal-output');
+      const summaryBadge = document.getElementById('sim-summary-badge');
+      const resultCards = document.getElementById('sim-result-cards');
+
+      const profile = (profileInput.value || 'degraded').trim();
+      const retryOnFailure = !!retryInput.checked;
+      const verifyRecovery = !!verifyInput.checked;
+      const livePlayback = !!(livePlaybackInput && livePlaybackInput.checked);
+      const playbackSpeed = parseFloat(playbackSpeedInput?.value || '1') || 1;
+
+      const metricResolved = document.getElementById('sim-metric-resolved');
+      const metricEscalated = document.getElementById('sim-metric-escalated');
+      const metricRetries = document.getElementById('sim-metric-retries');
+      const metricMttr = document.getElementById('sim-metric-mttr');
+
+      const eventCount = Math.max(1, Math.min(3, parseInt(countInput.value || '1', 10)));
+      countInput.value = eventCount;
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Running...';
+      statusBox.className = 'alert alert-warning mb-0 small';
+      statusBox.innerHTML = `<i class="fas fa-hourglass-half me-2"></i>Running ${profile} audit events recovery simulation with remediation pipeline...`;
+      timeline.innerHTML = '<div class="text-muted">Generating timeline...</div>';
+      output.textContent = 'Running simulation...';
+      resultCards.innerHTML = '<div class="text-muted">Collecting audit log recovery results...</div>';
+      if (metricResolved) metricResolved.textContent = '0';
+      if (metricEscalated) metricEscalated.textContent = '0';
+      if (metricRetries) metricRetries.textContent = '0';
+      if (metricMttr) metricMttr.textContent = '0';
+      
+      // Update audit events simulator display
+      await updateAuditEventsSimulatorState('detecting');
+      await sleep(350);
+
+      try {
+        const result = await api('/api/simulations/auditevents/auto-fix', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            count: eventCount,
+            profile: profile,
+            retry_on_failure: retryOnFailure,
+            verify_recovery: verifyRecovery
+          })
+        });
+
+        document.getElementById('auditevents-sim-fix-command').textContent = result.fix_script || 'Expand log size, configure audit policy';
+        const timelineSteps = result.timeline || [];
+        if (livePlayback) {
+          timeline.innerHTML = '<div class="text-muted">Streaming timeline playback...</div>';
+          await playbackTimeline(timelineSteps, playbackSpeed, statusBox);
+        } else {
+          renderTimelineSteps(timelineSteps);
+        }
+        output.textContent = result.latest_output || 'No script output generated.';
+
+        const events = result.events || [];
+        if (events.length === 0) {
+          resultCards.innerHTML = '<div class="text-muted">No events generated.</div>';
+        } else {
+          resultCards.innerHTML = events.map((ev, idx) => {
+            const remediation = (ev.remediations && ev.remediations[ev.remediations.length - 1]) || null;
+            const remStatus = remediation
+              ? getStatusBadge(remediation.verification_passed ? 'success' : (remediation.status || 'unknown'))
+              : '<span class="badge bg-secondary">No Auto-Run</span>';
+            const attempts = (ev.remediations || []).length;
+            const resolutionText = ev.resolved
+              ? '<span class="badge bg-success">Recovered</span>'
+              : '<span class="badge bg-danger">Failed</span>';
+            return `
+              <div class="p-3" style="border:1px solid var(--glass-border);border-radius:10px;background:rgba(255,255,255,0.02)">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <strong>Audit Event ${idx + 1} (Row ${ev.event_row_id})</strong>
+                  ${remStatus}
+                </div>
+                <div class="small text-muted mb-2">${ev.message || ''}</div>
+                <div class="small">Matched Rules: ${(ev.matches || []).length} | Attempts: ${attempts} | ${resolutionText}</div>
+              </div>
+            `;
+          }).join('');
+        }
+
+        const summary = result.summary || {};
+        summaryBadge.textContent = `${summary.events_created || 0} audit drops | ${summary.incident_resolved || 0} recovered | ${summary.incident_unresolved || 0} failed`;
+
+        if (metricResolved) metricResolved.textContent = `${summary.incident_resolved || 0}`;
+        if (metricEscalated) metricEscalated.textContent = `${summary.incident_unresolved || 0}`;
+        if (metricRetries) metricRetries.textContent = `${summary.retries_performed || 0}`;
+        if (metricMttr) metricMttr.textContent = `${summary.mean_time_to_recover_seconds || 0}`;
+
+        if ((summary.incident_unresolved || 0) > 0) {
+          await updateAuditEventsSimulatorState('failed');
+        } else {
+          await updateAuditEventsSimulatorState('recovered');
+        }
+
+        statusBox.className = 'alert alert-success mb-0 small';
+        statusBox.innerHTML = '<i class="fas fa-check-circle me-2"></i>Audit log recovery simulation complete and auto-remediation pipeline executed.';
+
+        loadHistory();
+        loadDashboard();
+        loadFilteredEvents();
+      } catch (e) {
+        statusBox.className = 'alert alert-danger mb-0 small';
+        statusBox.innerHTML = `<i class="fas fa-exclamation-circle me-2"></i>Simulation failed: ${e.message}`;
+        summaryBadge.textContent = 'Simulation failed';
+        timeline.innerHTML = '<div class="text-danger">Unable to generate simulation timeline.</div>';
+        output.textContent = 'Simulation failed.';
+        resultCards.innerHTML = '<div class="text-danger">No result cards available.</div>';
+        await updateAuditEventsSimulatorState('error');
+      }
+
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-play me-1"></i>Run Simulation';
+    }
+
+    async function updateAuditEventsSimulatorState(state) {
+      const statusDisplay = document.getElementById('auditevents-sim-status-display');
+      const statusDetail = document.getElementById('auditevents-sim-status-detail');
+      
+      if (state === 'detecting') {
+        statusDetail.textContent = 'Detecting Audit Log buffer status...';
+      } else if (state === 'recovered') {
+        statusDisplay.innerHTML = `
+          <div style="padding:10px;background:rgba(76,175,80,0.1);border-radius:8px;margin-bottom:10px;border:1px solid rgba(76,175,80,0.3);">
+            <div class="d-flex justify-content-between align-items-center">
+              <span>Security Audit Log</span>
+              <span class="badge bg-success">Healthy</span>
+            </div>
+            <div class="small text-muted mt-1">Capacity: 100 GB | Usage: 35 GB (35%) | Drop Rate: 0%</div>
+            <div style="height:8px;background:rgba(255,255,255,0.1);border-radius:4px;margin-top:8px;overflow:hidden;">
+              <div style="height:100%;width:35%;background:#4caf50;border-radius:4px;"></div>
+            </div>
+          </div>
+        `;
+        statusDetail.textContent = 'Audit log expansion successful. Events are now being logged normally.';
+      } else if (state === 'failed') {
+        statusDisplay.innerHTML = `
+          <div style="padding:10px;background:rgba(220,51,68,0.1);border-radius:8px;margin-bottom:10px;border:1px solid rgba(220,51,68,0.3);">
+            <div class="d-flex justify-content-between align-items-center">
+              <span>Security Audit Log</span>
+              <span class="badge bg-danger">Failed</span>
+            </div>
+            <div class="small text-muted mt-1">Capacity: 20 MB | Usage: 19.8 MB (99%) | Drop Rate: 45%</div>
+            <div style="height:8px;background:rgba(255,255,255,0.1);border-radius:4px;margin-top:8px;overflow:hidden;">
+              <div style="height:100%;width:99%;background:#dc3545;border-radius:4px;"></div>
+            </div>
+          </div>
+        `;
+        statusDetail.textContent = 'Audit log expansion failed - manual intervention required.';
       } else if (state === 'error') {
         statusDetail.textContent = 'Simulation error occurred.';
       }

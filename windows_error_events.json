@@ -399,5 +399,14 @@
         "description": "The Event Logging service has shut down unexpectedly.",
         "recommended_action": "Restart the Event Log service and verify system integrity",
         "auto_remediate_candidate": true
+    },
+    {
+        "event_id": 1101,
+        "event_source": "EventLog",
+        "category": "Audit Events Dropped",
+        "severity": "High",
+        "description": "Audit events have been dropped by the transport due to insufficient audit log size or system resource constraints.",
+        "recommended_action": "Increase audit log size and ensure sufficient disk space",
+        "auto_remediate_candidate": true
     }
 ]
