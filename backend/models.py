@@ -530,7 +530,7 @@ def match_rules_for_event(event):
          script_type, priority, cooldown_minutes, stop_processing) = r
 
         # ── Matching logic (AND semantics) ────────────────────────────────
-        if r_event_id and r_event_id != event_id_val:
+        if r_event_id and str(r_event_id) != str(event_id_val):
             continue
         if r_source and r_source.lower() != source_val.lower():
             continue
