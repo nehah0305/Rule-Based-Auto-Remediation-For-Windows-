@@ -114,6 +114,11 @@ def migrate_db(conn):
         ('last_seen',        'TEXT'),                # last occurrence timestamp
         ('confidence_score', 'REAL DEFAULT 0.0'),    # 0-100 urgency score
         ('correlation_id',   'TEXT'),                # groups related events
+        # --- Event Log Monitor columns ---
+        ('source_type',          "TEXT DEFAULT 'api'"),  # 'api' or 'eventlog'
+        ('needs_manual_review',  'INTEGER DEFAULT 0'),   # 1 = no rule matched
+        ('manual_review_reason', 'TEXT'),                # why manual review is needed
+        ('dismissed_review',     'INTEGER DEFAULT 0'),   # 1 = operator dismissed it
     ]
 
     for col_name, col_type in new_event_columns:

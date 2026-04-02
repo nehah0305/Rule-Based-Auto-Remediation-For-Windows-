@@ -217,7 +217,7 @@ def get_intelligence_summary():
 def add_event(event_id, log_name, source, message,
               timestamp=None, category=None, severity=None,
               description=None, recommended_action=None, level=None,
-              remediated_at=None):
+              remediated_at=None, source_type='api'):
     """
     Smart event ingestion with deduplication, confidence scoring, and correlation.
 
@@ -278,11 +278,11 @@ def add_event(event_id, log_name, source, message,
         '''INSERT INTO events
            (event_id, log_name, source, message, timestamp, category, severity,
             description, recommended_action, level, remediated_at,
-            dedup_count, last_seen, confidence_score, correlation_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            dedup_count, last_seen, confidence_score, correlation_id, source_type)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
         (event_id, log_name, source, message, timestamp, category, severity,
          description, recommended_action, level, remediated_at,
-         1, timestamp, confidence_score, correlation_id)
+         1, timestamp, confidence_score, correlation_id, source_type or 'api')
     )
     rowid = c.lastrowid
     conn.commit()
@@ -333,6 +333,7 @@ def read_filtered_events_csv(limit=500):
     with open(ERRORS_WARNINGS_CSV, 'r', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
         for r in reader:
+            r.pop(None, None)  # fix for rows having more cols than original header
             rows.append(r)
     rows = rows[-limit:]
     rows.reverse()
@@ -355,8 +356,59 @@ def get_events(limit=100):
     c.execute('''
         SELECT id, event_id, log_name, source, message, timestamp,
                category, severity, description, recommended_action,
-               dedup_count, last_seen, confidence_score, correlation_id
+               COALESCE(dedup_count, 1), last_seen,
+               COALESCE(confidence_score, 0.0), correlation_id,
+               COALESCE(source_type, 'api'),
+               COALESCE(needs_manual_review, 0),
+               manual_review_reason,
+               COALESCE(dismissed_review, 0)
         FROM events
+        ORDER BY id DESC
+        LIMIT ?
+    ''', (limit,))
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+def set_manual_review(event_row_id, reason=''):
+    """Flag an event as needing manual intervention (no matching rule found)."""
+    conn = _conn()
+    c = conn.cursor()
+    c.execute(
+        'UPDATE events SET needs_manual_review=1, manual_review_reason=? WHERE id=?',
+        (reason, event_row_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def dismiss_manual_review(event_row_id):
+    """Mark an event's manual review as dismissed by the operator."""
+    conn = _conn()
+    c = conn.cursor()
+    c.execute(
+        'UPDATE events SET dismissed_review=1 WHERE id=?',
+        (event_row_id,)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_events_needing_review(limit=100):
+    """Return events flagged for manual review that haven't been dismissed."""
+    conn = _conn()
+    c = conn.cursor()
+    c.execute('''
+        SELECT id, event_id, log_name, source, message, timestamp,
+               category, severity, description, recommended_action,
+               COALESCE(dedup_count, 1), last_seen,
+               COALESCE(confidence_score, 0.0), correlation_id,
+               COALESCE(source_type, 'api'),
+               manual_review_reason
+        FROM events
+        WHERE needs_manual_review = 1
+          AND COALESCE(dismissed_review, 0) = 0
         ORDER BY id DESC
         LIMIT ?
     ''', (limit,))

@@ -76,9 +76,18 @@
             <p class="text-muted mb-0 small">Automated system remediation and management</p>
           </div>
         </div>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 align-items-center">
+          <!-- Live Monitor Status Pill -->
+          <div id="monitor-status-pill" class="d-flex align-items-center gap-2 px-3 py-1 rounded-pill" style="background:rgba(255,255,255,0.08);font-size:0.78rem;cursor:default;" title="Windows Event Log Monitor">
+            <span id="monitor-dot" style="width:9px;height:9px;border-radius:50%;background:#6c757d;display:inline-block;"></span>
+            <span id="monitor-label" class="text-muted">Event Monitor</span>
+            <span id="monitor-last" class="text-muted" style="font-size:0.72rem;"></span>
+          </div>
           <button class="btn btn-sm btn-light" onclick="refreshAll()">
             <i class="fas fa-sync me-1"></i>Refresh All
+          </button>
+          <button class="btn btn-sm btn-danger" id="inject-error-btn" onclick="injectHighCpuAlert()" title="Inject a simulated High CPU Alert to test the live detection pipeline">
+            <i class="fas fa-bolt me-1"></i>Inject Error
           </button>
         </div>
       </div>
@@ -146,6 +155,28 @@
                     <div class="text-info">
                       <i class="fas fa-history fa-2x"></i>
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Manual Review Alert Card (shown when review count > 0) -->
+          <div id="manual-review-alert-row" class="row mb-3" style="display:none!important">
+            <div class="col-12">
+              <div class="card border-danger" style="background:rgba(220,53,69,0.10);border-radius:12px;">
+                <div class="card-body py-2 px-3">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center gap-3">
+                      <i class="fas fa-exclamation-circle text-danger fa-xl"></i>
+                      <div>
+                        <h6 class="mb-0 text-danger fw-bold">Manual Review Required</h6>
+                        <small class="text-muted"><span id="stat-manual-review">0</span> event(s) have no matching remediation rule — human action needed</small>
+                      </div>
+                    </div>
+                    <button onclick="document.querySelector('a[href=\'#filteredEventsTab\']').click()" class="btn btn-sm btn-danger">
+                      <i class="fas fa-eye me-1"></i>View Events
+                    </button>
                   </div>
                 </div>
               </div>
@@ -290,26 +321,26 @@
             </div>
             <div class="card-body p-0">
               <div class="table-responsive">
-                <table class="table table-hover mb-0" id="filtered-events-table">
+                <table class="table table-hover mb-0" id="filtered-events-table" style="table-layout: fixed; width: 100%;">
                   <thead class="table-light">
                     <tr>
-                      <th style="min-width:70px">Level</th>
-                      <th style="min-width:80px">Event ID</th>
-                      <th style="min-width:130px">Source</th>
-                      <th style="min-width:80px">Severity</th>
-                      <th style="min-width:200px">Message / Description</th>
-                      <th style="min-width:100px">Timestamp</th>
-                      <th style="min-width:90px">Remediated</th>
-                      <th style="min-width:90px" class="text-center">
-                        <i class="fas fa-brain me-1" style="color:#c77dff" title="Alert Intelligence"></i>Confidence
+                      <th style="width: 6%">Level</th>
+                      <th style="width: 8%">Event ID</th>
+                      <th style="width: 12%">Source</th>
+                      <th style="width: 8%">Severity</th>
+                      <th style="width: 26%">Message / Description</th>
+                      <th style="width: 10%">Timestamp</th>
+                      <th style="width: 12%">Remediated</th>
+                      <th style="width: 6%" class="text-center">
+                        <i class="fas fa-brain" style="color:#c77dff" title="Alert Intelligence"></i><br>Conf
                       </th>
-                      <th style="min-width:70px" class="text-center">Dedup</th>
-                      <th style="min-width:140px" class="text-center">Actions</th>
+                      <th style="width: 4%" class="text-center">Dedup</th>
+                      <th style="width: 8%" class="text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td colspan="9" class="text-center text-muted py-3">No warnings or errors yet</td>
+                      <td colspan="10" class="text-center text-muted py-3">No warnings or errors yet</td>
                     </tr>
                   </tbody>
                 </table>
@@ -438,6 +469,8 @@
                     <option value="diskspace">Event 2013 - Low Disk Space</option>
                     <option value="eventlog">Event 1100 - Event Log Shutdown</option>
                     <option value="auditevents">Event 1101 - Audit Events Dropped</option>
+                    <option value="highcpu">Event 9999 - High CPU Alert &#9889;</option>
+                    <option value="servicecrash">Event 7034 - Service Crash &#x1F6A8;</option>
                   </select>
                 </div>
               </div>
@@ -693,6 +726,116 @@
                   </div>
                 </div>
               </div>
+              <!-- High CPU Alert Lab Controls -->
+              <div class="card card-modern h-100" id="highcpuLabCard" style="display:none;">
+                <div class="card-header border-0" style="background:linear-gradient(135deg,#ff4e50,#fc913a);">
+                  <h5 class="mb-0 text-white">
+                    <i class="fas fa-microchip me-2"></i>High CPU Alert Lab
+                  </h5>
+                </div>
+                <div class="card-body d-flex flex-column gap-3">
+                  <div class="small text-muted">
+                    Simulates a realistic <strong>Event ID 9999 High CPU Alert</strong> by writing
+                    a real Windows Event Log entry, injecting it into the dashboard pipeline,
+                    and triggering a one-click remediation — all from the live alert pop-up.
+                  </div>
+
+                  <!-- Step 1 -->
+                  <div class="p-3 rounded" style="background:rgba(255,78,80,0.1);border:1px solid rgba(255,78,80,0.3);">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                      <span class="badge bg-danger">Step 1</span>
+                      <strong class="small">Inject the Error</strong>
+                    </div>
+                    <div class="small text-muted mb-2">
+                      Writes Event ID 9999 to Windows Application Log and registers it
+                      in the dashboard database. The <strong>live alert pop-up</strong> will
+                      appear on the Dashboard within 5 seconds.
+                    </div>
+                    <button class="btn btn-danger btn-modern w-100" id="highcpu-inject-btn" onclick="injectHighCpuAlertFromSim()">
+                      <i class="fas fa-bolt me-1"></i>Inject High CPU Error
+                    </button>
+                  </div>
+
+                  <!-- Step 2 -->
+                  <div class="p-3 rounded" style="background:rgba(40,167,69,0.08);border:1px solid rgba(40,167,69,0.25);">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                      <span class="badge bg-success">Step 2</span>
+                      <strong class="small">Remediate from Pop-up</strong>
+                    </div>
+                    <div class="small text-muted">
+                      After the alert appears, click <strong>"Auto-Remediate Now"</strong> in the
+                      pop-up on the Dashboard tab. This runs <code>Remediate_HighCpuAlert.ps1</code>
+                      and marks the incident as resolved.
+                    </div>
+                  </div>
+
+                  <div class="small">
+                    <div class="mb-1"><strong>Inject Script:</strong> <code>Simulate_HighCpuAlert.ps1</code></div>
+                    <div><strong>Remediation Script:</strong> <code>Remediate_HighCpuAlert.ps1</code></div>
+                  </div>
+
+                  <div class="alert alert-info mb-0 small" id="highcpu-sim-status-box">
+                    <i class="fas fa-info-circle me-2"></i>Ready. Click "Inject High CPU Error" to begin.
+                  </div>
+                </div>
+              </div>
+
+              <!-- Service Crash Lab Controls -->
+              <div class="card card-modern h-100" id="servicecrashLabCard" style="display:none;">
+                <div class="card-header border-0" style="background:linear-gradient(135deg,#f7971e,#ffd200);">
+                  <h5 class="mb-0 text-white">
+                    <i class="fas fa-cogs me-2"></i>Service Crash Lab
+                  </h5>
+                </div>
+                <div class="card-body d-flex flex-column gap-3">
+                  <div class="small text-muted">
+                    Simulates a realistic <strong>Event ID 7034 Service Crash</strong> by writing
+                    a real Windows Event Log entry, injecting it into the dashboard pipeline,
+                    and triggering one-click remediation — all from the live alert pop-up.
+                  </div>
+
+                  <!-- Step 1 -->
+                  <div class="p-3 rounded" style="background:rgba(247,151,30,0.1);border:1px solid rgba(247,151,30,0.35);">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                      <span class="badge" style="background:#f7971e;">Step 1</span>
+                      <strong class="small">Inject the Error</strong>
+                    </div>
+                    <div class="small text-muted mb-2">
+                      Writes Event ID 7034 (PrintSpooler crash) to Windows Application Log
+                      and registers it in the dashboard database. The <strong>live alert pop-up</strong>
+                      will appear on the Dashboard within 5 seconds.
+                    </div>
+                    <button class="btn btn-modern w-100" id="servicecrash-inject-btn"
+                        onclick="injectServiceCrashFromSim()"
+                        style="background:linear-gradient(135deg,#f7971e,#ffd200);border:none;color:#1a1a2e;font-weight:700;">
+                      <i class="fas fa-bolt me-1"></i>Inject Service Crash Error
+                    </button>
+                  </div>
+
+                  <!-- Step 2 -->
+                  <div class="p-3 rounded" style="background:rgba(40,167,69,0.08);border:1px solid rgba(40,167,69,0.25);">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                      <span class="badge bg-success">Step 2</span>
+                      <strong class="small">Remediate from Pop-up</strong>
+                    </div>
+                    <div class="small text-muted">
+                      After the alert appears, click <strong>"Auto-Remediate Now"</strong> in the
+                      pop-up on the Dashboard tab. This runs <code>Remediate_ServiceCrash.ps1</code>
+                      and marks the incident as resolved.
+                    </div>
+                  </div>
+
+                  <div class="small">
+                    <div class="mb-1"><strong>Inject Script:</strong> <code>Simulate_ServiceCrash.ps1</code></div>
+                    <div><strong>Remediation Script:</strong> <code>Remediate_ServiceCrash.ps1</code></div>
+                  </div>
+
+                  <div class="alert alert-info mb-0 small" id="servicecrash-sim-status-box">
+                    <i class="fas fa-info-circle me-2"></i>Ready. Click "Inject Service Crash Error" to begin.
+                  </div>
+                </div>
+              </div>
+
             </div>
 
             <div class="col-lg-8">
@@ -829,6 +972,47 @@
                         </div>
                       </div>
                       <div class="small" id="auditevents-sim-status-detail">Awaiting audit log recovery simulation...</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- High CPU Alert Visual Card -->
+              <div class="card card-modern mb-4" id="highcpuSimCard" style="display:none;">
+                <div class="card-header border-0 d-flex justify-content-between align-items-center" style="background:linear-gradient(135deg,#ff4e50,#fc913a);">
+                  <h5 class="mb-0 text-white">
+                    <i class="fas fa-microchip me-2"></i>CPU Performance Monitor
+                  </h5>
+                  <span id="highcpu-sim-status-badge" class="badge bg-dark">Idle</span>
+                </div>
+                <div class="card-body">
+                  <div style="border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:20px;background:rgba(0,0,0,0.2);">
+                    <div class="mb-3 text-center">
+                      <div class="small text-muted mb-2">Live CPU Utilisation</div>
+                      <div style="position:relative;display:inline-block;width:160px;height:80px;overflow:hidden;">
+                        <svg viewBox="0 0 160 80" width="160" height="80">
+                          <path d="M 10 80 A 70 70 0 0 1 150 80" stroke="rgba(255,255,255,0.12)" stroke-width="16" fill="none" stroke-linecap="round"/>
+                          <path id="highcpu-gauge-arc" d="M 10 80 A 70 70 0 0 1 150 80" stroke="#6c757d" stroke-width="16" fill="none" stroke-linecap="round"
+                                stroke-dasharray="220" stroke-dashoffset="220" style="transition:stroke-dashoffset 0.8s ease,stroke 0.5s ease;"/>
+                        </svg>
+                        <div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);text-align:center;">
+                          <div id="highcpu-gauge-pct" style="font-size:1.6rem;font-weight:700;color:#6c757d;line-height:1;">--%</div>
+                          <div class="small text-muted" style="font-size:0.65rem;">CPU USAGE</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div style="padding:10px;background:rgba(255,255,255,0.05);border-radius:8px;margin-bottom:10px;">
+                      <div class="d-flex justify-content-between align-items-center">
+                        <span class="small">DemoWorkload.exe</span>
+                        <span class="badge bg-secondary" id="highcpu-process-badge">Idle</span>
+                      </div>
+                      <div class="small text-muted mt-1" id="highcpu-process-detail">Awaiting simulation...</div>
+                      <div style="height:6px;background:rgba(255,255,255,0.1);border-radius:3px;margin-top:8px;overflow:hidden;">
+                        <div id="highcpu-cpu-bar" style="height:100%;width:0%;background:#6c757d;border-radius:3px;transition:width 0.8s ease,background 0.5s ease;"></div>
+                      </div>
+                    </div>
+                    <div class="small text-center" id="highcpu-sim-detail-text" style="color:rgba(255,255,255,0.5);">
+                      Inject an error to begin live simulation.
                     </div>
                   </div>
                 </div>
@@ -1071,6 +1255,96 @@
       </div>
     </div>
   </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       LIVE ALERT POPUP — floats fixed bottom-right on the Dashboard
+       Shown automatically when /api/alerts/live returns new alerts.
+       ═══════════════════════════════════════════════════════════════════ -->
+  <div id="live-alert-popup" style="
+       display:none;
+       position:fixed;
+       bottom:28px;
+       right:28px;
+       z-index:9999;
+       width:380px;
+       border-radius:16px;
+       overflow:hidden;
+       box-shadow:0 8px 40px rgba(255,78,80,0.35),0 2px 12px rgba(0,0,0,0.4);
+       animation:slideUpPop 0.4s cubic-bezier(0.34,1.56,0.64,1) both;
+       font-family:inherit;">
+    <!-- Header bar -->
+    <div id="live-alert-popup-header" style="
+         background:linear-gradient(135deg,#ff4e50,#f9d423);
+         padding:14px 18px 10px;
+         display:flex;
+         align-items:center;
+         justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:1.4rem;" id="lap-icon">⚠️</span>
+        <div>
+          <div style="font-weight:700;color:#fff;font-size:0.95rem;" id="lap-title">High CPU Alert Detected</div>
+          <div style="font-size:0.72rem;color:rgba(255,255,255,0.85);" id="lap-subtitle">Event 9999 · AutoRemediationDemo</div>
+        </div>
+      </div>
+      <button onclick="dismissLiveAlert()" style="
+          background:rgba(0,0,0,0.15);border:none;color:#fff;
+          border-radius:50%;width:28px;height:28px;cursor:pointer;
+          font-size:0.85rem;display:flex;align-items:center;justify-content:center;">&times;</button>
+    </div>
+    <!-- Body -->
+    <div style="background:#1a1a2e;padding:14px 18px;">
+      <div style="font-size:0.8rem;color:rgba(255,255,255,0.7);margin-bottom:12px;line-height:1.5;" id="lap-message">
+        CPU spike detected on DemoWorkload.exe
+      </div>
+      <!-- CPU mini-bar -->
+      <div style="margin-bottom:14px;">
+        <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:rgba(255,255,255,0.5);margin-bottom:4px;">
+          <span>CPU Usage</span><span id="lap-cpu-pct" style="color:#fc913a;font-weight:600;">—%</span>
+        </div>
+        <div style="height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;">
+          <div id="lap-cpu-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#fc913a,#ff4e50);border-radius:3px;transition:width 0.6s ease;"></div>
+        </div>
+      </div>
+      <!-- Timestamp -->
+      <div style="font-size:0.7rem;color:rgba(255,255,255,0.4);margin-bottom:14px;" id="lap-timestamp"></div>
+      <!-- Action buttons -->
+      <div id="lap-actions" style="display:flex;gap:10px;">
+        <button id="lap-remediate-btn" onclick="remediateFromPopup()" style="
+            flex:1;padding:9px 0;background:linear-gradient(135deg,#28a745,#20c997);
+            border:none;color:#fff;border-radius:10px;font-weight:600;
+            font-size:0.85rem;cursor:pointer;transition:opacity 0.2s;">
+          ⚡ Auto-Remediate Now
+        </button>
+        <button onclick="dismissLiveAlert()" style="
+            padding:9px 14px;background:rgba(255,255,255,0.07);
+            border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.7);
+            border-radius:10px;font-size:0.85rem;cursor:pointer;">
+          Dismiss
+        </button>
+      </div>
+      <!-- Remediation progress (hidden until clicked) -->
+      <div id="lap-progress-wrap" style="display:none;margin-top:12px;">
+        <div style="background:rgba(255,255,255,0.07);border-radius:8px;height:6px;overflow:hidden;margin-bottom:6px;">
+          <div id="lap-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#28a745,#20c997);border-radius:8px;transition:width 1.2s ease;"></div>
+        </div>
+        <div style="font-size:0.75rem;color:rgba(255,255,255,0.55);text-align:center;" id="lap-progress-text">Executing remediation script...</div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+  @keyframes slideUpPop {
+    from { opacity:0; transform:translateY(40px) scale(0.94); }
+    to   { opacity:1; transform:translateY(0)   scale(1); }
+  }
+  @keyframes pulseGlow {
+    0%,100% { box-shadow:0 8px 40px rgba(255,78,80,0.35),0 2px 12px rgba(0,0,0,0.4); }
+    50%      { box-shadow:0 8px 60px rgba(255,78,80,0.55),0 2px 16px rgba(0,0,0,0.5); }
+  }
+  #live-alert-popup.pulsing { animation: slideUpPop 0.4s cubic-bezier(0.34,1.56,0.64,1) both, pulseGlow 2s ease-in-out 0.4s 3; }
+  #live-alert-popup.remediated-state { box-shadow:0 8px 40px rgba(40,167,69,0.4),0 2px 12px rgba(0,0,0,0.4); }
+  #live-alert-popup.remediated-state #live-alert-popup-header { background:linear-gradient(135deg,#28a745,#20c997) !important; }
+  </style>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script>
@@ -1714,9 +1988,15 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          animation: false,
           plugins: {
             legend: {
-              position: 'bottom'
+              display: true,
+              position: 'right',
+              labels: {
+                boxWidth: 12,
+                font: { size: 11 }
+              }
             }
           }
         }
@@ -1735,6 +2015,12 @@
         .sort((a, b) => b[1] - a[1])
         .slice(0, 10);
 
+      // Generate dynamic pastel colors for the bar chart
+      const barColors = [
+        '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b',
+        '#858796', '#5a5c69', '#fd7e14', '#20c997', '#6f42c1'
+      ];
+
       const ctx = document.getElementById('categoryChart');
       if (categoryChart) categoryChart.destroy();
 
@@ -1745,23 +2031,26 @@
           datasets: [{
             label: 'Event Count',
             data: sortedCategories.map(c => c[1]),
-            backgroundColor: '#198754'
+            backgroundColor: sortedCategories.map((c, i) => barColors[i % barColors.length]),
+            borderRadius: 4
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          animation: false,
           plugins: {
             legend: {
               display: false
             }
           },
           scales: {
+            x: {
+              grid: { display: false }
+            },
             y: {
               beginAtZero: true,
-              ticks: {
-                stepSize: 1
-              }
+              ticks: { stepSize: 1 }
             }
           }
         }
@@ -2199,47 +2488,28 @@
       if (selector) {
         selector.value = type;
       }
-      
+
+      const allLabCards = ['crashLabCard','diskLabCard','eventlogLabCard','auditeventsLabCard','highcpuLabCard','servicecrashLabCard'];
+      const allSimCards = ['crashSimCard','diskSimCard','eventlogSimCard','auditeventsSimCard'];
+      allLabCards.forEach(id => { const el = document.getElementById(id); if(el) el.style.display='none'; });
+      allSimCards.forEach(id => { const el = document.getElementById(id); if(el) el.style.display='none'; });
+
       if (type === 'crash') {
-        // Hide disk/eventlog/auditevents controls, show crash controls
         document.getElementById('crashLabCard').style.display = '';
-        document.getElementById('diskLabCard').style.display = 'none';
-        document.getElementById('eventlogLabCard').style.display = 'none';
-        document.getElementById('auditeventsLabCard').style.display = 'none';
         document.getElementById('crashSimCard').style.display = '';
-        document.getElementById('diskSimCard').style.display = 'none';
-        document.getElementById('eventlogSimCard').style.display = 'none';
-        document.getElementById('auditeventsSimCard').style.display = 'none';
       } else if (type === 'diskspace') {
-        // Hide crash/eventlog/auditevents controls, show disk controls
-        document.getElementById('crashLabCard').style.display = 'none';
         document.getElementById('diskLabCard').style.display = '';
-        document.getElementById('eventlogLabCard').style.display = 'none';
-        document.getElementById('auditeventsLabCard').style.display = 'none';
-        document.getElementById('crashSimCard').style.display = 'none';
         document.getElementById('diskSimCard').style.display = '';
-        document.getElementById('eventlogSimCard').style.display = 'none';
-        document.getElementById('auditeventsSimCard').style.display = 'none';
       } else if (type === 'eventlog') {
-        // Hide crash/disk/auditevents controls, show eventlog controls
-        document.getElementById('crashLabCard').style.display = 'none';
-        document.getElementById('diskLabCard').style.display = 'none';
         document.getElementById('eventlogLabCard').style.display = '';
-        document.getElementById('auditeventsLabCard').style.display = 'none';
-        document.getElementById('crashSimCard').style.display = 'none';
-        document.getElementById('diskSimCard').style.display = 'none';
         document.getElementById('eventlogSimCard').style.display = '';
-        document.getElementById('auditeventsSimCard').style.display = 'none';
       } else if (type === 'auditevents') {
-        // Hide crash/disk/eventlog controls, show auditevents controls
-        document.getElementById('crashLabCard').style.display = 'none';
-        document.getElementById('diskLabCard').style.display = 'none';
-        document.getElementById('eventlogLabCard').style.display = 'none';
         document.getElementById('auditeventsLabCard').style.display = '';
-        document.getElementById('crashSimCard').style.display = 'none';
-        document.getElementById('diskSimCard').style.display = 'none';
-        document.getElementById('eventlogSimCard').style.display = 'none';
         document.getElementById('auditeventsSimCard').style.display = '';
+      } else if (type === 'highcpu') {
+        document.getElementById('highcpuLabCard').style.display = '';
+      } else if (type === 'servicecrash') {
+        document.getElementById('servicecrashLabCard').style.display = '';
       }
     }
 
@@ -2816,13 +3086,27 @@
       if (autoRemediateFilter) autoRemediateFilter.addEventListener('change', filterEventDefinitions);
     });
 
-    function refreshAll() {
+    async function refreshAll() {
+      // Show loading status
+      const btn = document.querySelector('button[onclick="refreshAll()"]');
+      if (btn) btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Syncing...';
+      try {
+        // Force an immediate Windows Event Log pull
+        await api('/api/monitor/trigger', 'POST');
+      } catch (e) {
+        console.warn('Manual monitor trigger failed', e);
+      }
+      
       loadRules();
       loadHistory();
       loadRequests();
       loadDashboard();
       loadFilteredEvents();
-      showStatus('Refreshing', 'All data has been reloaded.', 'info');
+      pollMonitorStatus();
+      loadManualReviewCount();
+      showStatus('Refreshing', 'Windows Event Logs synced and data reloaded.', 'success');
+      
+      if (btn) btn.innerHTML = '<i class="fas fa-sync me-1"></i>Refresh All';
     }
 
     // Initial load
@@ -2831,7 +3115,345 @@
     loadHistory();
     loadRequests();
     loadFilteredEvents();
-    setInterval(() => { loadRequests(); loadDashboard(); loadFilteredEvents(); loadHistory(); }, 5000);
+    pollMonitorStatus();
+    loadManualReviewCount();
+    setInterval(() => {
+      loadRequests();
+      loadDashboard();
+      loadFilteredEvents();
+      loadHistory();
+      pollMonitorStatus();
+      loadManualReviewCount();
+    }, 10000);
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  LIVE ALERT POPUP — polling + inject + remediate functions
+    // ═══════════════════════════════════════════════════════════════════
+
+    // Tracks which alert is currently shown in the popup
+    let _lapEventRowId = null;
+    let _lapRuleId     = null;
+    let _lapAlertType  = 'highcpu';   // 'highcpu' | 'servicecrash'
+    let _lapDismissedIds = new Set(); // alert IDs dismissed this session
+
+    // Runs Simulate_HighCpuAlert.ps1 via the backend and surfaces the popup
+    async function injectHighCpuAlert() {
+      const btn = document.getElementById('inject-error-btn');
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Injecting...'; }
+      try {
+        const res = await api('/api/simulations/highcpu/inject', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+        if (res.status === 'ok') {
+          showLiveAlert({
+            id:          res.event_row_id,
+            event_id:    res.event_id,
+            source:      res.source,
+            category:    'High CPU Alert',
+            severity:    'High',
+            message:     res.message,
+            description: res.message,
+            timestamp:   res.timestamp,
+            rule_id:     res.rule_id,
+            alert_type:  'highcpu',
+            remediated:  false,
+          });
+        }
+      } catch (e) {
+        console.error('Inject High CPU failed:', e);
+      }
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Inject Error'; }
+    }
+
+    // Called from the Simulation tab ⚡ button
+    async function injectHighCpuAlertFromSim() {
+      const btn = document.getElementById('highcpu-inject-btn');
+      const statusBox = document.getElementById('highcpu-sim-status-box');
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Injecting...'; }
+      if (statusBox) { statusBox.className = 'alert alert-warning mb-0 small'; statusBox.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Writing to Windows Event Log and registering event...'; }
+      try {
+        const res = await api('/api/simulations/highcpu/inject', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+        if (res.status === 'ok') {
+          if (statusBox) {
+            statusBox.className = 'alert alert-success mb-0 small';
+            statusBox.innerHTML = `<i class="fas fa-check-circle me-2"></i>Event ID 9999 injected! CPU: ${res.cpu_pct}%. Pop-up will appear on Dashboard within 5 seconds.`;
+          }
+          // Navigate to dashboard so user can see the popup appear
+          document.querySelector('a[href="#dashboardTab"]').click();
+          // Show the popup immediately without waiting for the next poll
+          showLiveAlert({
+            id:          res.event_row_id,
+            event_id:    res.event_id,
+            source:      res.source,
+            category:    'High CPU Alert',
+            severity:    'High',
+            message:     res.message,
+            description: res.message,
+            timestamp:   res.timestamp,
+            rule_id:     res.rule_id,
+            alert_type:  'highcpu',
+            remediated:  false,
+          });
+        }
+      } catch (e) {
+        if (statusBox) { statusBox.className = 'alert alert-danger mb-0 small'; statusBox.innerHTML = `<i class="fas fa-exclamation-circle me-2"></i>Injection failed: ${e.message}`; }
+        console.error('Inject HighCPU from sim failed:', e);
+      }
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Inject High CPU Error'; }
+    }
+
+    // Called from the Simulation tab Service Crash inject button
+    async function injectServiceCrashFromSim() {
+      const btn = document.getElementById('servicecrash-inject-btn');
+      const statusBox = document.getElementById('servicecrash-sim-status-box');
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Injecting...'; }
+      if (statusBox) { statusBox.className = 'alert alert-warning mb-0 small'; statusBox.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Writing to Windows Event Log and registering event...'; }
+      try {
+        const res = await api('/api/simulations/servicecrash/inject', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+        if (res.status === 'ok') {
+          if (statusBox) {
+            statusBox.className = 'alert alert-success mb-0 small';
+            statusBox.innerHTML = `<i class="fas fa-check-circle me-2"></i>Event ID 7034 injected! PrintSpooler crashed ${res.crash_count} time(s). Pop-up will appear on Dashboard within 5 seconds.`;
+          }
+          document.querySelector('a[href="#dashboardTab"]').click();
+          showLiveAlert({
+            id:          res.event_row_id,
+            event_id:    res.event_id,
+            source:      res.source,
+            category:    'Service Crash',
+            severity:    'High',
+            message:     res.message,
+            description: res.message,
+            timestamp:   res.timestamp,
+            rule_id:     res.rule_id,
+            alert_type:  'servicecrash',
+            remediated:  false,
+          });
+        }
+      } catch (e) {
+        if (statusBox) { statusBox.className = 'alert alert-danger mb-0 small'; statusBox.innerHTML = `<i class="fas fa-exclamation-circle me-2"></i>Injection failed: ${e.message}`; }
+        console.error('Inject ServiceCrash from sim failed:', e);
+      }
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Inject Service Crash Error'; }
+    }
+
+    // Core function: renders and shows the live alert popup
+    function showLiveAlert(alert) {
+      if (_lapDismissedIds.has(alert.id)) return;  // already dismissed this session
+
+      _lapEventRowId = alert.id;
+      _lapRuleId     = alert.rule_id;
+      _lapAlertType  = alert.alert_type || 'highcpu';
+
+      const popup    = document.getElementById('live-alert-popup');
+      const header   = document.getElementById('live-alert-popup-header');
+      const icon     = document.getElementById('lap-icon');
+      const title    = document.getElementById('lap-title');
+      const subtitle = document.getElementById('lap-subtitle');
+      const msgEl    = document.getElementById('lap-message');
+      const tsEl     = document.getElementById('lap-timestamp');
+      const cpuBar   = document.getElementById('lap-cpu-bar');
+      const cpuPct   = document.getElementById('lap-cpu-pct');
+      const actions  = document.getElementById('lap-actions');
+      const progWrap = document.getElementById('lap-progress-wrap');
+      const remBtn   = document.getElementById('lap-remediate-btn');
+
+      if (!popup) return;
+
+      // Reset state
+      progWrap.style.display = 'none';
+      actions.style.display  = 'flex';
+      remBtn.disabled = false;
+      remBtn.innerHTML = '⚡ Auto-Remediate Now';
+      popup.classList.remove('remediated-state');
+
+      const isServiceCrash = (_lapAlertType === 'servicecrash');
+
+      if (isServiceCrash) {
+        // Orange/amber theme for Service Crash
+        header.style.background = 'linear-gradient(135deg,#f7971e,#ffd200)';
+        icon.textContent    = '🔧';
+        title.textContent   = 'Service Crash Detected';
+        subtitle.textContent = `Event 7034 · ${alert.source || 'AutoRemediationDemo'}`;
+        cpuBar.style.background = 'linear-gradient(90deg,#f7971e,#ffd200)';
+        const cpuVal = Math.floor(Math.random() * 15) + 80;  // fake "service restart" CPU meter
+        cpuPct.style.color = '#f7971e';
+        cpuPct.textContent = 'Critical';
+        cpuBar.style.width = cpuVal + '%';
+        document.querySelector('#live-alert-popup > div:first-child').style.boxShadow =
+          '0 8px 40px rgba(247,151,30,0.35),0 2px 12px rgba(0,0,0,0.4)';
+        popup.style.boxShadow = '0 8px 40px rgba(247,151,30,0.35),0 2px 12px rgba(0,0,0,0.4)';
+      } else {
+        // Red/orange theme for High CPU (original)
+        header.style.background = 'linear-gradient(135deg,#ff4e50,#f9d423)';
+        icon.textContent    = '⚠️';
+        title.textContent   = 'High CPU Alert Detected';
+        subtitle.textContent = `Event 9999 · ${alert.source || 'AutoRemediationDemo'}`;
+        cpuBar.style.background = 'linear-gradient(90deg,#fc913a,#ff4e50)';
+        const cpuMatch = (alert.message || '').match(/CPU:\s*(\d+)%/);
+        const cpuVal = cpuMatch ? parseInt(cpuMatch[1]) : (Math.floor(Math.random()*8)+92);
+        cpuPct.style.color = '#fc913a';
+        cpuPct.textContent = cpuVal + '%';
+        cpuBar.style.width = cpuVal + '%';
+        popup.style.boxShadow = '0 8px 40px rgba(255,78,80,0.35),0 2px 12px rgba(0,0,0,0.4)';
+      }
+
+      msgEl.textContent = (alert.message || alert.description || '').substring(0, 180);
+      tsEl.textContent  = alert.timestamp ? 
+        'Detected: ' + new Date(alert.timestamp).toLocaleString() : '';
+
+      if (alert.remediated) {
+        // Already remediated — show resolved state
+        actions.style.display = 'none';
+        popup.classList.add('remediated-state');
+        header.style.background = 'linear-gradient(135deg,#28a745,#20c997)';
+        icon.textContent  = '✅';
+        title.textContent = isServiceCrash ? 'Service Crash Resolved' : 'CPU Alert Resolved';
+      }
+
+      popup.style.display = 'block';
+      popup.classList.remove('pulsing');
+      void popup.offsetWidth;   // force reflow to retrigger animation
+      popup.classList.add('pulsing');
+    }
+
+    // Polling: every 5 seconds, fetch /api/alerts/live and surface new ones
+    async function pollLiveAlerts() {
+      try {
+        const alerts = await api('/api/alerts/live?window=300');
+        if (!Array.isArray(alerts) || alerts.length === 0) return;
+        const latest = alerts[0];  // Most-recent first
+        if (_lapDismissedIds.has(latest.id)) return;
+        // Only open a NEW popup when the event row id changes
+        if (_lapEventRowId !== latest.id) {
+          showLiveAlert(latest);
+        }
+      } catch (e) {
+        // silently ignore polling errors
+      }
+    }
+
+    // Called when user clicks "Auto-Remediate Now" in the popup
+    async function remediateFromPopup() {
+      if (!_lapEventRowId) return;
+      const remBtn  = document.getElementById('lap-remediate-btn');
+      const progWrap = document.getElementById('lap-progress-wrap');
+      const progBar  = document.getElementById('lap-progress-bar');
+      const progText = document.getElementById('lap-progress-text');
+      const actions  = document.getElementById('lap-actions');
+      const popup    = document.getElementById('live-alert-popup');
+      const header   = document.getElementById('live-alert-popup-header');
+      const title    = document.getElementById('lap-title');
+      const icon     = document.getElementById('lap-icon');
+
+      remBtn.disabled = true;
+      remBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Remediating...';
+      actions.style.display = 'flex';
+      progWrap.style.display = 'block';
+      progBar.style.width = '0%';
+      progText.textContent = 'Executing remediation script...';
+
+      // Animate progress bar
+      setTimeout(() => { progBar.style.width = '35%'; }, 100);
+      setTimeout(() => { progBar.style.width = '70%'; }, 700);
+
+      try {
+        const endpoint = (_lapAlertType === 'servicecrash')
+          ? '/api/simulations/servicecrash/remediate'
+          : '/api/simulations/highcpu/remediate';
+
+        const res = await api(endpoint, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ event_row_id: _lapEventRowId })
+        });
+
+        progBar.style.width = '100%';
+
+        if (res.status === 'success') {
+          progText.textContent = 'Remediation succeeded! Incident resolved.';
+          popup.classList.add('remediated-state');
+          header.style.background = 'linear-gradient(135deg,#28a745,#20c997)';
+          icon.textContent  = '✅';
+          title.textContent = (_lapAlertType === 'servicecrash') ?
+            'Service Crash Resolved' : 'CPU Alert Resolved';
+          actions.style.display = 'none';
+          _lapDismissedIds.add(_lapEventRowId);
+          // Auto-dismiss after 4s
+          setTimeout(() => dismissLiveAlert(), 4000);
+        } else {
+          progText.textContent = `Remediation status: ${res.status}. Check History tab for output.`;
+          remBtn.disabled  = false;
+          remBtn.innerHTML = '⚡ Auto-Remediate Now';
+        }
+      } catch (e) {
+        progText.textContent = `Error: ${e.message}`;
+        remBtn.disabled  = false;
+        remBtn.innerHTML = '⚡ Auto-Remediate Now';
+      }
+
+      loadHistory();
+      loadDashboard();
+      loadFilteredEvents();
+    }
+
+    function dismissLiveAlert() {
+      const popup = document.getElementById('live-alert-popup');
+      if (popup) {
+        if (_lapEventRowId) _lapDismissedIds.add(_lapEventRowId);
+        popup.style.display = 'none';
+        popup.classList.remove('pulsing', 'remediated-state');
+        _lapEventRowId = null;
+        _lapRuleId     = null;
+      }
+    }
+
+    // Start polling every 5 seconds
+    setInterval(pollLiveAlerts, 5000);
+
+    async function pollMonitorStatus() {
+      try {
+        const status = await api('/api/monitor/status');
+        const pill = document.getElementById('monitor-status-pill');
+        const dot = document.getElementById('monitor-dot');
+        const lastEl = document.getElementById('monitor-last');
+        if (!pill) return;
+        if (status.running) {
+          dot.style.background = '#198754';
+          dot.style.boxShadow = '0 0 6px #198754';
+          if (status.last_poll) {
+            const timeStr = new Date(status.last_poll).toLocaleTimeString();
+            lastEl.textContent = `(Last: ${timeStr})`;
+          }
+        } else {
+          dot.style.background = '#dc3545';
+          dot.style.boxShadow = 'none';
+          lastEl.textContent = '(Stopped)';
+        }
+      } catch (e) {
+        // ignore silently
+      }
+    }
+
+    async function loadManualReviewCount() {
+      try {
+        const rows = await api('/api/events/manual-review');
+        const count = rows.length;
+        document.getElementById('stat-manual-review').textContent = count;
+        const alertRow = document.getElementById('manual-review-alert-row');
+        if (alertRow) {
+          alertRow.style.setProperty('display', count > 0 ? 'flex' : 'none', 'important');
+        }
+      } catch (e) {}
+    }
+
+    async function dismissReview(eventId) {
+      try {
+        await api('/api/events/' + eventId + '/dismiss-review', 'POST');
+        loadFilteredEvents();
+        loadManualReviewCount();
+      } catch (e) {
+        alert('Failed to dismiss manual review');
+      }
+    }
 
 
     async function loadFilteredEvents() {
@@ -2867,14 +3489,21 @@
         let remediatedDisplay = '<span class="badge bg-secondary">Not Remediated</span>';
         if (r.remediated_at) {
           remediatedDisplay = `<small class="text-success"><i class="fas fa-check-circle me-1"></i>${new Date(r.remediated_at).toLocaleString()}</small>`;
+        } else if (r.needs_manual_review && !r.dismissed_review) {
+          remediatedDisplay = `
+            <div class="d-flex flex-column align-items-center gap-1">
+              <span class="badge bg-danger"><i class="fas fa-exclamation-triangle me-1"></i>Review Needed</span>
+              <button class="btn btn-sm btn-link text-muted p-0" style="font-size:0.75rem" onclick="dismissReview(${r.id})">Dismiss</button>
+            </div>
+          `;
         }
 
         tr.innerHTML = `
       <td>${getLevelBadge(r.level)}</td>
-      <td><code>${r.event_id}</code></td>
-      <td>${r.source || ''}</td>
+      <td style="overflow:hidden; text-overflow:ellipsis;"><code>${r.event_id}</code></td>
+      <td style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${r.source || ''}">${r.source || ''}</td>
       <td>${getSeverityBadge(r.severity)}</td>
-      <td class="small" title="${(r.message || '').replace(/"/g, '&quot;')}">${msg}</td>
+      <td class="small" style="overflow:-webkit-paged-y; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; max-height: 4.5em;" title="${(r.message || '').replace(/"/g, '&quot;')}">${msg}</td>
       <td><small class="text-muted">${r.timestamp ? new Date(r.timestamp).toLocaleString() : ''}</small></td>
       <td>${remediatedDisplay}</td>
       <td class="text-center">${confBadge}</td>

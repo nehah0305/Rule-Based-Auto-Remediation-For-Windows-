@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 from db_init import init_db
 import models
+import event_log_monitor
 
 # Load environment variables from .env file
 load_dotenv()
@@ -17,6 +18,9 @@ app = Flask(__name__)
 
 # Ensure DB exists and migrations run
 init_db()
+
+# Start the background Windows Event Log monitor thread
+event_log_monitor.start_monitor()
 
 
 @app.route('/')
@@ -42,6 +46,10 @@ def events():
                 last_seen=r[11] if len(r) > 11 else None,
                 confidence_score=r[12] if len(r) > 12 else 0.0,
                 correlation_id=r[13] if len(r) > 13 else None,
+                source_type=r[14] if len(r) > 14 else 'api',
+                needs_manual_review=bool(r[15]) if len(r) > 15 else False,
+                manual_review_reason=r[16] if len(r) > 16 else None,
+                dismissed_review=bool(r[17]) if len(r) > 17 else False,
             ))
         return jsonify(result)
 
@@ -84,6 +92,43 @@ def events():
                                       'Auto-remediation suppressed — rule cooldown active')
 
     return jsonify({'status': 'ok', 'event_id': event_row_id, 'matched': matched_info})
+
+
+@app.route('/api/events/manual-review', methods=['GET'])
+def events_manual_review():
+    """Return all events that need manual intervention (no rule matched)."""
+    rows = models.get_events_needing_review(limit=200)
+    result = []
+    for r in rows:
+        result.append(dict(
+            id=r[0], event_id=r[1], log_name=r[2], source=r[3],
+            message=r[4], timestamp=r[5], category=r[6], severity=r[7],
+            description=r[8], recommended_action=r[9],
+            dedup_count=r[10], last_seen=r[11],
+            confidence_score=r[12], correlation_id=r[13],
+            source_type=r[14], manual_review_reason=r[15],
+        ))
+    return jsonify(result)
+
+
+@app.route('/api/events/<int:event_row_id>/dismiss-review', methods=['POST'])
+def dismiss_event_review(event_row_id):
+    """Mark an event's manual review as acknowledged by the operator."""
+    models.dismiss_manual_review(event_row_id)
+    return jsonify({'status': 'dismissed', 'event_row_id': event_row_id})
+
+
+@app.route('/api/monitor/status', methods=['GET'])
+def monitor_status():
+    """Return the current status of the Windows Event Log monitor thread."""
+    return jsonify(event_log_monitor.get_status())
+
+
+@app.route('/api/monitor/trigger', methods=['POST'])
+def monitor_trigger():
+    """Manually force a pull of the Windows Event Logs."""
+    count = event_log_monitor.trigger_poll()
+    return jsonify({'status': 'ok', 'events_ingested': count})
 
 
 @app.route('/api/events/ensure', methods=['POST'])
@@ -334,6 +379,8 @@ def filtered_events():
         rows = models.read_filtered_events_csv()
         return jsonify(rows)
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 
@@ -1924,6 +1971,354 @@ def simulate_auditevents_auto_fix():
         'latest_output': latest_output,
         'summary': totals,
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  High CPU Alert — Live Demo Simulation
+# ─────────────────────────────────────────────────────────────────────────────
+
+_HIGHCPU_EVENT_ID  = 9999
+_HIGHCPU_SOURCE    = 'AutoRemediationDemo'
+_HIGHCPU_CATEGORY  = 'High CPU Alert'
+
+
+def _ensure_highcpu_rule():
+    """Return (or lazily create) the remediation rule for the HighCPU demo."""
+    script_path = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), '..', 'remediation_scripts',
+        'Remediate_HighCpuAlert.ps1'
+    ))
+    for r in models.get_rules():
+        if r[2] == _HIGHCPU_EVENT_ID and (r[3] or '').lower() == _HIGHCPU_SOURCE.lower():
+            return r
+    rid = models.add_rule(
+        name='AutoFix Demo - Event ID 9999 High CPU Alert',
+        event_id=_HIGHCPU_EVENT_ID,
+        source=_HIGHCPU_SOURCE,
+        message_regex=None,
+        remediation_script=script_path,
+        script_type='file',
+        auto_remediate=False,          # We drive this manually from the pop-up
+        stop_processing=False,
+        category=_HIGHCPU_CATEGORY,
+        severity='High',
+        description='Auto-fix rule for the High CPU Alert live demo.',
+        recommended_action='Run CPU throttle remediation script.',
+        priority=10,
+        cooldown_minutes=0,
+    )
+    return models.get_rule(rid)
+
+
+@app.route('/api/simulations/highcpu/inject', methods=['POST'])
+def highcpu_inject():
+    """
+    Step 1 of the live alert demo:
+      - Runs Simulate_HighCpuAlert.ps1 to write a real Windows Event Log entry.
+      - Adds the event to the DB so the dashboard can detect it.
+      - Returns {status, event_row_id, script_output}.
+    """
+    inject_script = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), '..', 'remediation_scripts',
+        'Simulate_HighCpuAlert.ps1'
+    ))
+
+    script_output = ''
+    if os.path.exists(inject_script):
+        try:
+            proc = subprocess.run(
+                ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                 '-File', inject_script],
+                capture_output=True, text=True, timeout=30
+            )
+            script_output = (proc.stdout + proc.stderr).strip()
+        except Exception as exc:
+            script_output = f'Script execution error: {exc}'
+    else:
+        script_output = f'[INFO] Inject script not found at {inject_script}; DB event still created.'
+
+    now = datetime.utcnow()
+    cpu_pct = random.randint(92, 100)
+    message = (
+        f'[HIGH CPU ALERT] Simulated CPU spike detected. '
+        f'Process: DemoWorkload.exe, CPU: {cpu_pct}%, '
+        f'Duration: >30 seconds sustained above 90% threshold. '
+        f'Timestamp: {now.isoformat()}Z'
+    )
+
+    event_row_id = models.add_event(
+        event_id=_HIGHCPU_EVENT_ID,
+        log_name='Simulation',
+        source=_HIGHCPU_SOURCE,
+        message=message,
+        timestamp=now.isoformat(),
+        category=_HIGHCPU_CATEGORY,
+        severity='High',
+        description='Simulated High CPU Alert — DemoWorkload.exe spike to ' + str(cpu_pct) + '%',
+        recommended_action='Run CPU throttle remediation (Remediate_HighCpuAlert.ps1)',
+        level='Error',
+    )
+
+    # Ensure the remediation rule exists so the live alert pop-up can use it
+    rule = _ensure_highcpu_rule()
+    rule_id = rule[0] if rule else None
+
+    return jsonify({
+        'status': 'ok',
+        'event_row_id': event_row_id,
+        'event_id': _HIGHCPU_EVENT_ID,
+        'source': _HIGHCPU_SOURCE,
+        'message': message,
+        'cpu_pct': cpu_pct,
+        'rule_id': rule_id,
+        'script_output': script_output,
+        'timestamp': now.isoformat() + 'Z',
+    })
+
+
+@app.route('/api/simulations/highcpu/remediate', methods=['POST'])
+def highcpu_remediate():
+    """
+    Step 2 of the live alert demo:
+      - Receives {event_row_id} from the pop-up.
+      - Ensures the remediation rule exists.
+      - Calls models.run_remediation() which executes Remediate_HighCpuAlert.ps1.
+      - Returns {status, output, event_row_id, rule_id}.
+    """
+    data = request.get_json(silent=True) or {}
+    event_row_id = data.get('event_row_id')
+    if not event_row_id:
+        return jsonify({'error': 'event_row_id is required'}), 400
+
+    rule = _ensure_highcpu_rule()
+    if not rule:
+        return jsonify({'error': 'Could not create/find remediation rule'}), 500
+
+    rule_id = rule[0]
+    result = models.run_remediation(event_row_id, rule_id)
+
+    return jsonify({
+        'status': result.get('status', 'unknown'),
+        'output': result.get('output', ''),
+        'event_row_id': event_row_id,
+        'rule_id': rule_id,
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Service Crash — Live Demo Simulation  (Event ID 7034)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SVCCRASH_EVENT_ID = 7034
+_SVCCRASH_SOURCE   = 'AutoRemediationDemo'
+_SVCCRASH_CATEGORY = 'Service Crash'
+
+
+def _ensure_svccrash_rule():
+    """Return (or lazily create) the remediation rule for the ServiceCrash demo."""
+    script_path = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), '..', 'remediation_scripts',
+        'Remediate_ServiceCrash.ps1'
+    ))
+    for r in models.get_rules():
+        if r[2] == _SVCCRASH_EVENT_ID and (r[3] or '').lower() == _SVCCRASH_SOURCE.lower():
+            return r
+    rid = models.add_rule(
+        name='AutoFix Demo - Event ID 7034 Service Crash',
+        event_id=_SVCCRASH_EVENT_ID,
+        source=_SVCCRASH_SOURCE,
+        message_regex=None,
+        remediation_script=script_path,
+        script_type='file',
+        auto_remediate=False,          # Driven manually from the pop-up
+        stop_processing=False,
+        category=_SVCCRASH_CATEGORY,
+        severity='High',
+        description='Auto-fix rule for the Service Crash live demo.',
+        recommended_action='Run service restart remediation script.',
+        priority=11,
+        cooldown_minutes=0,
+    )
+    return models.get_rule(rid)
+
+
+@app.route('/api/simulations/servicecrash/inject', methods=['POST'])
+def servicecrash_inject():
+    """
+    Step 1 of the Service Crash live alert demo:
+      - Runs Simulate_ServiceCrash.ps1 to write a real Windows Event Log entry.
+      - Adds the event to the DB so the dashboard can detect it.
+      - Returns {status, event_row_id, script_output}.
+    """
+    inject_script = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), '..', 'remediation_scripts',
+        'Simulate_ServiceCrash.ps1'
+    ))
+
+    script_output = ''
+    if os.path.exists(inject_script):
+        try:
+            proc = subprocess.run(
+                ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                 '-File', inject_script],
+                capture_output=True, text=True, timeout=30
+            )
+            script_output = (proc.stdout + proc.stderr).strip()
+        except Exception as exc:
+            script_output = f'Script execution error: {exc}'
+    else:
+        script_output = f'[INFO] Inject script not found at {inject_script}; DB event still created.'
+
+    now = datetime.utcnow()
+    crash_count = random.randint(1, 4)
+    message = (
+        f'[SERVICE CRASH ALERT] The Print Spooler (PrintSpooler) service terminated unexpectedly. '
+        f'It has done this {crash_count} time(s). '
+        f'Process: PrintSpooler.exe, '
+        f'The following corrective action will be taken in 60000 milliseconds: Restart the service. '
+        f'Timestamp: {now.isoformat()}Z'
+    )
+
+    event_row_id = models.add_event(
+        event_id=_SVCCRASH_EVENT_ID,
+        log_name='Simulation',
+        source=_SVCCRASH_SOURCE,
+        message=message,
+        timestamp=now.isoformat(),
+        category=_SVCCRASH_CATEGORY,
+        severity='High',
+        description=f'Simulated Service Crash — PrintSpooler crashed {crash_count} time(s)',
+        recommended_action='Run service restart remediation (Remediate_ServiceCrash.ps1)',
+        level='Error',
+    )
+
+    # Ensure the remediation rule exists so the live alert pop-up can use it
+    rule = _ensure_svccrash_rule()
+    rule_id = rule[0] if rule else None
+
+    return jsonify({
+        'status': 'ok',
+        'event_row_id': event_row_id,
+        'event_id': _SVCCRASH_EVENT_ID,
+        'source': _SVCCRASH_SOURCE,
+        'message': message,
+        'crash_count': crash_count,
+        'rule_id': rule_id,
+        'script_output': script_output,
+        'timestamp': now.isoformat() + 'Z',
+    })
+
+
+@app.route('/api/simulations/servicecrash/remediate', methods=['POST'])
+def servicecrash_remediate():
+    """
+    Step 2 of the Service Crash live alert demo:
+      - Receives {event_row_id} from the pop-up.
+      - Ensures the remediation rule exists.
+      - Calls models.run_remediation() which executes Remediate_ServiceCrash.ps1.
+      - Returns {status, output, event_row_id, rule_id}.
+    """
+    data = request.get_json(silent=True) or {}
+    event_row_id = data.get('event_row_id')
+    if not event_row_id:
+        return jsonify({'error': 'event_row_id is required'}), 400
+
+    rule = _ensure_svccrash_rule()
+    if not rule:
+        return jsonify({'error': 'Could not create/find remediation rule'}), 500
+
+    rule_id = rule[0]
+    result = models.run_remediation(event_row_id, rule_id)
+
+    return jsonify({
+        'status': result.get('status', 'unknown'),
+        'output': result.get('output', ''),
+        'event_row_id': event_row_id,
+        'rule_id': rule_id,
+    })
+
+
+@app.route('/api/alerts/live', methods=['GET'])
+def live_alerts():
+    """
+    Polled every 5 s by the dashboard's live-alert system.
+    Returns High/Critical-severity simulation events from the last 5 minutes
+    that were injected via the HighCPU demo, enriched with remediation status.
+    """
+    try:
+        window_seconds = int(request.args.get('window', 300))   # default 5 min
+        cutoff = (datetime.utcnow() - timedelta(seconds=window_seconds)).isoformat()
+
+        # Fetch recent events from DB
+        all_events = models.get_events(limit=500)
+        recent_history = models.get_history(limit=200)
+
+        # Index remediated event_row_ids
+        remediated_ids = set()
+        for h in recent_history:
+            if h[3] == 'success':          # h[3] = status column
+                remediated_ids.add(h[1])   # h[1] = event_row_id
+
+        alerts = []
+        for ev in all_events:
+            # ev columns: id, event_id, log_name, source, message, timestamp,
+            #             category, severity, description, recommended_action,
+            #             dedup_count, last_seen, confidence_score, correlation_id,
+            #             source_type, needs_manual_review, manual_review_reason, dismissed_review
+            ev_id        = ev[0]
+            event_id     = ev[1]
+            log_name     = ev[2]
+            source       = ev[3]
+            message      = ev[4]
+            timestamp    = ev[5]
+            category     = ev[6]
+            severity     = ev[7]
+            description  = ev[8]
+
+            # Only surface High/Critical severity simulation injections
+            if severity not in ('High', 'Critical'):
+                continue
+            if log_name != 'Simulation':
+                continue
+            # Accept both HighCPU and ServiceCrash demo sources
+            if source not in (_HIGHCPU_SOURCE, _SVCCRASH_SOURCE):
+                continue
+            # Only within the time window
+            if timestamp and timestamp < cutoff:
+                continue
+
+            # Route to the correct rule helper based on source
+            if source == _SVCCRASH_SOURCE and event_id == _SVCCRASH_EVENT_ID:
+                rule = _ensure_svccrash_rule()
+                alert_type = 'servicecrash'
+            else:
+                rule = _ensure_highcpu_rule()
+                alert_type = 'highcpu'
+            rule_id = rule[0] if rule else None
+
+            alerts.append({
+                'id':            ev_id,
+                'event_id':      event_id,
+                'source':        source,
+                'category':      category,
+                'severity':      severity,
+                'message':       message,
+                'description':   description,
+                'timestamp':     timestamp,
+                'log_name':      log_name,
+                'remediated':    ev_id in remediated_ids,
+                'rule_id':       rule_id,
+                'alert_type':    alert_type,
+            })
+
+        # Most-recent first
+        alerts.sort(key=lambda a: a.get('timestamp') or '', reverse=True)
+        return jsonify(alerts[:20])
+
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(exc)}), 500
 
 
 # ─────────────────────────────────────────────────────────────────────────────
