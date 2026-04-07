@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
 import subprocess
 import os
 import json
@@ -6,6 +6,7 @@ import re
 import random
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+import time
 
 from db_init import init_db
 import models
@@ -14,7 +15,32 @@ import event_log_monitor
 # Load environment variables from .env file
 load_dotenv()
 
+# Simple cache for filtered events to improve response time
+_filtered_events_cache = {'data': None, 'timestamp': 0, 'ttl': 15}
+
 app = Flask(__name__)
+
+# ─── CORS: allow Flutter dev server (port 8080) to hit the API ────────────────
+@app.after_request
+def add_cors_headers(response):
+    origin = request.headers.get('Origin', '')
+    if origin in ('http://localhost:8080', 'http://127.0.0.1:8080'):
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+    return response
+
+@app.route('/api/<path:path>', methods=['OPTIONS'])
+def options_handler(path):
+    """Handle CORS preflight for all /api/* routes."""
+    response = jsonify({})
+    origin = request.headers.get('Origin', '')
+    if origin in ('http://localhost:8080', 'http://127.0.0.1:8080'):
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept'
+    return response, 200
 
 # Ensure DB exists and migrations run
 init_db()
@@ -23,9 +49,29 @@ init_db()
 event_log_monitor.start_monitor()
 
 
+# ─── Flutter Web Frontend ────────────────────────────────────────────────────
+# Serve the Flutter build output. If build/web doesn't exist yet (dev mode),
+# fall back to the old index.html template.
+
+import os as _os
+_FLUTTER_BUILD = _os.path.join(_os.path.dirname(__file__), '..', 'frontend', 'build', 'web')
+_FLUTTER_BUILD = _os.path.abspath(_FLUTTER_BUILD)
+
 @app.route('/')
 def index():
+    if _os.path.isdir(_FLUTTER_BUILD):
+        return send_from_directory(_FLUTTER_BUILD, 'index.html')
     return render_template('index.html')
+
+@app.route('/<path:filename>')
+def flutter_static(filename):
+    """Serve Flutter's JS, fonts, assets, and canvaskit files."""
+    if _os.path.isdir(_FLUTTER_BUILD):
+        target = _os.path.join(_FLUTTER_BUILD, filename)
+        if _os.path.isfile(target):
+            return send_from_directory(_FLUTTER_BUILD, filename)
+    return render_template('index.html'), 404
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -289,16 +335,62 @@ def test_rule(rule_id):
 
 @app.route('/api/history', methods=['GET'])
 def history():
-    rows = models.get_history(limit=500)
-    hist = []
-    for h in rows:
-        hist.append(dict(
-            id=h[0], event_row_id=h[1], rule_id=h[2],
-            status=h[3], output=h[4], timestamp=h[5],
-            event_id=h[6], event_source=h[7],
-            rule_name=h[8], event_timestamp=h[9],
-        ))
-    return jsonify(hist)
+    try:
+        rows = models.get_history(limit=500)
+        print(f'[DEBUG] get_history returned {len(rows)} rows', flush=True)
+        if rows:
+            print(f'[DEBUG] First row has {len(rows[0])} columns', flush=True)
+            print(f'[DEBUG] First row data: {rows[0]}', flush=True)
+        
+        hist = []
+        for i, h in enumerate(rows):
+            try:
+                # Check row structure
+                if len(h) < 10:
+                    print(f'[ERROR] Row {i} has only {len(h)} columns, expected 10', flush=True)
+                    raise ValueError(f'Row has {len(h)} columns, expected 10. Row: {h}')
+                
+                # Safely parse each field
+                def safe_int(val):
+                    if val is None:
+                        return None
+                    if isinstance(val, int):
+                        return val
+                    try:
+                        return int(val)
+                    except (ValueError, TypeError):
+                        return None
+                
+                def safe_str(val):
+                    if val is None:
+                        return None
+                    return str(val) if val else None
+                
+                entry = dict(
+                    id=safe_int(h[0]),
+                    event_row_id=safe_int(h[1]),
+                    rule_id=safe_int(h[2]),
+                    status=safe_str(h[3]),
+                    output=safe_str(h[4]),
+                    timestamp=safe_str(h[5]),
+                    event_id=safe_int(h[6]),
+                    event_source=safe_str(h[7]),
+                    rule_name=safe_str(h[8]),
+                    event_timestamp=safe_str(h[9]),
+                )
+                hist.append(entry)
+            except Exception as row_err:
+                print(f'[ERROR] Failed to parse row {i}: {h}', flush=True)
+                print(f'  Error: {row_err}', flush=True)
+                raise
+        
+        print(f'[DEBUG] Successfully converted {len(hist)} rows', flush=True)
+        return jsonify(hist)
+    except Exception as e:
+        print(f'[ERROR] /api/history failed: {e}', flush=True)
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e), 'type': type(e).__name__}), 500
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -375,8 +467,19 @@ def event_definition_detail(event_id):
 
 @app.route('/api/filtered-events', methods=['GET'])
 def filtered_events():
+    """Get filtered events with caching to improve response time."""
+    global _filtered_events_cache
+    now = time.time()
+    
+    # Return cached data if still valid
+    if (_filtered_events_cache['data'] is not None and 
+        (now - _filtered_events_cache['timestamp']) < _filtered_events_cache['ttl']):
+        return jsonify(_filtered_events_cache['data'])
+    
     try:
         rows = models.read_filtered_events_csv()
+        _filtered_events_cache['data'] = rows
+        _filtered_events_cache['timestamp'] = now
         return jsonify(rows)
     except Exception as e:
         import traceback

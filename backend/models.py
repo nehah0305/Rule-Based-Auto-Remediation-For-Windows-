@@ -326,17 +326,31 @@ def write_event_row_to_csv(path, rowdict):
 
 
 def read_filtered_events_csv(limit=500):
-    """Read errors/warnings CSV — most recent first."""
+    """Read errors/warnings CSV — most recent first. Handles NUL bytes. Optimized."""
     if not os.path.exists(ERRORS_WARNINGS_CSV):
         return []
     rows = []
-    with open(ERRORS_WARNINGS_CSV, 'r', encoding='utf-8') as csvfile:
+    try:
+        with open(ERRORS_WARNINGS_CSV, 'rb') as f:
+            content = f.read()
+        # Remove NUL bytes and decode
+        clean_content = content.replace(b'\x00', b'').decode('utf-8', errors='ignore')
+        # Parse CSV from cleaned content
+        import io
+        csvfile = io.StringIO(clean_content)
         reader = csv.DictReader(csvfile)
+        # Only keep last N rows to avoid memory issues
         for r in reader:
+            if r is None:
+                continue
             r.pop(None, None)  # fix for rows having more cols than original header
             rows.append(r)
-    rows = rows[-limit:]
-    rows.reverse()
+            if len(rows) > limit:
+               rows.pop(0)  # Keep only the last `limit` rows
+    except Exception as e:
+        print(f"Error reading filtered events CSV: {e}")
+        return []
+    rows.reverse()  # Most recent first
     return rows
 
 
