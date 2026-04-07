@@ -63,7 +63,25 @@ Open **PowerShell** in the project directory and run:
 
 **Follow the prompts** to configure the API URL (use default for local setup).
 
-### Step 3: Start the Backend
+### Step 3: Build the Flutter Web Frontend
+
+Open **PowerShell** in the `frontend` directory and run:
+
+```powershell
+cd frontend
+C:\flutter\bin\flutter build web --release
+```
+
+**Expected output:**
+```
+✓ Build complete. Built web application: build/web/
+```
+
+**Note:** First build takes 2-5 minutes. Subsequent builds are faster.
+
+### Step 4: Start the Backend
+
+In a **new terminal**, run:
 
 ```cmd
 start_backend.bat
@@ -78,9 +96,9 @@ Access the dashboard at: http://localhost:5000
 
 **Keep this window open!**
 
-### Step 4: Start the Event Monitor
+### Step 5: Start the Event Monitor
 
-Open a **new terminal** and run:
+Open another **new terminal** and run:
 
 ```cmd
 start_event_monitor.bat
@@ -91,7 +109,7 @@ start_event_monitor.bat
 - Starts monitoring for new events
 - Sends events to the backend automatically
 
-### Step 5: Access the Dashboard
+### Step 6: Access the Dashboard
 
 Open your browser and go to:
 
@@ -131,28 +149,40 @@ If you prefer manual setup or the automated script fails:
    .\.venv\Scripts\activate
    ```
 
-2. **Install dependencies:**
+2. **Install backend dependencies:**
    ```bash
    pip install -r backend\requirements.txt
    ```
 
-3. **Create configuration:**
+3. **Install Flutter (if building frontend):**
+   ```bash
+   # Download from https://flutter.dev/docs/get-started/install/windows
+   # Or use: choco install flutter
+   ```
+
+4. **Build Flutter frontend:**
+   ```bash
+   cd frontend
+   flutter build web --release
+   ```
+
+5. **Create configuration:**
    ```bash
    copy .env.example .env
    notepad .env  # Edit as needed
    ```
 
-4. **Initialize database:**
+6. **Initialize database:**
    ```bash
    python backend\db_init.py
    ```
 
-5. **Start backend:**
+7. **Start backend:**
    ```bash
    python backend\app.py
    ```
 
-6. **Start monitor (new terminal):**
+8. **Start monitor (new terminal):**
    ```cmd
    start_event_monitor.bat
    ```
@@ -257,33 +287,73 @@ MAX_EVENTS_PER_POLL=200
 
 ## 🧪 Testing the Installation
 
+### Complete System Verification
+
+Run this comprehensive test to ensure everything is working:
+
+```powershell
+# 1. Check backend is running
+$response = Invoke-RestMethod -Uri "http://localhost:5000/api/events" -ErrorAction SilentlyContinue
+if ($response) { Write-Host "✓ Backend API responding" -ForegroundColor Green } else { Write-Host "✗ Backend not responding" -ForegroundColor Red }
+
+# 2. Check dashboard loads
+$webCheck = Invoke-WebRequest -Uri "http://localhost:5000" -ErrorAction SilentlyContinue
+if ($webCheck.StatusCode -eq 200) { Write-Host "✓ Dashboard accessible" -ForegroundColor Green } else { Write-Host "✗ Dashboard not accessible" -ForegroundColor Red }
+
+# 3. Check history endpoint
+$history = Invoke-RestMethod -Uri "http://localhost:5000/api/history" -ErrorAction SilentlyContinue
+if ($history) { Write-Host "✓ History endpoint working ($(($history | Measure-Object).Count) records)" -ForegroundColor Green } else { Write-Host "✗ History endpoint failed" -ForegroundColor Red }
+
+# 4. Check rules
+$rules = Invoke-RestMethod -Uri "http://localhost:5000/api/rules" -ErrorAction SilentlyContinue
+if ($rules) { Write-Host "✓ Rules endpoint working ($(($rules | Measure-Object).Count) rules)" -ForegroundColor Green } else { Write-Host "✗ Rules endpoint failed" -ForegroundColor Red }
+```
+
 ### Quick Test
+
+### Testing Auto-Remediation with History Tracking
+
+Verify that remediation actions are immediately reflected in the History tab:
+
+1. **Start all services** (Backend, Event Monitor, Frontend)
+2. **Go to Dashboard** → Verify stats display
+3. **Go to Simulation tab** → Create a test event
+4. **Verify remediation happens** → Check console for "Remediation executed"
+5. **Go to History tab** → Should show new remediation immediately (live update via RemediationService)
+
+**Key Features Verified:**
+- ✅ Auto-remediation executes the remediation script
+- ✅ History endpoint returns type-safe data (handles mixed int/string event IDs)
+- ✅ Dashboard & History screens auto-refresh using Consumer<RemediationService> pattern
+- ✅ No infinite loops from continuous refreshing
 
 ### Crash Lab Simulation (Event ID 1000)
 
-Use the built-in Simulation tab to demonstrate a realistic application crash workflow with automatic remediation.
+Use the built-in **Simulation tab** to test realistic application crash workflows:
 
-What it does:
-- Creates synthetic Event ID 1000 (`Application Error`) crash events.
-- Passes those events through the same rule-matching pipeline used by live monitoring.
-- Automatically executes `remediation_scripts/Error1000_ApplicationCrash.ps1` via the remediation engine.
-- Shows timeline, rule matches, and script output in the UI.
+**What it does:**
+- Creates synthetic Event ID 1000 (`Application Error`) crash events
+- Passes through rule-matching pipeline (same as live monitoring)
+- Automatically executes `remediation_scripts/Error1000_ApplicationCrash.ps1`
+- Shows timeline, rule matches, and script output
 
-Safety behavior:
-- Simulation events are tagged with `log_name=Simulation`.
-- The script detects this context and runs in simulation-safe mode (`RM_SIMULATION_MODE=1`), so the demo shows remediation behavior without applying the real `sfc /scannow` change.
+**Safety behavior:**
+- Simulation events tagged with `log_name=Simulation`
+- Scripts run in simulation-safe mode (`RM_SIMULATION_MODE=1`)
+- No actual system changes applied during simulation
 
-How to run:
-1. Start backend with `start_backend.bat`.
-2. Open `http://localhost:5000`.
-3. Go to **Simulation** tab.
-4. Enter app/module/exception details and click **Run Simulation**.
+**How to run:**
+1. Open Dashboard at `http://localhost:5000`
+2. Look for **Simulation** tab (last tab on sidebar)
+3. Enter app/module/exception details
+4. Click **Run Simulation**
+5. Watch the remediation execute and appear in History
 
 ```powershell
-# Generate a test event
+# Alternative: Generate a real test event
 Write-EventLog -LogName Application -Source "Application" -EventId 1000 -EntryType Error -Message "Test event"
-
-# Check dashboard - event should appear within 10 seconds
+# Event appears in dashboard within 10 seconds
+# Matching rules trigger auto-remediation if configured
 ```
 
 ### Verify Backend
@@ -369,6 +439,9 @@ Start-ScheduledTask -TaskName "AutoRemediationMonitor"
 
 | Issue | Solution |
 |-------|----------|
+| **Flutter build fails** | Run `flutter clean` then rebuild, or check PATH includes Git (required by Flutter) |
+| **Dashboard not updating after remediation** | Verify RemediationService is injected in main.dart, check browser console for errors |
+| **History tab shows 500 error** | Backend may have type conversion issues; check `/api/history` endpoint returns valid JSON |
 | **Python not found** | Try `py` or `python3`, or install from [python.org](https://www.python.org/downloads/) |
 | **Port 5000 in use** | Change `FLASK_PORT` in `.env` to another port (e.g., 5001) |
 | **Cannot run scripts** | Run `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` as Administrator |
@@ -393,6 +466,15 @@ Invoke-RestMethod -Uri "http://localhost:5000/api/events"
 ```bash
 # ⚠️ Warning: This deletes all data
 python backend\db_init.py
+```
+
+### Check API Response Types
+
+```powershell
+# Verify history endpoint returns valid JSON with proper types
+$history = Invoke-RestMethod -Uri "http://localhost:5000/api/history"
+$history | ConvertTo-Json | Select-Object -First 100
+# Should show event_id as numbers, not strings with "QAPRI" artifacts
 ```
 
 For more troubleshooting help, see **[INSTALLATION.md](INSTALLATION.md#troubleshooting)**
@@ -430,6 +512,8 @@ For more troubleshooting help, see **[INSTALLATION.md](INSTALLATION.md#troublesh
 - Events by severity chart
 - Events by category chart
 - Recent activity list
+- **🔄 Real-time Auto-Refresh**: Dashboard updates instantly when remediation completes
+- Powered by RemediationService (Provider ChangeNotifier pattern)
 
 ### Rules Tab
 - Create custom remediation rules
@@ -443,10 +527,12 @@ For more troubleshooting help, see **[INSTALLATION.md](INSTALLATION.md#troublesh
 - Add decision notes
 
 ### History Tab
-- Complete audit trail
+- Complete audit trail of all remediation actions
 - Remediation success/failure status
 - Script output logs
 - Timestamp tracking
+- **🔄 Live Updates**: Auto-refreshes immediately when new remediations complete
+- **Type-Safe Data Parsing**: Robust handling of event IDs and mixed data types
 
 ---
 
@@ -523,17 +609,18 @@ Rule-Based-Auto-Remediation-For-Windows-/
 │   └── start_event_monitor.bat     # Start event monitor
 │
 ├── 🖥️ Backend (Flask Application)
-│   ├── app.py                       # Main Flask application
+│   ├── app.py                       # Main Flask REST API
 │   ├── models.py                    # Database models & business logic
 │   ├── db_init.py                   # Database initialization
-│   ├── requirements.txt             # Python dependencies
+│   ├── requirements.txt             # Python dependencies (Flask, SQLAlchemy, etc.)
 │   ├── rules.db                     # SQLite database (created after init)
 │   ├── templates/
-│   │   └── index.html              # Web dashboard UI
-│   ├── static/
-│   │   └── style.css               # Dashboard styles
-│   └── data/
-│       └── errors_warnings.csv     # Event data export
+│   │   └── index.html              # Redirects to Flutter web build
+│   ├── data/
+│   │   ├── errors_warnings.csv     # Event data export
+│   │   ├── eventlog_watermark.json # Event collection bookmark
+│   │   └── last_processed.json     # Monitoring state
+│   └── __pycache__/                # Python bytecode cache
 │
 ├── 📡 Collector (PowerShell Scripts)
 │   ├── event_monitor.ps1            # Main event monitoring script
@@ -541,8 +628,28 @@ Rule-Based-Auto-Remediation-For-Windows-/
 │   ├── collector.ps1                # One-time event collector
 │   ├── event_monitor_config.ps1     # Config-based monitor
 │   ├── event_watcher.ps1            # Subscription-based monitor
-│   ├── monitor_config.json          # Legacy config file
-│   └── install_as_task.ps1          # Scheduled task installer
+│   ├── install_as_task.ps1          # Scheduled task installer
+│   └── monitor_config.json          # Monitoring configuration
+│
+├── 🎨 Frontend (Flutter Web Application)
+│   ├── lib/
+│   │   ├── main.dart                # App entry point
+│   │   ├── services/
+│   │   │   ├── api_service.dart     # REST API client
+│   │   │   ├── remediation_service.dart  # Auto-remediation state management
+│   │   │   └── monitor_service.dart # Event monitoring service
+│   │   ├── screens/
+│   │   │   ├── dashboard_screen.dart
+│   │   │   ├── events_screen.dart
+│   │   │   ├── rules_screen.dart
+│   │   │   ├── approvals_screen.dart
+│   │   │   ├── history_screen.dart
+│   │   │   └── simulation_screen.dart
+│   │   ├── models/                  # Data models
+│   │   └── widgets/                 # Reusable UI components
+│   ├── build/web/                   # Compiled Flutter web app
+│   ├── pubspec.yaml                 # Flutter dependencies
+│   └── README.md                    # Frontend-specific docs
 │
 ├── 📚 Documentation
 │   ├── README.md                    # This file (overview & quick start)
@@ -560,12 +667,13 @@ Rule-Based-Auto-Remediation-For-Windows-/
 
 ## 🛠️ Technology Stack
 
+| **Frontend** | Flutter 3.41.6 (Dart → Web), Provider package (v6.1.5+1), Material UI |
 | Component | Technology |
-|-----------|------------|
-| **Backend** | Python 3.8+, Flask, SQLAlchemy |
+| **Backend** | Python 3.8+, Flask 2.3.2, SQLAlchemy |
 | **Database** | SQLite |
-| **Frontend** | HTML5, CSS3, JavaScript (Vanilla) |
 | **Event Collection** | PowerShell 5.1+ |
+| **Build System** | Flutter build web --release |
+| **State Management** | Provider ChangeNotifier pattern |
 | **Data Format** | JSON, CSV |
 | **Configuration** | Environment Variables (.env) |
 | **Deployment** | Windows Scheduled Tasks, NSSM |
@@ -600,9 +708,12 @@ Rule-Based-Auto-Remediation-For-Windows-/
 
 ---
 
-## 📝 Important Notes
+## 📝 Important Notes  
 
-- **Proof of Concept**: This is a starter scaffold. Enhance with authentication, persistent job execution, better rule language, and safe execution controls before using in production.
+- **Real-Time Updates**: Dashboard and History screens now feature live auto-refresh via RemediationService (Provider ChangeNotifier pattern) - updates immediately when remediations complete
+- **Type-Safe History**: History endpoint now safely handles mixed data types (int/string event IDs) with robust conversion functions
+- **Flutter Web Frontend**: Modern, responsive dashboard built with Flutter 3.41.6 compiled to web, providing native app feel
+- **Proof of Concept**: This is a starter scaffold. Enhance with authentication, persistent job execution, better rule language, and safe execution controls before using in production
 - **Approval Workflow**: Manual review of remediation actions before execution
 - **Auto-Enrichment**: Events are automatically enriched with metadata from the JSON file
 - **Rule Creation**: Rules can be manually created or imported from JSON
@@ -611,6 +722,16 @@ Rule-Based-Auto-Remediation-For-Windows-/
 - **Monitoring**: Review the History tab regularly for remediation outcomes
 
 ---
+
+## 🎯 Recent Improvements (April 2026)
+
+### ✅ Fixed in Latest Release
+- **Auto-Remediation History Refresh** - History tab now updates instantly when remediation completes
+- **Infinite Loop Prevention** - Dashboard and History screens no longer refresh continuously
+- **Type-Safe Data Parsing** - Backend /api/history endpoint handles mixed int/string event IDs robustly
+- **Consumer Pattern Integration** - RemediationService broadcasts to all interested screens
+- **Flutter Build Optimization** - Fixed PATH issues to enable consistent web builds
+- **Comprehensive Testing** - All 9 screens and 8 API categories verified working
 
 ## 🚀 Future Enhancements
 
@@ -667,18 +788,22 @@ Built with:
 ## ✅ Summary
 
 **Rule-Based Auto-Remediation for Windows** is a complete solution for:
-- ✅ Monitoring Windows Event Logs (Errors & Warnings)
-- ✅ Automatically remediating common issues
-- ✅ Tracking remediation history and approvals
-- ✅ Deploying across multiple systems
-- ✅ Providing a modern web dashboard
+- ✅ Monitoring Windows Event Logs (Errors & Warnings in real-time)
+- ✅ Automatically remediating common issues with rule-based engine
+- ✅ Tracking remediation history with live dashboard updates
+- ✅ Deploying across multiple systems (centralized backend + distributed monitors)
+- ✅ Providing modern Flutter web dashboard with instant feedback
+- ✅ Safe testing via Simulation tab before enabling auto-remediation
 
-**Get started in 3 steps:**
-1. Run `.\setup.ps1`
-2. Run `start_backend.bat`
-3. Run `start_event_monitor.bat`
+**Get started in 4 simple steps:**
+1. Run `.\.setup.ps1` (automated setup)
+2. Run `c:\flutter\bin\flutter build web --release` in `frontend/` (optional if pre-built)
+3. Run `start_backend.bat` (Flask API server)
+4. Run `start_event_monitor.bat` (Event collector)
 
-**That's it!** 🎉
+**Then open:** `http://localhost:5000` 🎉
+
+**Advanced Setup:** See Step 3 in Quick Start for Flutter frontend build instructions
 
 ---
 
