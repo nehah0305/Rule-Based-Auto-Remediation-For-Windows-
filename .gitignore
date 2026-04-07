@@ -32,3 +32,6 @@ debug.log
 *.swp
 *.swo
 *~
+
+backend/data/
+*.db-journal
