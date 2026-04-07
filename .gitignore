@@ -1,8 +1,10 @@
 # Virtual Environments
 .venv/
+.venv_broken_*/
 venv/
 env/
 ENV/
+backend/_env/
 
 __pycache__/
 *.pyc

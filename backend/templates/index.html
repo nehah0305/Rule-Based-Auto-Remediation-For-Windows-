@@ -3117,6 +3117,27 @@
     loadFilteredEvents();
     pollMonitorStatus();
     loadManualReviewCount();
+
+    function isWarningsErrorsTabActive() {
+      const tabLink = document.querySelector('a[href="#filteredEventsTab"]');
+      return !!(tabLink && tabLink.classList.contains('active'));
+    }
+
+    // Refresh Warnings & Errors more frequently so latest events appear quickly.
+    async function refreshWarningsErrorsFrequently() {
+      if (document.hidden) return;
+      if (isWarningsErrorsTabActive()) {
+        await loadFilteredEvents();
+      }
+    }
+
+    const warningsErrorsTabLink = document.querySelector('a[href="#filteredEventsTab"]');
+    if (warningsErrorsTabLink) {
+      warningsErrorsTabLink.addEventListener('shown.bs.tab', () => {
+        loadFilteredEvents();
+      });
+    }
+
     setInterval(() => {
       loadRequests();
       loadDashboard();
@@ -3125,6 +3146,8 @@
       pollMonitorStatus();
       loadManualReviewCount();
     }, 10000);
+
+    setInterval(refreshWarningsErrorsFrequently, 3000);
 
     // ═══════════════════════════════════════════════════════════════════
     //  LIVE ALERT POPUP — polling + inject + remediate functions
