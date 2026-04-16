@@ -8,8 +8,7 @@ class AlertPollingService extends ChangeNotifier {
   Timer? _timer;
   List<LiveAlert> _alerts = [];
   LiveAlert? _activeAlert;
-  bool _popupDismissed = false;
-  Set<int> _seenIds = {};
+  final Set<int> _seenIds = {};
 
   List<LiveAlert> get alerts => _alerts;
   LiveAlert? get activeAlert => _activeAlert;
@@ -32,7 +31,6 @@ class AlertPollingService extends ChangeNotifier {
         if (!a.remediated && !_seenIds.contains(a.id)) {
           _seenIds.add(a.id);
           _activeAlert = a;
-          _popupDismissed = false;
           notifyListeners();
           return;
         }
@@ -49,7 +47,6 @@ class AlertPollingService extends ChangeNotifier {
   }
 
   void dismissPopup() {
-    _popupDismissed = true;
     _activeAlert = null;
     notifyListeners();
   }

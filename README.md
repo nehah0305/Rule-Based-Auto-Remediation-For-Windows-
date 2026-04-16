@@ -33,7 +33,26 @@ A lightweight, intelligent system for monitoring Windows Event Logs and automati
 
 ---
 
-## 🚀 Quick Start (New Users)
+## � Project Organization
+
+**Recent updates (v2.0):**
+- ✅ All build and startup scripts consolidated in `build_scripts/` folder
+- ✅ Temporary development documentation removed
+- ✅ Cleaner project root with essential files only
+- ✅ All `.bat` files centralized for easy management
+
+**Key locations:**
+- **Build Scripts**: `build_scripts/` - All build and startup automation
+- **Backend**: `backend/` - Flask REST API and business logic
+- **Frontend**: `frontend/` - Flutter web application
+- **Collector**: `collector/` - PowerShell event monitoring scripts
+- **Remediation**: `remediation_scripts/` - Custom remediation PowerShell scripts
+- **Configuration**: `.env` - Environment configuration (create from `.env.example`)
+- **Event Definitions**: `windows_error_events.json` - Pre-configured event definitions
+
+---
+
+## �🚀 Quick Start (New Users)
 
 ### Step 1: Clone or Download
 
@@ -84,7 +103,7 @@ C:\flutter\bin\flutter build web --release
 In a **new terminal**, run:
 
 ```cmd
-start_backend.bat
+build_scripts\start_backend.bat
 ```
 
 **Expected output:**
@@ -101,7 +120,7 @@ Access the dashboard at: http://localhost:5000
 Open another **new terminal** and run:
 
 ```cmd
-start_event_monitor.bat
+build_scripts\start_event_monitor.bat
 ```
 
 **What happens:**
@@ -178,13 +197,13 @@ If you prefer manual setup or the automated script fails:
    ```
 
 7. **Start backend:**
-   ```bash
-   python backend\app.py
+   ```cmd
+   build_scripts\start_backend.bat
    ```
 
 8. **Start monitor (new terminal):**
    ```cmd
-   start_event_monitor.bat
+   build_scripts\start_event_monitor.bat
    ```
 
 ---
@@ -603,10 +622,19 @@ Rule-Based-Auto-Remediation-For-Windows-/
 │   ├── .env                         # Your configuration (created by setup)
 │   └── .gitignore                   # Git ignore rules
 │
-├── 🚀 Quick Start Scripts
+├── 🚀 Quick Start Scripts & Build Tools
 │   ├── setup.ps1                    # Automated setup script
-│   ├── start_backend.bat            # Start Flask backend
-│   └── start_event_monitor.bat     # Start event monitor
+│   └── build_scripts/               # All build and startup scripts
+│       ├── start_backend.bat        # Start Flask backend
+│       ├── start_event_monitor.bat  # Start event monitor
+│       ├── start_flutter_app.bat    # Start Flutter development app
+│       ├── start_flutter_dev.bat    # Start Flutter dev server
+│       ├── build.bat                # Build all components
+│       ├── rebuild_app.bat          # Rebuild application
+│       ├── simple_build.bat         # Simple build script
+│       ├── flutter_build_fix.bat    # Flutter build fix
+│       ├── NOW_BUILD.bat            # Immediate build
+│       └── build_no_where.bat       # Alternative build
 │
 ├── 🖥️ Backend (Flask Application)
 │   ├── app.py                       # Main Flask REST API

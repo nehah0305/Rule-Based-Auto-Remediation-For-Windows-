@@ -85,7 +85,7 @@ class _MonitorPill extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.06),
+          color: Colors.white.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: AppTheme.border),
         ),
@@ -96,7 +96,7 @@ class _MonitorPill extends StatelessWidget {
             decoration: BoxDecoration(
               color: running ? dot : dot,
               shape: BoxShape.circle,
-              boxShadow: running ? [BoxShadow(color: dot.withOpacity(0.6), blurRadius: 6)] : null,
+              boxShadow: running ? [BoxShadow(color: dot.withValues(alpha: 0.6), blurRadius: 6)] : null,
             ),
           ),
           const SizedBox(width: 8),
@@ -184,7 +184,7 @@ class _HeaderBtnState extends State<_HeaderBtn> {
                 _hovered ? AppTheme.bgCardAlt : Colors.transparent
             ) : null,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: widget.color.withOpacity(0.4)),
+            border: Border.all(color: widget.color.withValues(alpha: 0.4)),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(widget.icon, size: 14, color: widget.color),

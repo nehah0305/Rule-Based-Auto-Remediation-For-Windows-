@@ -18,8 +18,8 @@ class SeverityBadge extends StatelessWidget {
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: bg.withOpacity(0.2), borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: bg.withOpacity(0.6))),
+      decoration: BoxDecoration(color: bg.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: bg.withValues(alpha: 0.6))),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 11, color: bg),
         const SizedBox(width: 4),
@@ -54,8 +54,8 @@ class StatusBadge extends StatelessWidget {
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: bg.withOpacity(0.2), borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: bg.withOpacity(0.6))),
+      decoration: BoxDecoration(color: bg.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: bg.withValues(alpha: 0.6))),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 11, color: bg),
         const SizedBox(width: 4),
@@ -74,7 +74,7 @@ class ConfidenceBadge extends StatelessWidget {
     if (score <= 0) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(color: AppTheme.textDimmed.withOpacity(0.2),
+        decoration: BoxDecoration(color: AppTheme.textDimmed.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(20)),
         child: const Text('—', style: TextStyle(fontSize: 11, color: AppTheme.textDimmed)),
       );
@@ -84,8 +84,8 @@ class ConfidenceBadge extends StatelessWidget {
         : AppTheme.textMuted;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: bg.withOpacity(0.2), borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: bg.withOpacity(0.5))),
+      decoration: BoxDecoration(color: bg.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: bg.withValues(alpha: 0.5))),
       child: Text(score.toStringAsFixed(0),
           style: TextStyle(fontSize: 11, color: bg, fontWeight: FontWeight.w700)),
     );
@@ -115,8 +115,8 @@ class CategoryBadge extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: bg.withOpacity(0.15), borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: bg.withOpacity(0.4))),
+      decoration: BoxDecoration(color: bg.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: bg.withValues(alpha: 0.4))),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 10, color: bg),
         const SizedBox(width: 4),
@@ -139,8 +139,8 @@ class LevelBadge extends StatelessWidget {
     else                     { bg = AppTheme.textDimmed;            label = level ?? 'Unknown'; }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: bg.withOpacity(0.2), borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: bg.withOpacity(0.6))),
+      decoration: BoxDecoration(color: bg.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: bg.withValues(alpha: 0.6))),
       child: Text(label, style: TextStyle(fontSize: 11, color: bg, fontWeight: FontWeight.w600)),
     );
   }
