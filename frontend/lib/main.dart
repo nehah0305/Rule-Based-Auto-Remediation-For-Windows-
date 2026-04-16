@@ -144,12 +144,12 @@ class _LiveAlertLayer extends StatelessWidget {
               // Show success notification
               if (ctx.mounted) {
                 ScaffoldMessenger.of(ctx).showSnackBar(
-                  SnackBar(
-                    content: const Text('✓ Remediation executed successfully! Check History tab for details.'),
-                    duration: const Duration(seconds: 5),
+                  const SnackBar(
+                    content: Text('✓ Remediation executed successfully! Check History tab for details.'),
+                    duration: Duration(seconds: 5),
                     behavior: SnackBarBehavior.floating,
-                    backgroundColor: const Color(0xFF059669),
-                    margin: const EdgeInsets.all(16),
+                    backgroundColor: Color(0xFF059669),
+                    margin: EdgeInsets.all(16),
                   ),
                 );
               }

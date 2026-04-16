@@ -172,9 +172,9 @@ class _ManualReviewBanner extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     decoration: BoxDecoration(
-      color: AppTheme.accentRed.withOpacity(0.1),
+      color: AppTheme.accentRed.withValues(alpha: 0.1),
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: AppTheme.accentRed.withOpacity(0.4)),
+      border: Border.all(color: AppTheme.accentRed.withValues(alpha: 0.4)),
     ),
     child: Row(children: [
       const Icon(Icons.error_outline, color: AppTheme.accentRed, size: 22),
@@ -329,22 +329,22 @@ class _IntelligenceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     decoration: BoxDecoration(color: AppTheme.bgCard, borderRadius: BorderRadius.circular(14),
-        border: Border(left: const BorderSide(color: AppTheme.accentPurple, width: 4),
+        border: const Border(left: BorderSide(color: AppTheme.accentPurple, width: 4),
             top: BorderSide(color: AppTheme.border), right: BorderSide(color: AppTheme.border),
             bottom: BorderSide(color: AppTheme.border))),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
         decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [AppTheme.accentPurple.withOpacity(0.2), AppTheme.accentPurple.withOpacity(0.05)]),
+          gradient: LinearGradient(colors: [AppTheme.accentPurple.withValues(alpha: 0.2), AppTheme.accentPurple.withValues(alpha: 0.05)]),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
         ),
-        child: Row(children: [
-          const Icon(Icons.psychology_rounded, color: Color(0xFFc77dff), size: 18),
-          const SizedBox(width: 8),
-          const Text('Alert Intelligence Summary', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-          const Spacer(),
-          const Text('Auto-updated every 5s', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
+        child: const Row(children: [
+          Icon(Icons.psychology_rounded, color: Color(0xFFc77dff), size: 18),
+          SizedBox(width: 8),
+          Text('Alert Intelligence Summary', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+          Spacer(),
+          Text('Auto-updated every 5s', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
         ]),
       ),
       Padding(
@@ -376,8 +376,8 @@ class _IntelMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.25))),
+    decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.25))),
     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Text(value, style: TextStyle(color: color, fontSize: 24, fontWeight: FontWeight.w800)),
       const SizedBox(height: 4),
@@ -407,7 +407,7 @@ class _EventTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-    decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppTheme.border.withOpacity(0.5)))),
+    decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppTheme.border.withValues(alpha: 0.5)))),
     child: Row(children: [
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Event ${event.eventId ?? '?'} — ${event.source ?? ''}',
@@ -443,7 +443,7 @@ class _RemediationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-    decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppTheme.border.withOpacity(0.5)))),
+    decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppTheme.border.withValues(alpha: 0.5)))),
     child: Row(children: [
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(entry.ruleName ?? 'Rule #${entry.ruleId}',

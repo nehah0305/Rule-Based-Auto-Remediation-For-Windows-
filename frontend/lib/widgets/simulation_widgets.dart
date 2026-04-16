@@ -66,7 +66,7 @@ class _TimelineStep extends StatelessWidget {
         Column(children: [
           Icon(_statusIcon(status), color: color, size: 18),
           if (!isLast)
-            Expanded(child: Container(width: 2, color: AppTheme.border.withOpacity(0.5), margin: const EdgeInsets.symmetric(vertical: 2))),
+            Expanded(child: Container(width: 2, color: AppTheme.border.withValues(alpha: 0.5), margin: const EdgeInsets.symmetric(vertical: 2))),
         ]),
         const SizedBox(width: 12),
         // Content
@@ -78,7 +78,7 @@ class _TimelineStep extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.15),
+                    color: color.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(phase.toUpperCase(),

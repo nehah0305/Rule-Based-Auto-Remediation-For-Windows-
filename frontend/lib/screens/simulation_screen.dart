@@ -270,7 +270,7 @@ class _SimTypeSelector extends StatelessWidget {
             duration: const Duration(milliseconds: 150),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              color: active ? AppTheme.accent.withOpacity(0.15) : AppTheme.bgCardAlt,
+              color: active ? AppTheme.accent.withValues(alpha: 0.15) : AppTheme.bgCardAlt,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: active ? AppTheme.accent : AppTheme.border),
             ),
@@ -382,12 +382,12 @@ class _ControlPanel extends StatelessWidget {
           onRetryChanged: onAeRetryChanged, onVerifyChanged: onAeVerifyChanged,
           script: 'Error1101_AuditEventsDropped.ps1');
       case SimType.highcpu:
-        return _LiveDemoParams(
+        return const _LiveDemoParams(
           step1: 'Writes Event ID 9999 to Windows Application Log and registers it in the DB. The live alert popup will appear on Dashboard within 5 seconds.',
           step2: 'After the alert appears, click "Auto-Remediate Now" in the popup on the Dashboard tab.',
           script1: 'Simulate_HighCpuAlert.ps1', script2: 'Remediate_HighCpuAlert.ps1');
       case SimType.servicecrash:
-        return _LiveDemoParams(
+        return const _LiveDemoParams(
           step1: 'Writes Event ID 7034 (PrintSpooler crash) to Windows Application Log. The live alert popup will appear on Dashboard within 5 seconds.',
           step2: 'After the alert appears, click "Auto-Remediate Now" in the popup on the Dashboard tab. This runs Remediate_ServiceCrash.ps1.',
           script1: 'Simulate_ServiceCrash.ps1', script2: 'Remediate_ServiceCrash.ps1');
@@ -458,7 +458,7 @@ class _CrashParams extends StatelessWidget {
     const SizedBox(height: 8),
     _SpeedRow(playbackSpeed, onSpeedChanged),
     const SizedBox(height: 8),
-    _ScriptInfo('remediation_scripts/Error1000_ApplicationCrash.ps1', 'sfc /scannow'),
+    const _ScriptInfo('remediation_scripts/Error1000_ApplicationCrash.ps1', 'sfc /scannow'),
   ]);
 }
 
@@ -512,8 +512,8 @@ class _StepBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.3))),
+    decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.3))),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -583,8 +583,8 @@ class _Metric extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(10),
-    decoration: BoxDecoration(color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.25))),
+    decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.25))),
     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Text(value, style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.w800)),
       Text(label, style: const TextStyle(color: AppTheme.textMuted, fontSize: 10), textAlign: TextAlign.center),
@@ -605,7 +605,7 @@ class _EventResultCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.bgCardAlt, borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: resolved ? AppTheme.accentGreen.withOpacity(0.4) : AppTheme.accentRed.withOpacity(0.3)),
+        border: Border.all(color: resolved ? AppTheme.accentGreen.withValues(alpha: 0.4) : AppTheme.accentRed.withValues(alpha: 0.3)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
@@ -772,8 +772,8 @@ class _StatusBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(10),
-    decoration: BoxDecoration(color: AppTheme.accent.withOpacity(0.1), borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.accent.withOpacity(0.3))),
+    decoration: BoxDecoration(color: AppTheme.accent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3))),
     child: Row(children: [
       const Icon(Icons.info_outline, color: AppTheme.accent, size: 14),
       const SizedBox(width: 8),

@@ -28,7 +28,7 @@ class StatCard extends StatelessWidget {
           color: AppTheme.bgCard,
           borderRadius: BorderRadius.circular(14),
           border: Border(left: BorderSide(color: accentColor, width: 4)),
-          boxShadow: [BoxShadow(color: accentColor.withOpacity(0.08), blurRadius: 20, offset: const Offset(0, 4))],
+          boxShadow: [BoxShadow(color: accentColor.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, 4))],
         ),
         child: Row(children: [
           Expanded(
@@ -38,7 +38,7 @@ class StatCard extends StatelessWidget {
               Text(value, style: TextStyle(color: accentColor, fontSize: 28, fontWeight: FontWeight.w800)),
             ]),
           ),
-          Icon(icon, size: 36, color: accentColor.withOpacity(0.4)),
+          Icon(icon, size: 36, color: accentColor.withValues(alpha: 0.4)),
         ]),
       ),
     );

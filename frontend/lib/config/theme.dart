@@ -109,10 +109,10 @@ class AppTheme {
       thumbColor: WidgetStatePropertyAll(Colors.white),
       trackColor: WidgetStatePropertyAll(accent),
     ),
-    scrollbarTheme: ScrollbarThemeData(
-      thumbColor: const WidgetStatePropertyAll(border),
+    scrollbarTheme: const ScrollbarThemeData(
+      thumbColor: WidgetStatePropertyAll(border),
       trackColor: WidgetStatePropertyAll(bgCardAlt),
-      radius: const Radius.circular(6),
+      radius: Radius.circular(6),
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: bgCard,
