@@ -169,7 +169,7 @@ class _PriorityBadge extends StatelessWidget {
     final color = priority <= 20 ? AppTheme.accentRed : priority <= 50 ? AppTheme.accentYellow : AppTheme.textMuted;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+      decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
       child: Text('$priority', style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700)),
     );
   }
@@ -448,7 +448,7 @@ class _TypeBtn extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: active ? AppTheme.accent.withValues(alpha: 0.15) : AppTheme.bgCardAlt,
+          color: active ? AppTheme.accent.withOpacity(0.15) : AppTheme.bgCardAlt,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: active ? AppTheme.accent : AppTheme.border),
         ),

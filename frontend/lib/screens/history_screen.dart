@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
@@ -122,7 +122,7 @@ class _FilterChip extends StatelessWidget {
       duration: const Duration(milliseconds: 150),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
-        color: selected ? AppTheme.accent.withValues(alpha: 0.2) : Colors.transparent,
+        color: selected ? AppTheme.accent.withOpacity(0.2) : Colors.transparent,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: selected ? AppTheme.accent : AppTheme.border),
       ),
@@ -155,13 +155,13 @@ class _HistoryTable extends StatelessWidget {
           ],
           rows: history.map((h) => DataRow(cells: [
             DataCell(Text('#${h.id}', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12))),
-            DataCell(Text('${h.eventId ?? 'â€”'}', style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.w600))),
+            DataCell(Text('${h.eventId ?? '—'}', style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.w600))),
             DataCell(SizedBox(width: 180, child: Text(h.ruleName ?? 'Rule #${h.ruleId}',
                 style: const TextStyle(color: AppTheme.textPrimary, fontSize: 11),
                 maxLines: 2, overflow: TextOverflow.ellipsis))),
             DataCell(StatusBadge(h.status)),
             DataCell(SizedBox(width: 220, child: Tooltip(message: h.output ?? '',
-                child: Text(h.output ?? 'â€”',
+                child: Text(h.output ?? '—',
                     style: const TextStyle(color: AppTheme.textMuted, fontSize: 11, fontFamily: 'monospace'),
                     maxLines: 2, overflow: TextOverflow.ellipsis)))),
             DataCell(Text(_fmtTs(h.eventTimestamp), style: const TextStyle(color: AppTheme.textMuted, fontSize: 11))),
@@ -173,7 +173,7 @@ class _HistoryTable extends StatelessWidget {
   );
 
   String _fmtTs(String? ts) {
-    if (ts == null) return 'â€”';
+    if (ts == null) return '—';
     try { return '${DateTime.parse(ts).toLocal()}'.substring(0, 16); } catch (_) { return ts.length > 16 ? ts.substring(0, 16) : ts; }
   }
 }

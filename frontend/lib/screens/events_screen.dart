@@ -132,7 +132,7 @@ class _EventsTable extends StatelessWidget {
             columnSpacing: 16,
             headingRowColor: const WidgetStatePropertyAll(Color(0xFF181830)),
             dataRowColor: WidgetStateProperty.resolveWith((states) =>
-                states.contains(WidgetState.hovered) ? AppTheme.accent.withValues(alpha: 0.05) : null),
+                states.contains(WidgetState.hovered) ? AppTheme.accent.withOpacity(0.05) : null),
             headingTextStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
             columns: const [
               DataColumn(label: Text('Level')),
@@ -161,7 +161,7 @@ class _EventsTable extends StatelessWidget {
               DataCell(e.dedupCount > 1
                   ? Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(color: AppTheme.accentPurple.withValues(alpha: 0.2),
+                      decoration: BoxDecoration(color: AppTheme.accentPurple.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(12)),
                       child: Text('×${e.dedupCount}', style: const TextStyle(color: AppTheme.accentPurple, fontSize: 11, fontWeight: FontWeight.w700)))
                   : const Text('1', style: TextStyle(color: AppTheme.textDimmed, fontSize: 11))),

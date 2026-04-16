@@ -270,7 +270,7 @@ class _SimTypeSelector extends StatelessWidget {
             duration: const Duration(milliseconds: 150),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              color: active ? AppTheme.accent.withValues(alpha: 0.15) : AppTheme.bgCardAlt,
+              color: active ? AppTheme.accent.withOpacity(0.15) : AppTheme.bgCardAlt,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: active ? AppTheme.accent : AppTheme.border),
             ),
@@ -512,8 +512,8 @@ class _StepBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.3))),
+    decoration: BoxDecoration(color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.3))),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -583,8 +583,8 @@ class _Metric extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(10),
-    decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.25))),
+    decoration: BoxDecoration(color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.25))),
     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Text(value, style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.w800)),
       Text(label, style: const TextStyle(color: AppTheme.textMuted, fontSize: 10), textAlign: TextAlign.center),
@@ -605,7 +605,7 @@ class _EventResultCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.bgCardAlt, borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: resolved ? AppTheme.accentGreen.withValues(alpha: 0.4) : AppTheme.accentRed.withValues(alpha: 0.3)),
+        border: Border.all(color: resolved ? AppTheme.accentGreen.withOpacity(0.4) : AppTheme.accentRed.withOpacity(0.3)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
@@ -772,8 +772,8 @@ class _StatusBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(10),
-    decoration: BoxDecoration(color: AppTheme.accent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3))),
+    decoration: BoxDecoration(color: AppTheme.accent.withOpacity(0.1), borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.accent.withOpacity(0.3))),
     child: Row(children: [
       const Icon(Icons.info_outline, color: AppTheme.accent, size: 14),
       const SizedBox(width: 8),
