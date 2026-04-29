@@ -204,7 +204,7 @@ class _SimulationScreenState extends State<SimulationScreen> {
                   onAeVerifyChanged: (v) => setState(() => _aeVerify = v),
                 )),
                 const SizedBox(width: 16),
-                Expanded(child: _ResultPanel(type: _type, timeline: _timeline, metrics: _metrics, resultCards: _resultCards, output: _terminalOutput)),
+                Expanded(child: _ResultPanel(timeline: _timeline, metrics: _metrics, resultCards: _resultCards, output: _terminalOutput)),
               ])
             : SingleChildScrollView(child: Column(children: [
                 _ControlPanel(
@@ -235,7 +235,7 @@ class _SimulationScreenState extends State<SimulationScreen> {
                   onAeVerifyChanged: (v) => setState(() => _aeVerify = v),
                 ),
                 const SizedBox(height: 16),
-                _ResultPanel(type: _type, timeline: _timeline, metrics: _metrics, resultCards: _resultCards, output: _terminalOutput),
+                _ResultPanel(timeline: _timeline, metrics: _metrics, resultCards: _resultCards, output: _terminalOutput),
               ]));
       })),
     ]),
@@ -395,6 +395,11 @@ class _ControlPanel extends StatelessWidget {
           step1: 'Writes Event ID 7034 (PrintSpooler crash) to Windows Application Log. The live alert popup will appear on Dashboard within 5 seconds.',
           step2: 'After the alert appears, click "Auto-Remediate Now" in the popup on the Dashboard tab. This runs Remediate_ServiceCrash.ps1.',
           script1: 'Simulate_ServiceCrash.ps1', script2: 'Remediate_ServiceCrash.ps1');
+      case SimType.rootCauseVariants:
+        return const _LiveDemoParams(
+          step1: 'Simulates 3 service crash events (same Event ID 1003) with different root causes: memory, disk, and dependency failure.',
+          step2: 'The system detects each variant and applies a targeted remediation. Watch the timeline for intelligent variant-specific fixes.',
+          script1: 'Error7031_ServiceTerminatedUnexpectedly.ps1', script2: 'Error7034_ServiceTerminatedUnexpectedly.ps1');
     }
   }
 }
@@ -412,6 +417,7 @@ class _ControlHeader extends StatelessWidget {
       SimType.auditevents => (AppTheme.gradientPrimary, Icons.gavel_rounded, 'Audit Events Lab Controls'),
       SimType.highcpu     => (AppTheme.gradientHighCpu, Icons.speed_rounded, 'High CPU Alert Lab'),
       SimType.servicecrash=> (AppTheme.gradientWarning, Icons.settings_power_rounded, 'Service Crash Lab'),
+      SimType.rootCauseVariants => (AppTheme.gradientPurple, Icons.device_hub_rounded, 'Root Cause Variant Lab'),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),

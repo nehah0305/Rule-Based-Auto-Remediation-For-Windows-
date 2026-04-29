@@ -12,7 +12,7 @@ class ApiConfig {
 
       final origin = Uri.base.origin;
       // If running locally via flutter dev server, point to Flask explicitly
-      if (origin.contains('localhost:8080') || origin.contains('127.0.0.1:8080')) {
+      if (origin.contains('localhost') || origin.contains('127.0.0.1')) {
         return 'http://localhost:5000';
       }
       // Production: served by Flask — use same origin

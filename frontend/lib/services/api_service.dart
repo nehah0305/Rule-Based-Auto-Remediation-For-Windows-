@@ -192,4 +192,20 @@ class ApiService {
   Future<Map<String, dynamic>> runRootCauseVariantSimulation(Map<String, dynamic> params) async {
     return await _post('/api/simulations/root-cause-variants', params) as Map<String, dynamic>;
   }
+
+  // ─── Real App Crash Detection ───────────────────────────────────────────────
+  /// Poll the backend to check if a real crash of [appName] was detected
+  /// in the last [windowSeconds] seconds via the Windows Application Event Log.
+  Future<Map<String, dynamic>> watchAppCrash({String appName = 'notepad', int windowSeconds = 3600}) async {
+    final path = '/api/appcrash/watch?app=$appName&window=$windowSeconds';
+    return await _get(path) as Map<String, dynamic>;
+  }
+
+  /// Execute REAL remediation: relaunches [appName] after it crashed.
+  Future<Map<String, dynamic>> remediateAppCrash({required int eventRowId, String appName = 'notepad'}) async {
+    return await _post('/api/appcrash/remediate', {
+      'event_row_id': eventRowId,
+      'app_name': appName,
+    }) as Map<String, dynamic>;
+  }
 }

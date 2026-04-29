@@ -5,6 +5,7 @@ import 'services/api_service.dart';
 import 'services/alert_polling_service.dart';
 import 'services/monitor_service.dart';
 import 'services/remediation_service.dart';
+import 'services/crash_watcher_service.dart';
 import 'widgets/sidebar.dart';
 import 'widgets/header.dart';
 import 'widgets/live_alert_popup.dart';
@@ -28,6 +29,7 @@ class RemediationApp extends StatelessWidget {
     final alertSvc   = AlertPollingService(api);
     final monitorSvc = MonitorService(api);
     final remediationSvc = RemediationService();
+    final crashWatcherSvc = CrashWatcherService(api);
 
     return MultiProvider(
       providers: [
@@ -35,6 +37,7 @@ class RemediationApp extends StatelessWidget {
         ChangeNotifierProvider<AlertPollingService>.value(value: alertSvc),
         ChangeNotifierProvider<MonitorService>.value(value: monitorSvc),
         ChangeNotifierProvider<RemediationService>.value(value: remediationSvc),
+        ChangeNotifierProvider<CrashWatcherService>.value(value: crashWatcherSvc),
       ],
       child: MaterialApp(
         title: 'Auto-Remediation Control Center',

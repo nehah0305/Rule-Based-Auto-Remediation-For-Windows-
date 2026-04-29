@@ -24,7 +24,7 @@ app = Flask(__name__)
 @app.after_request
 def add_cors_headers(response):
     origin = request.headers.get('Origin', '')
-    if origin in ('http://localhost:8080', 'http://127.0.0.1:8080'):
+    if origin:
         response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept'
@@ -36,7 +36,7 @@ def options_handler(path):
     """Handle CORS preflight for all /api/* routes."""
     response = jsonify({})
     origin = request.headers.get('Origin', '')
-    if origin in ('http://localhost:8080', 'http://127.0.0.1:8080'):
+    if origin:
         response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept'
@@ -2696,6 +2696,247 @@ def simulate_root_cause_variants():
             'time_to_resolve_avg_seconds': 45,
             'key_insight': 'All 3 crashes handled differently based on root cause - achieved 67% auto-remediation rate'
         }
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Real Application Crash Detection & Remediation
+#  Detects actual crashes of monitored apps (e.g. notepad.exe) via Windows
+#  Event ID 1000 in the Application log, and relaunches them for real.
+# ─────────────────────────────────────────────────────────────────────────────
+
+import base64 as _base64
+import subprocess as _subprocess
+import shutil as _shutil
+
+_APPCRASH_POWERSHELL = (
+    _shutil.which('powershell')
+    or _shutil.which('powershell.exe')
+    or r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+)
+
+# Watched application names (lowercase, no .exe)
+_WATCHED_APPS = ['notepad']
+
+
+def _query_real_crash(app_name: str, since_seconds: int = 60) -> list:
+    """
+    Query Windows Application Event Log for Event ID 1000 crashes of a specific
+    application within the last `since_seconds` seconds. Returns parsed events.
+    """
+    script = f"""
+        $since = (Get-Date).AddSeconds(-{since_seconds})
+        try {{
+            $events = Get-WinEvent -FilterHashtable @{{
+                LogName = 'Application'
+                Id = 1000
+                Level = 2
+                StartTime = $since
+            }} -MaxEvents 20 -ErrorAction Stop |
+            Where-Object {{ $_.Message -match [regex]::Escape('{app_name}') }} |
+            Select-Object Id, LogName, ProviderName, Message, TimeCreated, Level
+            if ($events) {{ $events | ConvertTo-Json -Depth 3 -Compress }}
+            else {{ '[]' }}
+        }} catch [System.Exception] {{
+            if ($_.Exception.Message -match 'No events were found') {{ '[]' }}
+            else {{ '[]' }}
+        }}
+    """
+    try:
+        encoded = _base64.b64encode(script.encode('utf-16le')).decode('ascii')
+        result = _subprocess.run(
+            [_APPCRASH_POWERSHELL, '-NoProfile', '-ExecutionPolicy', 'Bypass',
+             '-EncodedCommand', encoded],
+            capture_output=True, text=True, timeout=10
+        )
+        raw = result.stdout.strip()
+        err = result.stderr.strip()
+        print(f"[AppCrash DEBUG] stdout: {raw[:100]!r} | stderr: {err[:100]!r}", flush=True)
+        
+        if not raw or raw == 'null':
+            return []
+        try:
+            import json
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                parsed = [parsed]
+            print(f"[AppCrash] Parsed {len(parsed)} events", flush=True)
+            return parsed if isinstance(parsed, list) else []
+        except Exception as json_exc:
+            print(f"[AppCrash] JSON parse failed. Raw: {raw[:200]}", flush=True)
+            return []
+    except Exception as e:
+        print(f'[APPCRASH] PowerShell query error: {e}')
+        return []
+
+
+def _ensure_appcrash_rule(app_name: str) -> object:
+    """Ensure a remediation rule exists for the given application crash."""
+    script_path = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), '..', 'remediation_scripts', 'Remediate_AppCrash_Live.ps1'
+    ))
+    rule_name = f'Real App Crash Recovery - {app_name}.exe'
+
+    for r in models.get_rules():
+        if r[1] == rule_name:
+            return r
+
+    rid = models.add_rule(
+        name=rule_name,
+        event_id=1000,
+        source='Application Error',
+        message_regex=None,
+        remediation_script=f'{script_path} -AppName "{app_name}"',
+        script_type='inline',
+        auto_remediate=False,
+        stop_processing=False,
+        category='Application Crash',
+        severity='High',
+        description=f'Real-world auto-recovery rule for {app_name}.exe crashes.',
+        recommended_action=f'Restart {app_name}.exe after a crash is detected.',
+        priority=5,
+        cooldown_minutes=1,
+    )
+    return models.get_rule(rid)
+
+
+@app.route('/api/appcrash/watch', methods=['GET'])
+def appcrash_watch():
+    """
+    Fast-path endpoint polled by the Flutter frontend while "Watch for Crashes"
+    mode is active. Queries the real Windows Application Event Log for Event ID
+    1000 crashes of watched apps (e.g. notepad.exe) in the last 60 seconds.
+
+    Returns:
+        {
+          "detected": bool,
+          "app_name": str,
+          "event_row_id": int,
+          "message": str,
+          "timestamp": str,
+          "rule_id": int
+        }
+    """
+    try:
+        window = int(request.args.get('window', 60))
+        app_filter = request.args.get('app', '').lower().replace('.exe', '').strip()
+        apps_to_watch = [app_filter] if app_filter else _WATCHED_APPS
+
+        for app_name in apps_to_watch:
+            raw_events = _query_real_crash(app_name, since_seconds=window)
+
+            if not raw_events:
+                continue
+
+            # Take the most recent crash event
+            ev = raw_events[0]
+            message = (ev.get('Message') or '')[:2000]
+            ts_raw  = ev.get('TimeCreated', datetime.utcnow().isoformat())
+
+            # Normalise timestamp (PowerShell /Date(...) format)
+            if isinstance(ts_raw, str) and ts_raw.startswith('/Date('):
+                try:
+                    ms = int(ts_raw[6:ts_raw.index(')')])
+                    from datetime import timezone
+                    ts_raw = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat()
+                except Exception:
+                    ts_raw = datetime.utcnow().isoformat()
+
+            # Store in DB (dedup-safe)
+            event_row_id = models.add_event(
+                event_id   = 1000,
+                log_name   = 'Application',
+                source     = 'Application Error',
+                message    = message,
+                timestamp  = str(ts_raw),
+                category   = 'Application Crash',
+                severity   = 'High',
+                level      = 'Error',
+                source_type = 'eventlog',
+            )
+
+            # Ensure remediation rule exists
+            rule = _ensure_appcrash_rule(app_name)
+            rule_id = rule[0] if rule else None
+
+            print(f"[AppCrash] Found event! Row ID: {event_row_id}, Message: {message[:50]}...")
+            return jsonify({
+                'detected':      True,
+                'app_name':      app_name,
+                'event_row_id':  event_row_id,
+                'message':       message[:400],
+                'timestamp':     str(ts_raw),
+                'rule_id':       rule_id,
+            })
+
+        # Nothing detected
+        # print("[AppCrash] Nothing detected.")
+        return jsonify({'detected': False})
+
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(exc), 'detected': False}), 500
+
+
+@app.route('/api/appcrash/remediate', methods=['POST'])
+def appcrash_remediate():
+    """
+    Executes REAL auto-remediation for a detected application crash.
+    Receives {event_row_id, app_name} and runs Remediate_AppCrash_Live.ps1
+    which actually relaunches the crashed application.
+
+    Returns:
+        { "status": "success"|"failed", "output": str, "event_row_id": int }
+    """
+    data = request.get_json(silent=True) or {}
+    event_row_id = data.get('event_row_id')
+    app_name     = (data.get('app_name') or 'notepad').lower().replace('.exe', '').strip()
+
+    if not event_row_id:
+        return jsonify({'error': 'event_row_id is required'}), 400
+
+    script_path = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), '..', 'remediation_scripts', 'Remediate_AppCrash_Live.ps1'
+    ))
+
+    if not os.path.exists(script_path):
+        return jsonify({'error': f'Remediation script not found: {script_path}'}), 404
+
+    # Ensure rule exists and run remediation (records in history)
+    rule = _ensure_appcrash_rule(app_name)
+    if not rule:
+        return jsonify({'error': 'Could not create/find remediation rule'}), 500
+
+    rule_id = rule[0]
+
+    # Run the real PowerShell script with -AppName parameter
+    try:
+        ps_result = _subprocess.run(
+            [
+                _APPCRASH_POWERSHELL,
+                '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                '-File', script_path,
+                '-AppName', app_name,
+            ],
+            capture_output=True, text=True, timeout=15
+        )
+        output  = ps_result.stdout.strip() + ('\n' + ps_result.stderr.strip() if ps_result.stderr.strip() else '')
+        status  = 'success' if ps_result.returncode == 0 else 'failed'
+    except Exception as exc:
+        output  = str(exc)
+        status  = 'failed'
+
+    # Record this remediation in the history DB
+    models.record_remediation(event_row_id, rule_id, status, output[:2000])
+
+    return jsonify({
+        'status':        status,
+        'output':        output,
+        'error':         output if status == 'failed' else None,
+        'event_row_id':  event_row_id,
+        'rule_id':       rule_id,
+        'app_name':      app_name,
     })
 
 
