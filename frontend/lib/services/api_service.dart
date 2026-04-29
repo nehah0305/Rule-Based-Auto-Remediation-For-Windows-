@@ -188,4 +188,8 @@ class ApiService {
   Future<Map<String, dynamic>> remediateServiceCrash(int eventRowId) async {
     return await _post('/api/simulations/servicecrash/remediate', {'event_row_id': eventRowId}) as Map<String, dynamic>;
   }
+
+  Future<Map<String, dynamic>> runRootCauseVariantSimulation(Map<String, dynamic> params) async {
+    return await _post('/api/simulations/root-cause-variants', params) as Map<String, dynamic>;
+  }
 }

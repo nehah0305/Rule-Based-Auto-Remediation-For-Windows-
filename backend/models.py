@@ -10,6 +10,9 @@ import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
+# Root cause variant detection
+from root_cause_analyzer import analyze_event as analyze_root_cause, get_analyzer
+
 DB_PATH = os.path.join(os.path.dirname(__file__), 'rules.db')
 EVENT_DEFINITIONS_PATH = os.path.join(os.path.dirname(__file__), '..', 'windows_error_events.json')
 
@@ -271,18 +274,48 @@ def add_event(event_id, log_name, source, message,
 
     # ── New event — compute correlation_id and confidence score ──────────────
     correlation_id = get_correlation_id(source, timestamp)
-    event_dict = {'severity': severity, 'level': level}
+    event_dict = {
+        'event_id': event_id,
+        'source': source,
+        'message': message,
+        'severity': severity,
+        'level': level,
+        'category': category,
+    }
     confidence_score = calculate_confidence_score(event_dict, dedup_count=1)
+    
+    # ── Root Cause Variant Analysis ────────────────────────────────────────
+    detected_variants = analyze_root_cause(event_dict)
+    root_cause_variant_id = None
+    root_cause_variant_label = None
+    root_cause_confidence = None
+    detected_root_causes_json = None
+    
+    if detected_variants:
+        # Use the highest-confidence variant
+        best_variant = detected_variants[0]
+        root_cause_variant_id = best_variant.variant_id
+        root_cause_variant_label = best_variant.label
+        root_cause_confidence = best_variant.confidence.value
+        
+        # Store all detected variants as JSON for reference
+        detected_root_causes_json = json.dumps([
+            v.to_dict() for v in detected_variants
+        ])
 
     c.execute(
         '''INSERT INTO events
            (event_id, log_name, source, message, timestamp, category, severity,
             description, recommended_action, level, remediated_at,
-            dedup_count, last_seen, confidence_score, correlation_id, source_type)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            dedup_count, last_seen, confidence_score, correlation_id, source_type,
+            root_cause_variant_id, root_cause_variant_label, root_cause_confidence,
+            detected_root_causes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
         (event_id, log_name, source, message, timestamp, category, severity,
          description, recommended_action, level, remediated_at,
-         1, timestamp, confidence_score, correlation_id, source_type or 'api')
+         1, timestamp, confidence_score, correlation_id, source_type or 'api',
+         root_cause_variant_id, root_cause_variant_label, root_cause_confidence,
+         detected_root_causes_json)
     )
     rowid = c.lastrowid
     conn.commit()
@@ -562,6 +595,209 @@ def delete_rule(rule_id):
     conn.commit()
     conn.close()
     return True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Root Cause Variant Operations
+# ─────────────────────────────────────────────────────────────────────────────
+
+def add_root_cause_variant(event_row_id, variant_id, variant_label, description,
+                           confidence_score, confidence_level, matched_indicators=None):
+    """Store a detected root cause variant for an event."""
+    conn = _conn()
+    c = conn.cursor()
+    ts = datetime.utcnow().isoformat()
+    indicators_json = json.dumps(matched_indicators or [])
+    
+    c.execute(
+        '''INSERT INTO event_root_cause_variants
+           (event_row_id, variant_id, variant_label, description, confidence_score,
+            confidence_level, matched_indicators, detected_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+        (event_row_id, variant_id, variant_label, description, confidence_score,
+         confidence_level, indicators_json, ts)
+    )
+    conn.commit()
+    vid = c.lastrowid
+    conn.close()
+    return vid
+
+
+def link_rule_to_variant(rule_id, variant_id, variant_label, min_confidence=60):
+    """
+    Associate a rule with a specific root cause variant.
+    The rule will only apply to events matching this variant with confidence >= min_confidence.
+    
+    This allows different remediation strategies for different variants of the same error.
+    """
+    conn = _conn()
+    c = conn.cursor()
+    ts = datetime.utcnow().isoformat()
+    
+    c.execute(
+        '''INSERT INTO rule_variant_associations
+           (rule_id, variant_id, variant_label, min_confidence, created_at)
+           VALUES (?, ?, ?, ?, ?)''',
+        (rule_id, variant_id, variant_label, min_confidence, ts)
+    )
+    conn.commit()
+    aid = c.lastrowid
+    conn.close()
+    return aid
+
+
+def get_variant_associations(rule_id):
+    """Get all variant associations for a rule."""
+    conn = _conn()
+    c = conn.cursor()
+    c.execute(
+        '''SELECT id, rule_id, variant_id, variant_label, min_confidence, created_at
+           FROM rule_variant_associations WHERE rule_id = ?''',
+        (rule_id,)
+    )
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+def get_event_root_causes(event_row_id):
+    """Get all detected root cause variants for an event."""
+    conn = _conn()
+    c = conn.cursor()
+    c.execute(
+        '''SELECT id, event_row_id, variant_id, variant_label, description,
+                  confidence_score, confidence_level, matched_indicators, detected_at
+           FROM event_root_cause_variants
+           WHERE event_row_id = ?
+           ORDER BY confidence_score DESC''',
+        (event_row_id,)
+    )
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+def match_rules_for_event_with_variants(event):
+    """
+    Enhanced rule matching that considers root cause variants.
+    
+    Returns matched rules enhanced with:
+    - variant_match: True if rule has variant associations and event matches variant
+    - variant_info: dict with detected variant details
+    - is_variant_rule: True if this rule is specific to a variant
+    """
+    matched = []
+    rules = get_rules()
+    
+    event_id_val = event.get('event_id')
+    source_val = event.get('source') or ''
+    detected_variants = event.get('detected_variants', [])  # From analyze_root_cause
+    best_variant = detected_variants[0] if detected_variants else None
+    
+    stop_triggered = False
+    
+    for r in rules:
+        if stop_triggered:
+            break
+        
+        rid = r[0]  # rule id
+        
+        # Get variant associations for this rule
+        variant_associations = get_variant_associations(rid)
+        
+        # First, check base event matching (existing logic)
+        base_match = _matches_base_criteria(event, r)
+        if not base_match:
+            continue
+        
+        # If rule has variant associations, check if event variant matches
+        if variant_associations:
+            variant_matched = False
+            matched_association = None
+            
+            if best_variant:
+                for assoc in variant_associations:
+                    # assoc: (id, rule_id, variant_id, variant_label, min_confidence, created_at)
+                    assoc_variant_id = assoc[2]
+                    assoc_min_confidence = assoc[4]
+                    
+                    if best_variant.variant_id == assoc_variant_id:
+                        if best_variant.confidence.value >= assoc_min_confidence:
+                            variant_matched = True
+                            matched_association = assoc
+                            break
+            
+            # If variant rule but variant didn't match, skip this rule
+            if not variant_matched:
+                continue
+            
+            # Variant matched - pass rule with variant info
+            matched.append((*r, False, {}, True, best_variant.to_dict(), matched_association))
+        else:
+            # No variant associations - regular rule matching (backward compatible)
+            regex_captures = _extract_regex_captures(event, r)
+            if regex_captures is None:
+                continue
+            
+            # Check cooldown
+            is_suppressed = _check_rule_cooldown(event, r)
+            matched.append((*r, is_suppressed, regex_captures, False, None, None))
+        
+        # Check stop_processing flag
+        stop_processing = r[14]  # Based on r tuple structure from get_rules
+        if stop_processing:
+            stop_triggered = True
+    
+    return matched
+
+
+def _matches_base_criteria(event, rule_tuple):
+    """Check if event matches base rule criteria (excluding variants)."""
+    (rid, name, r_event_id, r_source, r_message_regex, remediation_script,
+     auto_remediate, r_category, r_severity, description, recommended_action,
+     script_type, priority, cooldown_minutes, stop_processing) = rule_tuple
+    
+    event_id_val = event.get('event_id')
+    source_val = (event.get('source') or '').lower()
+    category_val = (event.get('category') or '').lower()
+    severity_val = (event.get('severity') or '').lower()
+    
+    if r_event_id and str(r_event_id) != str(event_id_val):
+        return False
+    if r_source and r_source.lower() != source_val:
+        return False
+    if r_category and r_category.lower() != category_val:
+        return False
+    if r_severity and r_severity.lower() != severity_val:
+        return False
+    
+    return True
+
+
+def _extract_regex_captures(event, rule_tuple):
+    """Extract regex capture groups from event message."""
+    r_message_regex = rule_tuple[4]  # message_regex index in rule tuple
+    
+    if not r_message_regex:
+        return {}
+    
+    try:
+        m = re.search(r_message_regex, event.get('message') or '')
+        if not m:
+            return None
+        return m.groupdict()
+    except re.error:
+        return None
+
+
+def _check_rule_cooldown(event, rule_tuple):
+    """Check if rule is in cooldown."""
+    rid = rule_tuple[0]  # rule id
+    event_id_val = event.get('event_id')
+    source_val = (event.get('source') or '').lower()
+    cooldown_minutes = rule_tuple[13]
+    
+    return is_rule_in_cooldown(rid, event_id_val, source_val, cooldown_minutes)
 
 
 def match_rules_for_event(event):

@@ -86,6 +86,38 @@ def init_db():
     )
     ''')
 
+    # ─── Root Cause Variant Tables ───────────────────────────────────────
+    # Tracks detected root cause variants for errors with multiple causes
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS event_root_cause_variants (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_row_id INTEGER,
+        variant_id TEXT,
+        variant_label TEXT,
+        description TEXT,
+        confidence_score INTEGER,
+        confidence_level TEXT,
+        matched_indicators TEXT,
+        detected_at TEXT,
+        FOREIGN KEY (event_row_id) REFERENCES events(id)
+    )
+    ''')
+
+    # Links rules to specific root cause variants
+    # Allows different remediation actions per variant of the same error
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS rule_variant_associations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rule_id INTEGER,
+        variant_id TEXT,
+        variant_label TEXT,
+        min_confidence INTEGER DEFAULT 60,
+        priority INTEGER DEFAULT 100,
+        created_at TEXT,
+        FOREIGN KEY (rule_id) REFERENCES rules(id)
+    )
+    ''')
+
     conn.commit()
 
     # Migrate existing tables to add new columns if they don't exist
@@ -122,6 +154,22 @@ def migrate_db(conn):
     ]
 
     for col_name, col_type in new_event_columns:
+        if col_name not in events_columns:
+            try:
+                c.execute(f'ALTER TABLE events ADD COLUMN {col_name} {col_type}')
+                print(f'Added column {col_name} to events table')
+            except Exception:
+                pass
+    
+    # Add root cause tracking columns
+    root_cause_columns = [
+        ('root_cause_variant_id', 'TEXT'),           # Best-matched variant
+        ('root_cause_variant_label', 'TEXT'),        # Display label
+        ('root_cause_confidence', 'INTEGER'),        # Confidence % (0-100)
+        ('detected_root_causes', 'TEXT'),            # JSON array of all detected variants
+    ]
+    
+    for col_name, col_type in root_cause_columns:
         if col_name not in events_columns:
             try:
                 c.execute(f'ALTER TABLE events ADD COLUMN {col_name} {col_type}')

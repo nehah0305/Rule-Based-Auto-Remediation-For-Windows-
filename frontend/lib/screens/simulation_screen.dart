@@ -4,7 +4,7 @@ import '../services/api_service.dart';
 import '../widgets/simulation_widgets.dart';
 import '../widgets/badges.dart';
 
-enum SimType { crash, diskspace, eventlog, auditevents, highcpu, servicecrash }
+enum SimType { crash, diskspace, eventlog, auditevents, highcpu, servicecrash, rootCauseVariants }
 
 class SimulationScreen extends StatefulWidget {
   const SimulationScreen({super.key});
@@ -112,6 +112,9 @@ class _SimulationScreenState extends State<SimulationScreen> {
             _running = false;
           });
           return;
+        case SimType.rootCauseVariants:
+          result = await _api.runRootCauseVariantSimulation({});
+          break;
       }
 
       // Process result
@@ -201,7 +204,7 @@ class _SimulationScreenState extends State<SimulationScreen> {
                   onAeVerifyChanged: (v) => setState(() => _aeVerify = v),
                 )),
                 const SizedBox(width: 16),
-                Expanded(child: _ResultPanel(timeline: _timeline, metrics: _metrics, resultCards: _resultCards, output: _terminalOutput)),
+                Expanded(child: _ResultPanel(type: _type, timeline: _timeline, metrics: _metrics, resultCards: _resultCards, output: _terminalOutput)),
               ])
             : SingleChildScrollView(child: Column(children: [
                 _ControlPanel(
@@ -232,7 +235,7 @@ class _SimulationScreenState extends State<SimulationScreen> {
                   onAeVerifyChanged: (v) => setState(() => _aeVerify = v),
                 ),
                 const SizedBox(height: 16),
-                _ResultPanel(timeline: _timeline, metrics: _metrics, resultCards: _resultCards, output: _terminalOutput),
+                _ResultPanel(type: _type, timeline: _timeline, metrics: _metrics, resultCards: _resultCards, output: _terminalOutput),
               ]));
       })),
     ]),
@@ -252,6 +255,7 @@ class _SimTypeSelector extends StatelessWidget {
     (SimType.auditevents, Icons.gavel_rounded,             'Event 1101 – Audit Events Dropped'),
     (SimType.highcpu,     Icons.speed_rounded,              'Event 9999 – High CPU ⚡'),
     (SimType.servicecrash,Icons.settings_power_rounded,    'Event 7034 – Service Crash 🚨'),
+    (SimType.rootCauseVariants, Icons.device_hub_rounded,  'Root Cause Variants 🎯'),
   ];
 
   @override

@@ -2425,6 +2425,281 @@ def live_alerts():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  Root Cause Variant Simulation - Demonstrates variant detection & remediation
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/api/simulations/root-cause-variants', methods=['POST'])
+def simulate_root_cause_variants():
+    """
+    Demonstrates the Root Cause Variant System in action.
+    
+    Simulates the SAME ERROR ID (Service Crash 1003) with DIFFERENT ROOT CAUSES,
+    showing how the system detects each variant and applies targeted remediation.
+    
+    This endpoint:
+    1. Creates 3 service crash events (same ID, different root causes)
+    2. Analyzes each to detect the variant
+    3. Shows matched rules (variant-specific)
+    4. Displays different remediations for each
+    5. Shows success/progress in UI
+    """
+    from root_cause_analyzer import analyze_event as analyze_root_cause
+    
+    now = datetime.utcnow()
+    timeline = []
+    variant_simulations = []
+    
+    timeline.append({
+        'phase': 'start',
+        'title': 'Root Cause Variant System Demo',
+        'status': 'in_progress',
+        'detail': 'Demonstrating intelligent error classification and targeted remediation'
+    })
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # VARIANT 1: HIGH MEMORY CRASH
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    event_time_1 = now - timedelta(minutes=5)
+    event_message_1 = 'Service MSSQLSERVER crashed: out of memory condition, heap allocation failed'
+    
+    event_1 = {
+        'event_id': 1003,
+        'source': 'Service Control Manager',
+        'message': event_message_1,
+        'severity': 'error',
+        'category': 'Service',
+    }
+    
+    # Detect root cause
+    variants_1 = analyze_root_cause(event_1)
+    best_variant_1 = variants_1[0] if variants_1 else None
+    
+    # Add event to database
+    event_row_id_1 = models.add_event(
+        event_id=1003,
+        log_name='System',
+        source='Service Control Manager',
+        message=event_message_1,
+        timestamp=event_time_1.isoformat(),
+        category='Service',
+        severity='error',
+    )
+    
+    timeline.extend([
+        {
+            'phase': 'detect',
+            'title': 'Detect Service Crash #1',
+            'status': 'completed',
+            'detail': f'Service crash event detected: MSSQLSERVER'
+        },
+        {
+            'phase': 'analyze',
+            'title': 'Analyze Root Cause #1',
+            'status': 'completed',
+            'detail': f'Detected variant: {best_variant_1.label if best_variant_1 else "Unknown"} ({"85% confidence" if best_variant_1 else "N/A"})'
+        }
+    ])
+    
+    variant_simulations.append({
+        'variant_number': 1,
+        'error_message': event_message_1,
+        'detected_variant': {
+            'label': best_variant_1.label if best_variant_1 else 'Unknown',
+            'confidence': best_variant_1.confidence.value if best_variant_1 else 0,
+            'indicators': best_variant_1.matched_indicators if best_variant_1 else [],
+        },
+        'matched_rule': {
+            'name': 'Service Crash - High Memory Recovery',
+            'action': 'Clear memory cache and restart with monitoring',
+            'script': 'ClearMemory_RestartService.ps1',
+        },
+        'remediation': {
+            'status': 'success',
+            'output': 'Service memory cache cleared. Service restarted successfully. Memory usage: 45% -> 12%',
+        },
+        'result': '✓ RESOLVED - Memory issue fixed'
+    })
+    
+    timeline.append({
+        'phase': 'remediate',
+        'title': 'Apply Variant-Specific Remediation #1',
+        'status': 'completed',
+        'detail': 'Executed: Clear memory + Restart with monitoring [SUCCESS]'
+    })
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # VARIANT 2: DEADLOCK CRASH
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    event_time_2 = now - timedelta(minutes=3)
+    event_message_2 = 'Service DatabaseServer crashed: lock timeout waiting for database resource, deadlock detected'
+    
+    event_2 = {
+        'event_id': 1003,
+        'source': 'Service Control Manager',
+        'message': event_message_2,
+        'severity': 'error',
+        'category': 'Service',
+    }
+    
+    # Detect root cause
+    variants_2 = analyze_root_cause(event_2)
+    best_variant_2 = variants_2[0] if variants_2 else None
+    
+    # Add event to database
+    event_row_id_2 = models.add_event(
+        event_id=1003,
+        log_name='System',
+        source='Service Control Manager',
+        message=event_message_2,
+        timestamp=event_time_2.isoformat(),
+        category='Service',
+        severity='error',
+    )
+    
+    timeline.extend([
+        {
+            'phase': 'detect',
+            'title': 'Detect Service Crash #2',
+            'status': 'completed',
+            'detail': f'Service crash event detected: DatabaseServer'
+        },
+        {
+            'phase': 'analyze',
+            'title': 'Analyze Root Cause #2',
+            'status': 'completed',
+            'detail': f'Detected variant: {best_variant_2.label if best_variant_2 else "Unknown"} ({"75% confidence" if best_variant_2 else "N/A"})'
+        }
+    ])
+    
+    variant_simulations.append({
+        'variant_number': 2,
+        'error_message': event_message_2,
+        'detected_variant': {
+            'label': best_variant_2.label if best_variant_2 else 'Unknown',
+            'confidence': best_variant_2.confidence.value if best_variant_2 else 0,
+            'indicators': best_variant_2.matched_indicators if best_variant_2 else [],
+        },
+        'matched_rule': {
+            'name': 'Service Crash - Deadlock Recovery',
+            'action': 'Kill locked threads and restart',
+            'script': 'RecoverFromDeadlock.ps1',
+        },
+        'remediation': {
+            'status': 'success',
+            'output': 'Killed 3 blocked threads. Released lock. Service restarted. Queries resumed.',
+        },
+        'result': '✓ RESOLVED - Deadlock broken and recovered'
+    })
+    
+    timeline.append({
+        'phase': 'remediate',
+        'title': 'Apply Variant-Specific Remediation #2',
+        'status': 'completed',
+        'detail': 'Executed: Kill locked threads + Restart [SUCCESS]'
+    })
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # VARIANT 3: MISSING DEPENDENCY CRASH
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    event_time_3 = now - timedelta(minutes=1)
+    event_message_3 = 'Service WebApp crashed: critical file not found - mscoree.dll missing from system'
+    
+    event_3 = {
+        'event_id': 1003,
+        'source': 'Service Control Manager',
+        'message': event_message_3,
+        'severity': 'critical',
+        'category': 'Service',
+    }
+    
+    # Detect root cause
+    variants_3 = analyze_root_cause(event_3)
+    best_variant_3 = variants_3[0] if variants_3 else None
+    
+    # Add event to database
+    event_row_id_3 = models.add_event(
+        event_id=1003,
+        log_name='System',
+        source='Service Control Manager',
+        message=event_message_3,
+        timestamp=event_time_3.isoformat(),
+        category='Service',
+        severity='critical',
+    )
+    
+    timeline.extend([
+        {
+            'phase': 'detect',
+            'title': 'Detect Service Crash #3',
+            'status': 'completed',
+            'detail': f'Service crash event detected: WebApp'
+        },
+        {
+            'phase': 'analyze',
+            'title': 'Analyze Root Cause #3',
+            'status': 'completed',
+            'detail': f'Detected variant: {best_variant_3.label if best_variant_3 else "Unknown"} ({"88% confidence" if best_variant_3 else "N/A"})'
+        }
+    ])
+    
+    variant_simulations.append({
+        'variant_number': 3,
+        'error_message': event_message_3,
+        'detected_variant': {
+            'label': best_variant_3.label if best_variant_3 else 'Unknown',
+            'confidence': best_variant_3.confidence.value if best_variant_3 else 0,
+            'indicators': best_variant_3.matched_indicators if best_variant_3 else [],
+        },
+        'matched_rule': {
+            'name': 'Service Crash - Restore Missing Dependency',
+            'action': 'Alert operator to restore missing system file',
+            'script': 'AlertMissingDependency.ps1',
+        },
+        'remediation': {
+            'status': 'alerted',
+            'output': 'ALERT: Missing critical file detected. Operator notified. Awaiting manual intervention.',
+        },
+        'result': '⚠ ESCALATED - Manual intervention required'
+    })
+    
+    timeline.append({
+        'phase': 'remediate',
+        'title': 'Escalation for Variant #3',
+        'status': 'completed',
+        'detail': 'Alert sent to operator for missing dependency'
+    })
+    
+    timeline.append({
+        'phase': 'complete',
+        'title': 'Simulation Complete',
+        'status': 'completed',
+        'detail': 'All 3 variants detected and handled with targeted remediation'
+    })
+    
+    return jsonify({
+        'scenario': 'Root Cause Variant System Demonstration',
+        'subtitle': 'Same Error ID (1003) - Different Root Causes - Targeted Remediation',
+        'event_id': 1003,
+        'simulation_mode': True,
+        'description': 'Demonstrates how the system intelligently detects different root causes for the same error and applies targeted fixes.',
+        'generated_at': now.isoformat() + 'Z',
+        'timeline': timeline,
+        'variants': variant_simulations,
+        'summary': {
+            'total_events': 3,
+            'variants_detected': 3,
+            'auto_remediation_success': 2,
+            'escalated_for_manual_review': 1,
+            'time_to_resolve_avg_seconds': 45,
+            'key_insight': 'All 3 crashes handled differently based on root cause - achieved 67% auto-remediation rate'
+        }
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  Server entry point
 # ─────────────────────────────────────────────────────────────────────────────
 
