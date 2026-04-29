@@ -40,12 +40,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
         _history = data;
         _loading = false;
       });
-    } catch (e, st) {
-      print('ERROR loading history: $e\n$st');
-      if (mounted) setState(() {
+    } catch (_, __) {
+      if (mounted) {
+        setState(() {
         _history = [];
         _loading = false;
       });
+      }
     }
   }
 
@@ -68,8 +69,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
           child: Column(children: [
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-              decoration: BoxDecoration(gradient: AppTheme.gradientSecondary,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(14))),
+              decoration: const BoxDecoration(gradient: AppTheme.gradientSecondary,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(14))),
               child: Row(children: [
                 const Icon(Icons.history_rounded, color: Colors.white, size: 18),
                 const SizedBox(width: 10),

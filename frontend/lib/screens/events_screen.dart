@@ -65,9 +65,9 @@ class _EventsScreenState extends State<EventsScreen> {
         // Header card
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             gradient: AppTheme.gradientWarning,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
           ),
           child: Row(children: [
             const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 18),
@@ -156,7 +156,7 @@ class _EventsTable extends StatelessWidget {
                 child: Text(e.message ?? '—',
                     style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
                     maxLines: 2, overflow: TextOverflow.ellipsis)))),
-              DataCell(Text(_fmtTs(e.timestamp), style: const TextStyle(color: AppTheme.textMuted, fontSize: 11))),
+              DataCell(Text(_fmtTs(e.lastSeen ?? e.timestamp), style: const TextStyle(color: AppTheme.textMuted, fontSize: 11))),
               DataCell(ConfidenceBadge(e.confidenceScore)),
               DataCell(e.dedupCount > 1
                   ? Container(

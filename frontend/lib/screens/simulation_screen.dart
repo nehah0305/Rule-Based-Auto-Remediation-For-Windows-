@@ -386,12 +386,12 @@ class _ControlPanel extends StatelessWidget {
           onRetryChanged: onAeRetryChanged, onVerifyChanged: onAeVerifyChanged,
           script: 'Error1101_AuditEventsDropped.ps1');
       case SimType.highcpu:
-        return _LiveDemoParams(
+        return const _LiveDemoParams(
           step1: 'Writes Event ID 9999 to Windows Application Log and registers it in the DB. The live alert popup will appear on Dashboard within 5 seconds.',
           step2: 'After the alert appears, click "Auto-Remediate Now" in the popup on the Dashboard tab.',
           script1: 'Simulate_HighCpuAlert.ps1', script2: 'Remediate_HighCpuAlert.ps1');
       case SimType.servicecrash:
-        return _LiveDemoParams(
+        return const _LiveDemoParams(
           step1: 'Writes Event ID 7034 (PrintSpooler crash) to Windows Application Log. The live alert popup will appear on Dashboard within 5 seconds.',
           step2: 'After the alert appears, click "Auto-Remediate Now" in the popup on the Dashboard tab. This runs Remediate_ServiceCrash.ps1.',
           script1: 'Simulate_ServiceCrash.ps1', script2: 'Remediate_ServiceCrash.ps1');
@@ -462,7 +462,7 @@ class _CrashParams extends StatelessWidget {
     const SizedBox(height: 8),
     _SpeedRow(playbackSpeed, onSpeedChanged),
     const SizedBox(height: 8),
-    _ScriptInfo('remediation_scripts/Error1000_ApplicationCrash.ps1', 'sfc /scannow'),
+    const _ScriptInfo('remediation_scripts/Error1000_ApplicationCrash.ps1', 'sfc /scannow'),
   ]);
 }
 

@@ -987,6 +987,67 @@ def find_or_create_event(event_id, log_name=None, source=None, message=None,
     )
 
 
+def get_remediation_script_for_event(event_id):
+    """Return the remediation script path for a known event ID, if one exists."""
+    script_map = {
+        7031: 'remediation_scripts/Error7031_ServiceTerminatedUnexpectedly.ps1',
+        7034: 'remediation_scripts/Error7034_ServiceTerminatedUnexpectedly.ps1',
+        7036: 'remediation_scripts/Error7036_ServiceStateChanged.ps1',
+        7040: 'remediation_scripts/Error7040_ServiceStartTypeChanged.ps1',
+        7045: 'remediation_scripts/Error7045_NewServiceInstalled.ps1',
+        7000: 'remediation_scripts/Error7000_ServiceStartupFailure.ps1',
+        7001: 'remediation_scripts/Error7001_ServiceDependencyFailure.ps1',
+        7009: 'remediation_scripts/Error7009_ServiceConnectionTimeout.ps1',
+        7011: 'remediation_scripts/Error7011_ServiceTransactionTimeout.ps1',
+        7022: 'remediation_scripts/Error7022_ServiceHungOnStarting.ps1',
+        7023: 'remediation_scripts/Error7023_ServiceTerminatedWithError.ps1',
+        7024: 'remediation_scripts/Error7024_ServiceSpecificError.ps1',
+        7: 'remediation_scripts/Error7_BadBlocksDetected.ps1',
+        11: 'remediation_scripts/Error11_DiskControllerError.ps1',
+        51: 'remediation_scripts/Error51_DiskPagingIOError.ps1',
+        55: 'remediation_scripts/Error55_NTFSCorruptionDetected.ps1',
+        98: 'remediation_scripts/Error98_VolumeCorruptionDetected.ps1',
+        129: 'remediation_scripts/Error129_StorageTimeoutReset.ps1',
+        140: 'remediation_scripts/Error140_NTFSMetadataCorruption.ps1',
+        153: 'remediation_scripts/Error153_DiskIORetryIssue.ps1',
+        1014: 'remediation_scripts/Error1014_DNSNameResolutionTimeout.ps1',
+        4199: 'remediation_scripts/Error4199_NetworkAdapterReset.ps1',
+        4201: 'remediation_scripts/Error4201_NetworkInterfaceConnected.ps1',
+        4202: 'remediation_scripts/Error4202_NetworkInterfaceDisconnected.ps1',
+        5719: 'remediation_scripts/Error5719_DomainControllerUnreachable.ps1',
+        1129: 'remediation_scripts/Error1129_SecureChannelFailure.ps1',
+        36874: 'remediation_scripts/Error36874_TLSHandshakeFailure.ps1',
+        5025: 'remediation_scripts/Error5025_FirewallServiceStopped.ps1',
+        5031: 'remediation_scripts/Error5031_FirewallBlockedApplication.ps1',
+        5152: 'remediation_scripts/Error5152_PacketDroppedByWFP.ps1',
+        5155: 'remediation_scripts/Error5155_ConnectionBlockedByFirewall.ps1',
+        5157: 'remediation_scripts/Error5157_ApplicationBlockedFromListening.ps1',
+        8003: 'remediation_scripts/Error8003_AppLockerBlockedExecutable.ps1',
+        8004: 'remediation_scripts/Error8004_AppLockerBlockedDLL.ps1',
+        8006: 'remediation_scripts/Error8006_AppLockerScriptExecutionBlocked.ps1',
+        8007: 'remediation_scripts/Error8007_AppLockerMSIBlocked.ps1',
+        8028: 'remediation_scripts/Error8028_AppLockerEXEBlockedByPolicy.ps1',
+        1314: 'remediation_scripts/Error1314_RequiredPrivilegeNotHeld.ps1',
+        4625: 'remediation_scripts/Error4625_LogonFailure.ps1',
+        4673: 'remediation_scripts/Error4673_PrivilegedServiceOperationFailed.ps1',
+        4674: 'remediation_scripts/Error4674_PrivilegeObjectAccessDenied.ps1',
+        4697: 'remediation_scripts/Error4697_ServiceInstallationFailure.ps1',
+        10016: 'remediation_scripts/Error10016_DCOMPermissionDenied.ps1',
+        2004: 'remediation_scripts/Error2004_ResourceExhaustionDetected.ps1',
+        2019: 'remediation_scripts/Error2019_NonPagedPoolMemoryExhausted.ps1',
+        2020: 'remediation_scripts/Error2020_PagedPoolMemoryExhausted.ps1',
+        26: 'remediation_scripts/Error26_ApplicationFailedDueToMemoryLimits.ps1',
+        41: 'remediation_scripts/Error41_SystemRebootDueToResourceExhaustion.ps1',
+        1000: 'remediation_scripts/Error1000_ApplicationCrash.ps1',
+        1001: 'remediation_scripts/Error1001_ApplicationHang.ps1',
+        1026: 'remediation_scripts/Error1026_DotNetRuntimeCrash.ps1',
+        2013: 'remediation_scripts/LowDiskSpace_Remediation.ps1',
+        1100: 'remediation_scripts/Error1100_EventLogShutdown.ps1',
+        1101: 'remediation_scripts/Error1101_AuditEventsDropped.ps1',
+    }
+    return script_map.get(event_id)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  Execution Engine
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1090,15 +1151,24 @@ def populate_rules_from_json(overwrite=False):
         description = defn.get('description')
         recommended = defn.get('recommended_action')
         rule_name   = f"{category} - {source} Event {event_id}" if category else f"{source} - Event {event_id}"
+        remediation_script = get_remediation_script_for_event(event_id)
 
         existing = get_rules()
-        if any(r[2] == event_id and (r[3] or '').lower() == (source or '').lower() for r in existing):
+        existing_match = None
+        for r in existing:
+            if r[2] == event_id and (r[3] or '').lower() == (source or '').lower():
+                existing_match = r
+                break
+
+        if existing_match:
+            if remediation_script and not existing_match[5]:
+                update_rule(existing_match[0], remediation_script=remediation_script)
             continue
 
         add_rule(
             name=rule_name, event_id=event_id, source=source,
-            message_regex=None, remediation_script=None,
-            auto_remediate=False, stop_processing=False, category=category, severity=severity,
+            message_regex=None, remediation_script=remediation_script,
+            auto_remediate=bool(remediation_script), stop_processing=False, category=category, severity=severity,
             description=description, recommended_action=recommended,
             priority=100, cooldown_minutes=0,
         )

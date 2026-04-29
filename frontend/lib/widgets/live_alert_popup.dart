@@ -173,7 +173,7 @@ class _LiveAlertPopupState extends State<LiveAlertPopup> with SingleTickerProvid
                               padding: const EdgeInsets.symmetric(vertical: 10),
                               decoration: BoxDecoration(
                                 gradient: _remediating ? null : AppTheme.gradientSuccess,
-                                color: _remediating ? AppTheme.accentGreen.withOpacity(0.4) : null,
+                                color: _remediating ? AppTheme.accentGreen.withValues(alpha: 0.4) : null,
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Center(child: _remediating
@@ -189,7 +189,7 @@ class _LiveAlertPopupState extends State<LiveAlertPopup> with SingleTickerProvid
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.07),
+                              color: Colors.white.withValues(alpha: 0.07),
                               border: Border.all(color: AppTheme.border),
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -201,9 +201,9 @@ class _LiveAlertPopupState extends State<LiveAlertPopup> with SingleTickerProvid
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: AppTheme.accentGreen.withOpacity(0.1),
+                          color: AppTheme.accentGreen.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppTheme.accentGreen.withOpacity(0.3)),
+                          border: Border.all(color: AppTheme.accentGreen.withValues(alpha: 0.3)),
                         ),
                         child: Row(children: [
                           const Icon(Icons.check_circle, color: AppTheme.accentGreen, size: 16),

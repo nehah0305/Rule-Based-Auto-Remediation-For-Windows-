@@ -25,7 +25,7 @@ class _RulesScreenState extends State<RulesScreen> {
   }
 
   Future<void> _deleteRule(int id) async {
-    final confirmed = await showDialog<bool>(context: context, builder: (_) => _ConfirmDialog(
+    final confirmed = await showDialog<bool>(context: context, builder: (_) => const _ConfirmDialog(
       title: 'Delete Rule', message: 'This cannot be undone.'));
     if (confirmed == true) {
       try {
@@ -78,8 +78,8 @@ class _RulesScreenState extends State<RulesScreen> {
       child: Column(children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          decoration: BoxDecoration(gradient: AppTheme.gradientSuccess,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(14))),
+          decoration: const BoxDecoration(gradient: AppTheme.gradientSuccess,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(14))),
           child: Row(children: [
             const Icon(Icons.rule_rounded, color: Colors.white, size: 18),
             const SizedBox(width: 10),
@@ -279,7 +279,9 @@ class _RuleDialogState extends State<RuleDialog> {
 
   @override
   void dispose() {
-    for (final c in [_name,_eventId,_source,_regex,_script,_priority,_cooldown,_category,_severity,_desc,_action]) c.dispose();
+    for (final c in [_name,_eventId,_source,_regex,_script,_priority,_cooldown,_category,_severity,_desc,_action]) {
+      c.dispose();
+    }
     super.dispose();
   }
 

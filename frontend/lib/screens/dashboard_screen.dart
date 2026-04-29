@@ -329,7 +329,7 @@ class _IntelligenceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     decoration: BoxDecoration(color: AppTheme.bgCard, borderRadius: BorderRadius.circular(14),
-        border: Border(left: const BorderSide(color: AppTheme.accentPurple, width: 4),
+        border: const Border(left: BorderSide(color: AppTheme.accentPurple, width: 4),
             top: BorderSide(color: AppTheme.border), right: BorderSide(color: AppTheme.border),
             bottom: BorderSide(color: AppTheme.border))),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -339,12 +339,12 @@ class _IntelligenceCard extends StatelessWidget {
           gradient: LinearGradient(colors: [AppTheme.accentPurple.withOpacity(0.2), AppTheme.accentPurple.withOpacity(0.05)]),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
         ),
-        child: Row(children: [
-          const Icon(Icons.psychology_rounded, color: Color(0xFFc77dff), size: 18),
-          const SizedBox(width: 8),
-          const Text('Alert Intelligence Summary', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-          const Spacer(),
-          const Text('Auto-updated every 5s', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
+        child: const Row(children: [
+          Icon(Icons.psychology_rounded, color: Color(0xFFc77dff), size: 18),
+          SizedBox(width: 8),
+          Text('Alert Intelligence Summary', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+          Spacer(),
+          Text('Auto-updated every 5s', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
         ]),
       ),
       Padding(

@@ -1,4 +1,4 @@
-import 'dart:html' as html show window;
+import 'package:flutter/foundation.dart';
 
 class ApiConfig {
   /// In production the Flutter app is served by Flask on port 5000,
@@ -6,7 +6,11 @@ class ApiConfig {
   /// In dev (flutter run -d web-server) on port 8080, override explicitly.
   static String get base {
     try {
-      final origin = html.window.location.origin;
+      if (!kIsWeb) {
+        return 'http://localhost:5000';
+      }
+
+      final origin = Uri.base.origin;
       // If running locally via flutter dev server, point to Flask explicitly
       if (origin.contains('localhost:8080') || origin.contains('127.0.0.1:8080')) {
         return 'http://localhost:5000';

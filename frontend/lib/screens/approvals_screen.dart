@@ -57,8 +57,8 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
       child: Column(children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          decoration: BoxDecoration(gradient: AppTheme.gradientWarning,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(14))),
+          decoration: const BoxDecoration(gradient: AppTheme.gradientWarning,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(14))),
           child: Row(children: [
             const Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
             const SizedBox(width: 10),
@@ -86,10 +86,10 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
 
 class _EmptyState extends StatelessWidget {
   @override
-  Widget build(BuildContext context) => Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+  Widget build(BuildContext context) => const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
     Icon(Icons.inbox_rounded, size: 48, color: AppTheme.textDimmed),
-    const SizedBox(height: 12),
-    const Text('No pending approval requests',
+    SizedBox(height: 12),
+    Text('No pending approval requests',
         style: TextStyle(color: AppTheme.textMuted, fontSize: 14)),
   ]));
 }

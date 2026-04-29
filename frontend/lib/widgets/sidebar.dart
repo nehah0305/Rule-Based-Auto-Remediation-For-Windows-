@@ -115,11 +115,11 @@ class _NavItemState extends State<_NavItem> {
           margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 12 : 14, vertical: 10),
           decoration: BoxDecoration(
-            color: active ? AppTheme.accent.withOpacity(0.15)
-                : _hovered ? AppTheme.accent.withOpacity(0.06)
+            color: active ? AppTheme.accent.withValues(alpha: 0.15)
+                : _hovered ? AppTheme.accent.withValues(alpha: 0.06)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
-            border: active ? Border.all(color: AppTheme.accent.withOpacity(0.4)) : null,
+            border: active ? Border.all(color: AppTheme.accent.withValues(alpha: 0.4)) : null,
           ),
           child: Row(children: [
             Icon(widget.icon,
