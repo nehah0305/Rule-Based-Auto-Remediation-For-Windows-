@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'dart:convert';
 import '../config/theme.dart';
 import '../services/api_service.dart';
@@ -105,10 +104,13 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
 
     // Date range filter
     if (_dateRange != null) {
+      final start = _dateRange!.start;
+      final end = _dateRange!.end.add(const Duration(days: 1));
       filtered = filtered.where((e) {
         if (e.timestamp == null) return false;
-        return e.timestamp!.isAfter(_dateRange!.start) &&
-            e.timestamp!.isBefore(_dateRange!.end.add(const Duration(days: 1)));
+        final ts = DateTime.tryParse(e.timestamp!);
+        if (ts == null) return false;
+        return ts.isAfter(start) && ts.isBefore(end);
       }).toList();
     }
 
@@ -123,7 +125,7 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
         'severity': e.severity,
         'category': e.category,
         'message': e.message,
-        'timestamp': e.timestamp?.toIso8601String(),
+        'timestamp': e.timestamp,
         'log_name': e.logName,
         'remediated': e.remediated,
       }).toList());
@@ -261,11 +263,11 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
                   itemBuilder: (_) => [
                     PopupMenuItem(
                       child: const Text('Export as JSON'),
-                      onTap: _exportAsJson,
+                      onTap: () { _exportAsJson(); },
                     ),
                     PopupMenuItem(
                       child: const Text('Export as CSV'),
-                      onTap: _exportAsCsv,
+                      onTap: () { _exportAsCsv(); },
                     ),
                   ],
                 ),
@@ -432,9 +434,7 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
                                             Text(event.source ?? '-'),
                                           ),
                                           DataCell(
-                                            SeverityBadge(
-                                              severity: event.severity ?? 'Unknown',
-                                            ),
+                                            SeverityBadge(event.severity ?? 'Unknown'),
                                           ),
                                           DataCell(
                                             Text(event.category ?? '-'),
@@ -522,15 +522,15 @@ class _FilterDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DropdownButton<String>(
+    return DropdownButton<String?>(
       value: value,
       hint: Text(label),
       items: [
-        DropdownMenuItem(
+        DropdownMenuItem<String?>(
           value: null,
           child: Text(label),
         ),
-        ...items.map((item) => DropdownMenuItem(value: item, child: Text(item))),
+        ...items.map((item) => DropdownMenuItem<String?>(value: item, child: Text(item))),
       ],
       onChanged: onChanged,
     );
@@ -580,7 +580,7 @@ class _EventDetailsDialog extends StatelessWidget {
     return AlertDialog(
       title: Row(
         children: [
-          SeverityBadge(severity: event.severity ?? 'Unknown'),
+          SeverityBadge(event.severity ?? 'Unknown'),
           const SizedBox(width: 8),
           Text('Event #${event.eventId}'),
         ],

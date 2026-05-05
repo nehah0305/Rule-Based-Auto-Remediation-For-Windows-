@@ -16,6 +16,8 @@ class AppTheme {
   static const Color textPrimary  = Color(0xFFe8e8ff);
   static const Color textMuted    = Color(0xFF8888aa);
   static const Color textDimmed   = Color(0xFF555577);
+  static const Color textSecondary = textMuted;
+  static const Color bgInput = bgCardAlt;
 
   // Gradient helpers
   static const LinearGradient gradientPrimary = LinearGradient(
@@ -42,6 +44,7 @@ class AppTheme {
     colors: [Color(0xFF4a9eff), Color(0xFF0077cc)],
     begin: Alignment.topLeft, end: Alignment.bottomRight,
   );
+  static const LinearGradient gradientAccent = gradientPrimary;
   static const LinearGradient gradientSecondary = LinearGradient(
     colors: [Color(0xFF6c757d), Color(0xFF495057)],
     begin: Alignment.topLeft, end: Alignment.bottomRight,

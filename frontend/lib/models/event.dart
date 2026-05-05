@@ -14,6 +14,7 @@ class AppEvent {
   final double confidenceScore;
   final String? correlationId;
   final String? sourceType;
+  final bool remediated;
   final bool needsManualReview;
   final String? manualReviewReason;
   final bool dismissedReview;
@@ -89,5 +90,6 @@ class AppEvent {
     needsManualReview:   _toBool(j['needs_manual_review']),
     manualReviewReason:  _toStringOrNull(j['manual_review_reason']),
     dismissedReview:     _toBool(j['dismissed_review']),
+    remediated:           _toBool(j['remediated']),
   );
 }
