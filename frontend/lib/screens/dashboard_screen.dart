@@ -9,7 +9,6 @@ import '../models/history_entry.dart';
 import '../models/intelligence_summary.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/badges.dart';
-import '../widgets/crash_watcher_panel.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -125,9 +124,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               // Manual review alert banner
               if (_manualReview > 0) _ManualReviewBanner(count: _manualReview),
               if (_manualReview > 0) const SizedBox(height: 16),
-              // ── Crash Watcher Panel ─────────────────────────────────────
-              const CrashWatcherPanel(),
-              const SizedBox(height: 20),
               // Charts row
               LayoutBuilder(builder: (ctx, constraints) {
                 final wide = constraints.maxWidth > 700;

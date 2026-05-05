@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../config/theme.dart';
 
-enum AppTab { dashboard, events, rules, approvals, history, simulation, viewer, task_manager }
+enum AppTab { dashboard, events, rules, approvals, history, simulation, viewer, taskScheduler }
 
 class AppSidebar extends StatefulWidget {
   final AppTab selected;
@@ -16,14 +16,14 @@ class _AppSidebarState extends State<AppSidebar> {
   bool _collapsed = false;
 
   static const _items = [
-    (AppTab.dashboard,   Icons.dashboard_rounded,    'Dashboard'),
-    (AppTab.events,      Icons.warning_amber_rounded, 'Warnings & Errors'),
-    (AppTab.rules,       Icons.rule_rounded,          'Rules'),
-    (AppTab.approvals,   Icons.check_circle_outline,  'Approvals'),
-    (AppTab.history,     Icons.history_rounded,        'History'),
-    (AppTab.viewer,      Icons.event_rounded,         'Event Viewer'),
-    (AppTab.task_manager, Icons.schedule_rounded,     'Task Scheduler'),
-    (AppTab.simulation,  Icons.science_rounded,        'Simulation'),
+    (AppTab.dashboard, Icons.dashboard_rounded, 'Dashboard'),
+    (AppTab.events, Icons.warning_amber_rounded, 'Warnings & Errors'),
+    (AppTab.rules, Icons.rule_rounded, 'Rules'),
+    (AppTab.approvals, Icons.check_circle_outline, 'Approvals'),
+    (AppTab.history, Icons.history_rounded, 'History'),
+    (AppTab.viewer, Icons.event_rounded, 'Event Viewer'),
+    (AppTab.simulation, Icons.science_rounded, 'Simulation'),
+    (AppTab.taskScheduler, Icons.task_alt_rounded, 'Task Scheduler'),
   ];
 
   @override

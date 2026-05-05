@@ -5,7 +5,6 @@ import 'services/api_service.dart';
 import 'services/alert_polling_service.dart';
 import 'services/monitor_service.dart';
 import 'services/remediation_service.dart';
-import 'services/crash_watcher_service.dart';
 import 'widgets/sidebar.dart';
 import 'widgets/header.dart';
 import 'widgets/live_alert_popup.dart';
@@ -16,7 +15,7 @@ import 'screens/approvals_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/simulation_screen.dart';
 import 'screens/event_viewer_screen.dart';
-import 'screens/task_manager_screen.dart';
+import 'screens/task_scheduler_screen.dart';
 
 void main() {
   runApp(const RemediationApp());
@@ -31,7 +30,6 @@ class RemediationApp extends StatelessWidget {
     final alertSvc   = AlertPollingService(api);
     final monitorSvc = MonitorService(api);
     final remediationSvc = RemediationService();
-    final crashWatcherSvc = CrashWatcherService(api);
 
     return MultiProvider(
       providers: [
@@ -39,7 +37,6 @@ class RemediationApp extends StatelessWidget {
         ChangeNotifierProvider<AlertPollingService>.value(value: alertSvc),
         ChangeNotifierProvider<MonitorService>.value(value: monitorSvc),
         ChangeNotifierProvider<RemediationService>.value(value: remediationSvc),
-        ChangeNotifierProvider<CrashWatcherService>.value(value: crashWatcherSvc),
       ],
       child: MaterialApp(
         title: 'Auto-Remediation Control Center',
@@ -62,25 +59,25 @@ class _AppShellState extends State<AppShell> {
   AppTab _tab = AppTab.dashboard;
 
   static const _titles = {
-    AppTab.dashboard:  'Dashboard',
-    AppTab.events:     'Warnings & Errors',
-    AppTab.rules:      'Rules',
-    AppTab.approvals:  'Approvals',
-    AppTab.history:    'Remediation History',
-    AppTab.viewer:     'Event Viewer',
-    AppTab.task_manager: 'Task Scheduler',
+    AppTab.dashboard: 'Dashboard',
+    AppTab.events: 'Warnings & Errors',
+    AppTab.rules: 'Rules',
+    AppTab.approvals: 'Approvals',
+    AppTab.history: 'Remediation History',
+    AppTab.viewer: 'Event Viewer',
     AppTab.simulation: 'Simulation Lab',
+    AppTab.taskScheduler: 'Task Scheduler',
   };
 
   Widget _screen(AppTab tab) => switch (tab) {
-    AppTab.dashboard   => const DashboardScreen(),
-    AppTab.events      => const EventsScreen(),
-    AppTab.rules       => const RulesScreen(),
-    AppTab.approvals   => const ApprovalsScreen(),
-    AppTab.history     => const HistoryScreen(),
-    AppTab.viewer      => const EventViewerScreen(),
-    AppTab.task_manager => const TaskManagerScreen(),
-    AppTab.simulation  => const SimulationScreen(),
+    AppTab.dashboard => const DashboardScreen(),
+    AppTab.events => const EventsScreen(),
+    AppTab.rules => const RulesScreen(),
+    AppTab.approvals => const ApprovalsScreen(),
+    AppTab.history => const HistoryScreen(),
+    AppTab.viewer => const EventViewerScreen(),
+    AppTab.simulation => const SimulationScreen(),
+    AppTab.taskScheduler => const TaskSchedulerScreen(),
   };
 
   @override

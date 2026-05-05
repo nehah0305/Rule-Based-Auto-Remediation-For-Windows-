@@ -1,12 +1,59 @@
 import os
 import sqlite3
+from datetime import datetime
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'rules.db')
 
 def init_db():
+    """Initialize database with proper schema versioning (PRIORITY 3 FIX)."""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
+    # Create schema version table first (if not exists)
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS schema_version (
+        version INTEGER PRIMARY KEY,
+        applied_at TEXT,
+        description TEXT
+    )
+    ''')
+    conn.commit()
+
+    # Get current schema version
+    c.execute('SELECT MAX(version) FROM schema_version')
+    current_version = c.fetchone()[0] or 0
+
+    # Apply migrations in sequence
+    if current_version < 1:
+        _apply_schema_v1(c)
+        c.execute(
+            'INSERT INTO schema_version (version, applied_at, description) VALUES (?, ?, ?)',
+            (1, datetime.utcnow().isoformat(), 'Initial schema with events, rules, history, requests')
+        )
+        print(f'Applied schema migration v1')
+    
+    if current_version < 2:
+        _apply_schema_v2_migrations(c)
+        c.execute(
+            'INSERT INTO schema_version (version, applied_at, description) VALUES (?, ?, ?)',
+            (2, datetime.utcnow().isoformat(), 'Added event intelligence columns (dedup, correlation, confidence)')
+        )
+        print(f'Applied schema migration v2')
+    
+    if current_version < 3:
+        _apply_schema_v3_migrations(c)
+        c.execute(
+            'INSERT INTO schema_version (version, applied_at, description) VALUES (?, ?, ?)',
+            (3, datetime.utcnow().isoformat(), 'Added root cause variant tracking columns')
+        )
+        print(f'Applied schema migration v3')
+    
+    conn.commit()
+    conn.close()
+
+
+def _apply_schema_v1(c):
+    """Create initial schema."""
     c.execute('''
     CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,14 +70,6 @@ def init_db():
         remediated_at TEXT
     )
     ''')
-
-    # Add remediated_at column if it doesn't exist (migration)
-    try:
-        c.execute('ALTER TABLE events ADD COLUMN remediated_at TEXT')
-        conn.commit()
-    except sqlite3.OperationalError:
-        # Column already exists
-        pass
 
     c.execute('''
     CREATE TABLE IF NOT EXISTS rules (
@@ -124,6 +163,7 @@ def init_db():
 
     # ─── Root Cause Variant Tables ───────────────────────────────────────
     # Tracks detected root cause variants for errors with multiple causes
+    # and stores associations to remediation rules.
     c.execute('''
     CREATE TABLE IF NOT EXISTS event_root_cause_variants (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -139,8 +179,6 @@ def init_db():
     )
     ''')
 
-    # Links rules to specific root cause variants
-    # Allows different remediation actions per variant of the same error
     c.execute('''
     CREATE TABLE IF NOT EXISTS rule_variant_associations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -154,91 +192,68 @@ def init_db():
     )
     ''')
 
-    conn.commit()
 
-    # Migrate existing tables to add new columns if they don't exist
-    migrate_db(conn)
-
-    conn.close()
-
-
-def migrate_db(conn):
-    """Add new columns to existing tables if they don't exist."""
-    c = conn.cursor()
-
-    # Get existing columns in events table
+def _apply_schema_v2_migrations(c):
+    """Add event intelligence columns (PRIORITY 3 FIX)."""
     c.execute("PRAGMA table_info(events)")
-    events_columns = [col[1] for col in c.fetchall()]
+    events_columns = {col[1] for col in c.fetchall()}
 
-    # Add missing columns to events table
-    new_event_columns = [
-        ('category',         'TEXT'),
-        ('severity',         'TEXT'),
-        ('description',      'TEXT'),
-        ('recommended_action','TEXT'),
-        ('level',            'TEXT'),
-        # --- Alert Intelligence columns ---
-        ('dedup_count',      'INTEGER DEFAULT 1'),   # collapsed duplicate count
-        ('last_seen',        'TEXT'),                # last occurrence timestamp
-        ('confidence_score', 'REAL DEFAULT 0.0'),    # 0-100 urgency score
-        ('correlation_id',   'TEXT'),                # groups related events
-        # --- Event Log Monitor columns ---
-        ('source_type',          "TEXT DEFAULT 'api'"),  # 'api' or 'eventlog'
-        ('needs_manual_review',  'INTEGER DEFAULT 0'),   # 1 = no rule matched
-        ('manual_review_reason', 'TEXT'),                # why manual review is needed
-        ('dismissed_review',     'INTEGER DEFAULT 0'),   # 1 = operator dismissed it
+    v2_columns = [
+        ('dedup_count', 'INTEGER DEFAULT 1'),
+        ('last_seen', 'TEXT'),
+        ('confidence_score', 'REAL DEFAULT 0.0'),
+        ('correlation_id', 'TEXT'),
+        ('source_type', "TEXT DEFAULT 'api'"),
+        ('needs_manual_review', 'INTEGER DEFAULT 0'),
+        ('manual_review_reason', 'TEXT'),
+        ('dismissed_review', 'INTEGER DEFAULT 0'),
     ]
 
-    for col_name, col_type in new_event_columns:
+    for col_name, col_type in v2_columns:
         if col_name not in events_columns:
             try:
                 c.execute(f'ALTER TABLE events ADD COLUMN {col_name} {col_type}')
-                print(f'Added column {col_name} to events table')
-            except Exception:
+                print(f'  Added column {col_name} to events table')
+            except sqlite3.OperationalError:
                 pass
-    
-    # Add root cause tracking columns
-    root_cause_columns = [
-        ('root_cause_variant_id', 'TEXT'),           # Best-matched variant
-        ('root_cause_variant_label', 'TEXT'),        # Display label
-        ('root_cause_confidence', 'INTEGER'),        # Confidence % (0-100)
-        ('detected_root_causes', 'TEXT'),            # JSON array of all detected variants
+
+
+def _apply_schema_v3_migrations(c):
+    """Add root cause variant tracking columns."""
+    c.execute("PRAGMA table_info(events)")
+    events_columns = {col[1] for col in c.fetchall()}
+
+    v3_columns = [
+        ('root_cause_variant_id', 'TEXT'),
+        ('root_cause_variant_label', 'TEXT'),
+        ('root_cause_confidence', 'INTEGER'),
+        ('detected_root_causes', 'TEXT'),
     ]
-    
-    for col_name, col_type in root_cause_columns:
+
+    for col_name, col_type in v3_columns:
         if col_name not in events_columns:
             try:
                 c.execute(f'ALTER TABLE events ADD COLUMN {col_name} {col_type}')
-                print(f'Added column {col_name} to events table')
-            except Exception:
+                print(f'  Added column {col_name} to events table')
+            except sqlite3.OperationalError:
                 pass
 
-    # Get existing columns in rules table
+    # Ensure rules table has required columns
     c.execute("PRAGMA table_info(rules)")
-    rules_columns = [col[1] for col in c.fetchall()]
+    rules_columns = {col[1] for col in c.fetchall()}
 
-    # Add missing columns to rules table
-    new_rule_columns = [
-        ('category',          'TEXT'),
-        ('severity',          'TEXT'),
-        ('description',       'TEXT'),
-        ('recommended_action','TEXT'),
-        ("script_type",       "TEXT DEFAULT 'file'"),
-        # --- Rule Matching Engine columns ---
-        ('priority',          'INTEGER DEFAULT 100'), # lower = higher priority
-        ('cooldown_minutes',  'INTEGER DEFAULT 0'),   # suppress re-run within N min
-        ('stop_processing',   'INTEGER DEFAULT 0'),   # skip lower priority matching rules
+    rules_v3_columns = [
+        ('priority', 'INTEGER DEFAULT 100'),
+        ('cooldown_minutes', 'INTEGER DEFAULT 0'),
     ]
 
-    for col_name, col_type in new_rule_columns:
+    for col_name, col_type in rules_v3_columns:
         if col_name not in rules_columns:
             try:
                 c.execute(f'ALTER TABLE rules ADD COLUMN {col_name} {col_type}')
-                print(f'Added column {col_name} to rules table')
-            except Exception:
+                print(f'  Added column {col_name} to rules table')
+            except sqlite3.OperationalError:
                 pass
-
-    conn.commit()
 
 
 if __name__ == '__main__':

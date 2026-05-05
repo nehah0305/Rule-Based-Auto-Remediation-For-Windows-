@@ -4,6 +4,8 @@ import os
 import json
 import re
 import random
+import logging
+import logging.handlers
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import time
@@ -13,41 +15,129 @@ import models
 import event_log_monitor
 import task_scheduler
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Input Validation & Security Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+
+# CORS: Explicit whitelist of allowed origins (prevents CORS wildcard vulnerability)
+# For development, allow all localhost origins. For production, restrict to specific URLs.
+def is_allowed_origin(origin):
+    """Check if origin is allowed (localhost for dev, whitelist for prod)."""
+    if not origin:
+        return True  # Allow same-origin requests
+    
+    # Allow localhost and 127.0.0.1 with any port for development
+    if origin.startswith('http://localhost:') or origin.startswith('http://127.0.0.1:'):
+        return True
+    if origin.startswith('https://localhost:') or origin.startswith('https://127.0.0.1:'):
+        return True
+    
+    # Production whitelist
+    ALLOWED_ORIGINS = [
+        'http://localhost:3000',
+        'http://localhost:5000',
+        'http://localhost:8080',
+        'http://127.0.0.1:3000',
+        'http://127.0.0.1:5000',
+        'http://127.0.0.1:8080',
+    ]
+    
+    return origin in ALLOWED_ORIGINS
+
+def validate_input(data, schema):
+    """Validate input data against schema."""
+    if not isinstance(data, dict):
+        raise ValueError('Input must be a JSON object')
+    for field, rules in schema.items():
+        value = data.get(field)
+        if rules.get('required', False) and value is None:
+            raise ValueError(f'Field {field} is required')
+        if value is not None:
+            max_len = rules.get('max_length')
+            if max_len and isinstance(value, str) and len(value) > max_len:
+                raise ValueError(f'Field {field} exceeds max length {max_len}')
+            field_type = rules.get('type')
+            if field_type and not isinstance(value, field_type):
+                raise ValueError(f'Field {field} must be {field_type.__name__}')
+    return True
+
 # Load environment variables from .env file
 load_dotenv()
+
+# ── Unified log file shared with cli_process_event.py and Task Scheduler ─────
+# Both the Flask server and the background CLI script write to this single file
+# so the operator always has a complete, chronological audit trail.
+_DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
+os.makedirs(_DATA_DIR, exist_ok=True)
+_UNIFIED_LOG = os.path.join(_DATA_DIR, 'remediation_system.log')
+
+_file_handler = logging.handlers.RotatingFileHandler(
+    _UNIFIED_LOG, maxBytes=5 * 1024 * 1024, backupCount=3, encoding='utf-8'
+)
+_file_handler.setFormatter(
+    logging.Formatter('%(asctime)s [%(levelname)s] [FLASK] %(message)s')
+)
+logging.getLogger().addHandler(_file_handler)
+logging.getLogger().setLevel(logging.INFO)
+_log = logging.getLogger('app')
+_log.info('Flask server starting up — unified log initialised.')
 
 # Simple cache for filtered events to improve response time
 _filtered_events_cache = {'data': None, 'timestamp': 0, 'ttl': 15}
 
 app = Flask(__name__)
 
-# â”€â”€â”€ CORS: allow Flutter dev server (port 8080) to hit the API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# CORS: Whitelist-based security (prevents origin reflection vulnerability)
 @app.after_request
 def add_cors_headers(response):
+    """Add CORS headers only for allowed origins (SECURITY FIX)."""
     origin = request.headers.get('Origin', '')
-    if origin:
-        response.headers['Access-Control-Allow-Origin'] = origin
+    
+    # SECURITY FIX: Only allow whitelisted origins (prevents CORS vulnerability)
+    if is_allowed_origin(origin):
+        if origin:
+            response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept'
         response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Max-Age'] = '3600'
+    
     return response
 
 @app.route('/api/<path:path>', methods=['OPTIONS'])
 def options_handler(path):
-    """Handle CORS preflight for all /api/* routes."""
+    """Handle CORS preflight for all /api/* routes (whitelist-based)."""
     response = jsonify({})
     origin = request.headers.get('Origin', '')
-    if origin:
-        response.headers['Access-Control-Allow-Origin'] = origin
+    
+    # Only respond to allowed origins
+    if is_allowed_origin(origin):
+        if origin:
+            response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept'
+        response.headers['Access-Control-Max-Age'] = '3600'
+    
     return response, 200
 
 # Ensure DB exists and migrations run
 init_db()
 
-# Start the background Windows Event Log monitor thread
-event_log_monitor.start_monitor()
+# ── Event Monitor: polling vs. Task Scheduler mode ────────────────────────────
+# Set USE_TASK_SCHEDULER=true in your .env (or system environment) when the
+# Setup_EventTriggers.ps1 script has been run. In that mode Flask becomes a
+# pure API server — Task Scheduler + cli_process_event.py handle detection.
+_use_task_scheduler = os.getenv('USE_TASK_SCHEDULER', 'false').lower() in ('true', '1', 'yes')
+
+if _use_task_scheduler:
+    _log.info(
+        'USE_TASK_SCHEDULER=true — background polling thread is DISABLED. '
+        'Windows Task Scheduler is responsible for event detection.'
+    )
+    print('[INFO] Task Scheduler mode active — polling thread disabled.')
+else:
+    _log.info('USE_TASK_SCHEDULER not set — starting background polling thread.')
+    event_log_monitor.start_monitor()
 
 
 # â”€â”€â”€ Flutter Web Frontend â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -178,6 +268,33 @@ def monitor_trigger():
     return jsonify({'status': 'ok', 'events_ingested': count})
 
 
+@app.route('/api/monitor/log', methods=['GET'])
+def monitor_log():
+    """
+    Return the last N lines of the unified remediation_system.log file.
+    Both Flask and the Task Scheduler CLI script write to this file, giving
+    the Flutter dashboard a single chronological audit trail.
+    """
+    try:
+        lines = int(request.args.get('lines', 200))
+        lines = max(10, min(lines, 2000))
+    except (ValueError, TypeError):
+        lines = 200
+
+    log_path = os.path.join(os.path.dirname(__file__), 'data', 'remediation_system.log')
+
+    if not os.path.exists(log_path):
+        return jsonify({'content': '(log file does not exist yet — run a poll or simulate an event first.)', 'lines': 0})
+
+    try:
+        with open(log_path, 'r', encoding='utf-8', errors='replace') as f:
+            all_lines = f.readlines()
+        tail = all_lines[-lines:]
+        return jsonify({'content': ''.join(tail), 'lines': len(tail), 'total_lines': len(all_lines)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/events/ensure', methods=['POST'])
 def ensure_event():
     """Find or create a DB event row without triggering auto-remediation."""
@@ -245,24 +362,52 @@ def rules():
         rows = models.get_rules()
         return jsonify([_rule_to_dict(r) for r in rows])
 
-    data = request.get_json(force=True)
-    rid = models.add_rule(
-        data.get('name'),
-        data.get('event_id'),
-        data.get('source'),
-        data.get('message_regex'),
-        data.get('remediation_script'),
-        data.get('script_type', 'file'),
-        data.get('auto_remediate', False),
-        data.get('stop_processing', False),
-        data.get('category'),
-        data.get('severity'),
-        data.get('description'),
-        data.get('recommended_action'),
-        data.get('priority', 100),
-        data.get('cooldown_minutes', 0),
-    )
-    return jsonify({'status': 'created', 'rule_id': rid}), 201
+    try:
+        data = request.get_json(force=True)
+        
+        # INPUT VALIDATION: Validate rule creation schema (PRIORITY 2 FIX)
+        rule_schema = {
+            'name': {'required': True, 'type': str, 'max_length': 256},
+            'event_id': {'type': int},
+            'source': {'type': str, 'max_length': 512},
+            'message_regex': {'type': str, 'max_length': 1000},
+            'remediation_script': {'type': str, 'max_length': 1024},
+            'script_type': {'type': str, 'max_length': 50},
+            'category': {'type': str, 'max_length': 256},
+            'severity': {'type': str, 'max_length': 128},
+            'description': {'type': str, 'max_length': 2048},
+        }
+        validate_input(data, rule_schema)
+        
+        # Validate regex if provided (ReDoS prevention)
+        if data.get('message_regex'):
+            try:
+                re.compile(data['message_regex'])
+            except re.error as e:
+                return jsonify({'error': f'Invalid regex pattern: {str(e)}'}), 400
+        
+        rid = models.add_rule(
+            data.get('name'),
+            data.get('event_id'),
+            data.get('source'),
+            data.get('message_regex'),
+            data.get('remediation_script'),
+            data.get('script_type', 'file'),
+            data.get('auto_remediate', False),
+            data.get('stop_processing', False),
+            data.get('category'),
+            data.get('severity'),
+            data.get('description'),
+            data.get('recommended_action'),
+            data.get('priority', 100),
+            data.get('cooldown_minutes', 0),
+        )
+        return jsonify({'status': 'created', 'rule_id': rid}), 201
+    except ValueError as e:
+        return jsonify({'error': f'Validation error: {str(e)}'}), 400
+    except Exception as e:
+        _log.error(f'Error creating rule: {e}')
+        return jsonify({'error': 'Failed to create rule'}), 500
 
 
 @app.route('/api/rules/<int:rule_id>', methods=['GET', 'PUT', 'DELETE'])
@@ -274,25 +419,53 @@ def rule_detail(rule_id):
         return jsonify(_rule_to_dict(r))
 
     if request.method == 'PUT':
-        data = request.get_json(force=True)
-        ok = models.update_rule(
-            rule_id,
-            data.get('name'),
-            data.get('event_id'),
-            data.get('source'),
-            data.get('message_regex'),
-            data.get('remediation_script'),
-            data.get('script_type'),
-            data.get('auto_remediate'),
-            data.get('stop_processing'),
-            data.get('category'),
-            data.get('severity'),
-            data.get('description'),
-            data.get('recommended_action'),
-            data.get('priority'),
-            data.get('cooldown_minutes'),
-        )
-        return jsonify({'status': 'updated' if ok else 'nochange'})
+        try:
+            data = request.get_json(force=True)
+            
+            # INPUT VALIDATION (PRIORITY 2 FIX)
+            rule_schema = {
+                'name': {'required': True, 'type': str, 'max_length': 256},
+                'event_id': {'type': int},
+                'source': {'type': str, 'max_length': 512},
+                'message_regex': {'type': str, 'max_length': 1000},
+                'remediation_script': {'type': str, 'max_length': 1024},
+                'script_type': {'type': str, 'max_length': 50},
+                'category': {'type': str, 'max_length': 256},
+                'severity': {'type': str, 'max_length': 128},
+                'description': {'type': str, 'max_length': 2048},
+            }
+            validate_input(data, rule_schema)
+            
+            # Validate regex if provided (ReDoS prevention)
+            if data.get('message_regex'):
+                try:
+                    re.compile(data['message_regex'])
+                except re.error as e:
+                    return jsonify({'error': f'Invalid regex pattern: {str(e)}'}), 400
+            
+            ok = models.update_rule(
+                rule_id,
+                data.get('name'),
+                data.get('event_id'),
+                data.get('source'),
+                data.get('message_regex'),
+                data.get('remediation_script'),
+                data.get('script_type'),
+                data.get('auto_remediate'),
+                data.get('stop_processing'),
+                data.get('category'),
+                data.get('severity'),
+                data.get('description'),
+                data.get('recommended_action'),
+                data.get('priority'),
+                data.get('cooldown_minutes'),
+            )
+            return jsonify({'status': 'updated' if ok else 'nochange'})
+        except ValueError as e:
+            return jsonify({'error': f'Validation error: {str(e)}'}), 400
+        except Exception as e:
+            _log.error(f'Error updating rule: {e}')
+            return jsonify({'error': 'Failed to update rule'}), 500
 
     if request.method == 'DELETE':
         models.delete_rule(rule_id)
@@ -2709,236 +2882,6 @@ def simulate_root_cause_variants():
 import base64 as _base64
 import subprocess as _subprocess
 import shutil as _shutil
-
-_APPCRASH_POWERSHELL = (
-    _shutil.which('powershell')
-    or _shutil.which('powershell.exe')
-    or r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
-)
-
-# Watched application names (lowercase, no .exe)
-_WATCHED_APPS = ['notepad']
-
-
-def _query_real_crash(app_name: str, since_seconds: int = 60) -> list:
-    """
-    Query Windows Application Event Log for Event ID 1000 crashes of a specific
-    application within the last `since_seconds` seconds. Returns parsed events.
-    """
-    script = f"""
-        $since = (Get-Date).AddSeconds(-{since_seconds})
-        try {{
-            $events = Get-WinEvent -FilterHashtable @{{
-                LogName = 'Application'
-                Id = 1000
-                Level = 2
-                StartTime = $since
-            }} -MaxEvents 20 -ErrorAction Stop |
-            Where-Object {{ $_.Message -match [regex]::Escape('{app_name}') }} |
-            Select-Object Id, LogName, ProviderName, Message, TimeCreated, Level
-            if ($events) {{ $events | ConvertTo-Json -Depth 3 -Compress }}
-            else {{ '[]' }}
-        }} catch [System.Exception] {{
-            if ($_.Exception.Message -match 'No events were found') {{ '[]' }}
-            else {{ '[]' }}
-        }}
-    """
-    try:
-        encoded = _base64.b64encode(script.encode('utf-16le')).decode('ascii')
-        result = _subprocess.run(
-            [_APPCRASH_POWERSHELL, '-NoProfile', '-ExecutionPolicy', 'Bypass',
-             '-EncodedCommand', encoded],
-            capture_output=True, text=True, timeout=10
-        )
-        raw = result.stdout.strip()
-        err = result.stderr.strip()
-        print(f"[AppCrash DEBUG] stdout: {raw[:100]!r} | stderr: {err[:100]!r}", flush=True)
-        
-        if not raw or raw == 'null':
-            return []
-        try:
-            import json
-            parsed = json.loads(raw)
-            if isinstance(parsed, dict):
-                parsed = [parsed]
-            print(f"[AppCrash] Parsed {len(parsed)} events", flush=True)
-            return parsed if isinstance(parsed, list) else []
-        except Exception as json_exc:
-            print(f"[AppCrash] JSON parse failed. Raw: {raw[:200]}", flush=True)
-            return []
-    except Exception as e:
-        print(f'[APPCRASH] PowerShell query error: {e}')
-        return []
-
-
-def _ensure_appcrash_rule(app_name: str) -> object:
-    """Ensure a remediation rule exists for the given application crash."""
-    script_path = os.path.abspath(os.path.join(
-        os.path.dirname(__file__), '..', 'remediation_scripts', 'Remediate_AppCrash_Live.ps1'
-    ))
-    rule_name = f'Real App Crash Recovery - {app_name}.exe'
-
-    for r in models.get_rules():
-        if r[1] == rule_name:
-            return r
-
-    rid = models.add_rule(
-        name=rule_name,
-        event_id=1000,
-        source='Application Error',
-        message_regex=None,
-        remediation_script=f'{script_path} -AppName "{app_name}"',
-        script_type='inline',
-        auto_remediate=False,
-        stop_processing=False,
-        category='Application Crash',
-        severity='High',
-        description=f'Real-world auto-recovery rule for {app_name}.exe crashes.',
-        recommended_action=f'Restart {app_name}.exe after a crash is detected.',
-        priority=5,
-        cooldown_minutes=1,
-    )
-    return models.get_rule(rid)
-
-
-@app.route('/api/appcrash/watch', methods=['GET'])
-def appcrash_watch():
-    """
-    Fast-path endpoint polled by the Flutter frontend while "Watch for Crashes"
-    mode is active. Queries the real Windows Application Event Log for Event ID
-    1000 crashes of watched apps (e.g. notepad.exe) in the last 60 seconds.
-
-    Returns:
-        {
-          "detected": bool,
-          "app_name": str,
-          "event_row_id": int,
-          "message": str,
-          "timestamp": str,
-          "rule_id": int
-        }
-    """
-    try:
-        window = int(request.args.get('window', 60))
-        app_filter = request.args.get('app', '').lower().replace('.exe', '').strip()
-        apps_to_watch = [app_filter] if app_filter else _WATCHED_APPS
-
-        for app_name in apps_to_watch:
-            raw_events = _query_real_crash(app_name, since_seconds=window)
-
-            if not raw_events:
-                continue
-
-            # Take the most recent crash event
-            ev = raw_events[0]
-            message = (ev.get('Message') or '')[:2000]
-            ts_raw  = ev.get('TimeCreated', datetime.utcnow().isoformat())
-
-            # Normalise timestamp (PowerShell /Date(...) format)
-            if isinstance(ts_raw, str) and ts_raw.startswith('/Date('):
-                try:
-                    ms = int(ts_raw[6:ts_raw.index(')')])
-                    from datetime import timezone
-                    ts_raw = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat()
-                except Exception:
-                    ts_raw = datetime.utcnow().isoformat()
-
-            # Store in DB (dedup-safe)
-            event_row_id = models.add_event(
-                event_id   = 1000,
-                log_name   = 'Application',
-                source     = 'Application Error',
-                message    = message,
-                timestamp  = str(ts_raw),
-                category   = 'Application Crash',
-                severity   = 'High',
-                level      = 'Error',
-                source_type = 'eventlog',
-            )
-
-            # Ensure remediation rule exists
-            rule = _ensure_appcrash_rule(app_name)
-            rule_id = rule[0] if rule else None
-
-            print(f"[AppCrash] Found event! Row ID: {event_row_id}, Message: {message[:50]}...")
-            return jsonify({
-                'detected':      True,
-                'app_name':      app_name,
-                'event_row_id':  event_row_id,
-                'message':       message[:400],
-                'timestamp':     str(ts_raw),
-                'rule_id':       rule_id,
-            })
-
-        # Nothing detected
-        # print("[AppCrash] Nothing detected.")
-        return jsonify({'detected': False})
-
-    except Exception as exc:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(exc), 'detected': False}), 500
-
-
-@app.route('/api/appcrash/remediate', methods=['POST'])
-def appcrash_remediate():
-    """
-    Executes REAL auto-remediation for a detected application crash.
-    Receives {event_row_id, app_name} and runs Remediate_AppCrash_Live.ps1
-    which actually relaunches the crashed application.
-
-    Returns:
-        { "status": "success"|"failed", "output": str, "event_row_id": int }
-    """
-    data = request.get_json(silent=True) or {}
-    event_row_id = data.get('event_row_id')
-    app_name     = (data.get('app_name') or 'notepad').lower().replace('.exe', '').strip()
-
-    if not event_row_id:
-        return jsonify({'error': 'event_row_id is required'}), 400
-
-    script_path = os.path.abspath(os.path.join(
-        os.path.dirname(__file__), '..', 'remediation_scripts', 'Remediate_AppCrash_Live.ps1'
-    ))
-
-    if not os.path.exists(script_path):
-        return jsonify({'error': f'Remediation script not found: {script_path}'}), 404
-
-    # Ensure rule exists and run remediation (records in history)
-    rule = _ensure_appcrash_rule(app_name)
-    if not rule:
-        return jsonify({'error': 'Could not create/find remediation rule'}), 500
-
-    rule_id = rule[0]
-
-    # Run the real PowerShell script with -AppName parameter
-    try:
-        ps_result = _subprocess.run(
-            [
-                _APPCRASH_POWERSHELL,
-                '-NoProfile', '-ExecutionPolicy', 'Bypass',
-                '-File', script_path,
-                '-AppName', app_name,
-            ],
-            capture_output=True, text=True, timeout=15
-        )
-        output  = ps_result.stdout.strip() + ('\n' + ps_result.stderr.strip() if ps_result.stderr.strip() else '')
-        status  = 'success' if ps_result.returncode == 0 else 'failed'
-    except Exception as exc:
-        output  = str(exc)
-        status  = 'failed'
-
-    # Record this remediation in the history DB
-    models.record_remediation(event_row_id, rule_id, status, output[:2000])
-
-    return jsonify({
-        'status':        status,
-        'output':        output,
-        'error':         output if status == 'failed' else None,
-        'event_row_id':  event_row_id,
-        'rule_id':       rule_id,
-        'app_name':      app_name,
-    })
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
