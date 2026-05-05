@@ -57,12 +57,14 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
         _allEvents = events;
         _applyFilters();
         _lastUpdated = DateTime.now().toString().substring(0, 16);
+        _loading = false;
       });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error loading events: $e')),
         );
+        setState(() => _loading = false);
       }
     }
   }
