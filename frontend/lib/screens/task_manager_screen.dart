@@ -32,7 +32,7 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading tasks: $e')),
+          SnackBar(content: Text('Failed: $e')),
         );
       }
     } finally {
@@ -44,11 +44,19 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Delete Task?'),
-        content: const Text('Are you sure you want to delete this task?'),
+        title: const Row(children: [
+          Icon(Icons.delete_outline_rounded, color: AppTheme.accentRed, size: 18),
+          SizedBox(width: 8),
+          Text('Delete Task?'),
+        ]),
+        content: const Text('Are you sure you want to delete this task?', style: TextStyle(color: AppTheme.textMuted)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(_, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(_, true), child: const Text('Delete')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(_, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.accentRed),
+            child: const Text('Delete'),
+          ),
         ],
       ),
     );
@@ -59,13 +67,13 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
         await _load();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Task deleted successfully')),
+            const SnackBar(content: Text('Success: Task deleted.')),
           );
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error deleting task: $e')),
+            SnackBar(content: Text('Failed: $e')),
           );
         }
       }
@@ -78,13 +86,13 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
       await _load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Task "$taskName" executed successfully')),
+          SnackBar(content: Text('Success: Task "$taskName" executed.')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error running task: $e')),
+          SnackBar(content: Text('Failed: $e')),
         );
       }
     }
@@ -98,7 +106,7 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating task: $e')),
+          SnackBar(content: Text('Failed: $e')),
         );
       }
     }
@@ -112,36 +120,53 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
       if (mounted) {
         showDialog(
           context: context,
-          builder: (_) => AlertDialog(
-            title: Text('Execution Logs - $taskName'),
-            content: SizedBox(
-              width: 600,
-              height: 400,
-              child: logs.isEmpty
-                  ? const Center(child: Text('No execution logs'))
-                  : SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          for (final log in logs)
-                            _LogEntry(log: log),
-                        ],
-                      ),
+          builder: (_) => Dialog(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760, maxHeight: 620),
+              child: Column(children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                  decoration: const BoxDecoration(
+                    gradient: AppTheme.gradientInfo,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.description_rounded, color: Colors.white, size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text('Execution Logs - $taskName', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
+                    IconButton(onPressed: () => Navigator.pop(_), icon: const Icon(Icons.close, color: Colors.white, size: 18)),
+                  ]),
+                ),
+                Expanded(
+                  child: Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      gradient: AppTheme.panelGradient,
+                      border: Border.all(color: AppTheme.border),
+                      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
                     ),
+                    child: logs.isEmpty
+                        ? const Center(child: Text('No execution logs', style: TextStyle(color: AppTheme.textMuted)))
+                        : SingleChildScrollView(
+                            padding: const EdgeInsets.all(14),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                for (final log in logs) _LogEntry(log: log),
+                              ],
+                            ),
+                          ),
+                  ),
+                ),
+              ]),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(_),
-                child: const Text('Close'),
-              ),
-            ],
           ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading logs: $e')),
+          SnackBar(content: Text('Failed: $e')),
         );
       }
     }
@@ -149,16 +174,27 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tableTheme = Theme.of(context).copyWith(
+      dataTableTheme: DataTableThemeData(
+        headingRowColor: WidgetStatePropertyAll(Colors.white.withValues(alpha: 0.04)),
+        dataRowColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.hovered)) {
+            return AppTheme.accent.withValues(alpha: 0.05);
+          }
+          return Colors.transparent;
+        }),
+      ),
+    );
+
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          // Header
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
             decoration: const BoxDecoration(
               gradient: AppTheme.gradientAccent,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
             ),
             child: Row(
               children: [
@@ -169,8 +205,8 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
                     'Task Scheduler · ${_tasks.length} tasks${_lastUpdated.isNotEmpty ? " · Updated $_lastUpdated" : ""}',
                     style: const TextStyle(
                       color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14.5,
                     ),
                   ),
                 ),
@@ -183,21 +219,26 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
                   onPressed: () => _showCreateTaskDialog(),
                   icon: const Icon(Icons.add, size: 16),
                   label: const Text('New Task'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white.withValues(alpha: 0.16),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                  ),
                 ),
               ],
             ),
           ),
 
-          // Body
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: AppTheme.bgCard,
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(14)),
+                gradient: AppTheme.panelGradient,
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)),
                 border: Border.all(color: AppTheme.border),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.24), blurRadius: 24, offset: const Offset(0, 10))],
               ),
               child: _loading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const Center(child: CircularProgressIndicator(color: AppTheme.accent))
                   : _tasks.isEmpty
                       ? Center(
                           child: Column(
@@ -219,18 +260,26 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
                             ],
                           ),
                         )
-                      : SingleChildScrollView(
-                          child: DataTable(
-                            columnSpacing: 20,
-                            columns: const [
-                              DataColumn(label: Text('Task Name')),
-                              DataColumn(label: Text('Type')),
-                              DataColumn(label: Text('Schedule')),
-                              DataColumn(label: Text('Status')),
-                              DataColumn(label: Text('Last Run')),
-                              DataColumn(label: Text('Actions')),
-                            ],
-                            rows: _tasks.map((task) {
+                      : Theme(
+                          data: tableTheme,
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: SingleChildScrollView(
+                              child: DataTable(
+                                columnSpacing: 20,
+                                headingRowHeight: 52,
+                                dataRowMinHeight: 56,
+                                dataRowMaxHeight: 74,
+                                horizontalMargin: 18,
+                                columns: const [
+                                  DataColumn(label: Text('Task Name')),
+                                  DataColumn(label: Text('Type')),
+                                  DataColumn(label: Text('Schedule')),
+                                  DataColumn(label: Text('Status')),
+                                  DataColumn(label: Text('Last Run')),
+                                  DataColumn(label: Text('Actions')),
+                                ],
+                                rows: _tasks.map((task) {
                               final taskId = task['id'];
                               final taskName = task['display_name'] ?? task['task_name'];
                               final taskType = task['task_type'] ?? 'unknown';
@@ -241,73 +290,75 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
                                   : 'Never';
                               final lastStatus = task['last_run_status'] ?? 'not_run';
 
-                              return DataRow(
-                                cells: [
-                                  DataCell(Text(taskName)),
-                                  DataCell(_TaskTypeBadge(type: taskType)),
-                                  DataCell(Text(schedule)),
-                                  DataCell(
-                                    Row(
-                                      children: [
-                                        if (enabled)
-                                          const Chip(
-                                            label: Text('Enabled', style: TextStyle(fontSize: 11)),
-                                            backgroundColor: Color(0xFF2d5016),
-                                          )
-                                        else
-                                          const Chip(
-                                            label: Text('Disabled', style: TextStyle(fontSize: 11)),
-                                            backgroundColor: Color(0xFF5a2d2d),
-                                          ),
-                                        const SizedBox(width: 8),
-                                        if (lastStatus == 'success')
-                                          const Icon(Icons.check_circle, color: Colors.green, size: 16)
-                                        else if (lastStatus == 'failed')
-                                          const Icon(Icons.error_outline, color: Colors.red, size: 16)
-                                        else
-                                          const Icon(Icons.schedule, color: AppTheme.textSecondary, size: 16),
-                                      ],
-                                    ),
-                                  ),
-                                  DataCell(Text(lastRun)),
-                                  DataCell(
-                                    Row(
-                                      children: [
-                                        IconButton(
-                                          icon: const Icon(Icons.play_arrow, size: 16),
-                                          tooltip: 'Run Now',
-                                          onPressed: () => _runTaskNow(taskId, taskName),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.description, size: 16),
-                                          tooltip: 'View Logs',
-                                          onPressed: () => _showTaskLogs(taskId, taskName),
-                                        ),
-                                        PopupMenuButton(
-                                          itemBuilder: (_) => [
-                                            PopupMenuItem(
-                                              child: const Text('Edit'),
-                                              onTap: () => _showEditTaskDialog(task),
-                                            ),
-                                            PopupMenuItem(
-                                              child: Text(
-                                                enabled ? 'Disable' : 'Enable',
+                                  return DataRow(
+                                    cells: [
+                                      DataCell(Text(taskName)),
+                                      DataCell(_TaskTypeBadge(type: taskType)),
+                                      DataCell(Text(schedule)),
+                                      DataCell(
+                                        Row(
+                                          children: [
+                                            if (enabled)
+                                              const Chip(
+                                                label: Text('Enabled', style: TextStyle(fontSize: 11)),
+                                                backgroundColor: Color(0xFF2d5016),
+                                              )
+                                            else
+                                              const Chip(
+                                                label: Text('Disabled', style: TextStyle(fontSize: 11)),
+                                                backgroundColor: Color(0xFF5a2d2d),
                                               ),
-                                              onTap: () =>
-                                                  _toggleTaskEnabled(taskId, !enabled),
+                                            const SizedBox(width: 8),
+                                            if (lastStatus == 'success')
+                                              const Icon(Icons.check_circle, color: Colors.green, size: 16)
+                                            else if (lastStatus == 'failed')
+                                              const Icon(Icons.error_outline, color: Colors.red, size: 16)
+                                            else
+                                              const Icon(Icons.schedule, color: AppTheme.textSecondary, size: 16),
+                                          ],
+                                        ),
+                                      ),
+                                      DataCell(Text(lastRun)),
+                                      DataCell(
+                                        Row(
+                                          children: [
+                                            IconButton(
+                                              icon: const Icon(Icons.play_arrow, size: 16),
+                                              tooltip: 'Run Now',
+                                              onPressed: () => _runTaskNow(taskId, taskName),
                                             ),
-                                            PopupMenuItem(
-                                              child: const Text('Delete'),
-                                              onTap: () => _deleteTask(taskId),
+                                            IconButton(
+                                              icon: const Icon(Icons.description, size: 16),
+                                              tooltip: 'View Logs',
+                                              onPressed: () => _showTaskLogs(taskId, taskName),
+                                            ),
+                                            PopupMenuButton(
+                                              itemBuilder: (_) => [
+                                                PopupMenuItem(
+                                                  child: const Text('Edit'),
+                                                  onTap: () => _showEditTaskDialog(task),
+                                                ),
+                                                PopupMenuItem(
+                                                  child: Text(
+                                                    enabled ? 'Disable' : 'Enable',
+                                                  ),
+                                                  onTap: () =>
+                                                      _toggleTaskEnabled(taskId, !enabled),
+                                                ),
+                                                PopupMenuItem(
+                                                  child: const Text('Delete'),
+                                                  onTap: () => _deleteTask(taskId),
+                                                ),
+                                              ],
                                             ),
                                           ],
                                         ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              );
-                            }).toList(),
+                                      ),
+                                    ],
+                                  );
+                                }).toList(),
+                              ),
+                            ),
                           ),
                         ),
             ),
@@ -467,6 +518,7 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
 
   String _selectedType = 'backend';
   String _selectedSchedule = 'once';
+  bool _saving = false;
 
   @override
   void initState() {
@@ -487,6 +539,7 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
   }
 
   Future<void> _createTask() async {
+    setState(() => _saving = true);
     try {
       await widget.api.postJson('/api/tasks', {
         'task_name': _nameController.text.trim(),
@@ -500,7 +553,7 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Task created successfully')),
+          const SnackBar(content: Text('Success: Task created.')),
         );
         Navigator.pop(context);
         widget.onTaskCreated();
@@ -508,90 +561,117 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error creating task: $e')),
+          SnackBar(content: Text('Failed: $e')),
         );
       }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Create New Task'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Task Name',
-                hintText: 'e.g., daily_backup_task',
+    return Dialog(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 680, maxHeight: 720),
+        child: Column(children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            decoration: const BoxDecoration(
+              gradient: AppTheme.gradientAccent,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+            ),
+            child: Row(children: [
+              const Icon(Icons.add_circle_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 10),
+              const Expanded(child: Text('Create New Task', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
+              IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white, size: 18)),
+            ]),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Task Name',
+                      hintText: 'e.g., daily_backup_task',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _displayNameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Display Name',
+                      hintText: 'e.g., Daily Backup',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _descriptionController,
+                    decoration: const InputDecoration(
+                      labelText: 'Description',
+                    ),
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: _selectedType,
+                    items: const [
+                      DropdownMenuItem(value: 'backend', child: Text('Backend')),
+                      DropdownMenuItem(value: 'monitor', child: Text('Monitor')),
+                      DropdownMenuItem(value: 'remediation', child: Text('Remediation')),
+                    ],
+                    onChanged: (v) => setState(() => _selectedType = v ?? 'backend'),
+                    decoration: const InputDecoration(labelText: 'Task Type'),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: _selectedSchedule,
+                    items: const [
+                      DropdownMenuItem(value: 'once', child: Text('Once')),
+                      DropdownMenuItem(value: 'hourly', child: Text('Hourly')),
+                      DropdownMenuItem(value: 'daily', child: Text('Daily')),
+                      DropdownMenuItem(value: 'weekly', child: Text('Weekly')),
+                      DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
+                    ],
+                    onChanged: (v) => setState(() => _selectedSchedule = v ?? 'once'),
+                    decoration: const InputDecoration(labelText: 'Schedule'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _scriptContentController,
+                    decoration: const InputDecoration(
+                      labelText: 'PowerShell Script',
+                      hintText: 'Enter PowerShell script content',
+                    ),
+                    maxLines: 5,
+                    minLines: 3,
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _displayNameController,
-              decoration: const InputDecoration(
-                labelText: 'Display Name',
-                hintText: 'e.g., Daily Backup',
+          ),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppTheme.border))),
+            child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                onPressed: _saving ? null : _createTask,
+                icon: _saving
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.add_rounded, size: 16),
+                label: Text(_saving ? 'Creating…' : 'Create Task'),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _descriptionController,
-              decoration: const InputDecoration(
-                labelText: 'Description',
-              ),
-              maxLines: 2,
-            ),
-            const SizedBox(height: 12),
-            DropdownButton<String>(
-              value: _selectedType,
-              isExpanded: true,
-              items: const [
-                DropdownMenuItem(value: 'backend', child: Text('Backend')),
-                DropdownMenuItem(value: 'monitor', child: Text('Monitor')),
-                DropdownMenuItem(value: 'remediation', child: Text('Remediation')),
-              ],
-              onChanged: (v) => setState(() => _selectedType = v ?? 'backend'),
-            ),
-            const SizedBox(height: 12),
-            DropdownButton<String>(
-              value: _selectedSchedule,
-              isExpanded: true,
-              items: const [
-                DropdownMenuItem(value: 'once', child: Text('Once')),
-                DropdownMenuItem(value: 'hourly', child: Text('Hourly')),
-                DropdownMenuItem(value: 'daily', child: Text('Daily')),
-                DropdownMenuItem(value: 'weekly', child: Text('Weekly')),
-                DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
-              ],
-              onChanged: (v) => setState(() => _selectedSchedule = v ?? 'once'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _scriptContentController,
-              decoration: const InputDecoration(
-                labelText: 'PowerShell Script',
-                hintText: 'Enter PowerShell script content',
-              ),
-              maxLines: 5,
-              minLines: 3,
-            ),
-          ],
-        ),
+            ]),
+          ),
+        ]),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: _createTask,
-          child: const Text('Create'),
-        ),
-      ],
     );
   }
 }
@@ -614,6 +694,7 @@ class _EditTaskDialog extends StatefulWidget {
 class _EditTaskDialogState extends State<_EditTaskDialog> {
   late TextEditingController _displayNameController;
   late TextEditingController _descriptionController;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -632,6 +713,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
   }
 
   Future<void> _updateTask() async {
+    setState(() => _saving = true);
     try {
       await widget.api.putJson('/api/tasks/${widget.task["id"]}', {
         'display_name': _displayNameController.text.trim(),
@@ -640,7 +722,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Task updated successfully')),
+          const SnackBar(content: Text('Success: Task updated.')),
         );
         Navigator.pop(context);
         widget.onTaskUpdated();
@@ -648,43 +730,68 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating task: $e')),
+          SnackBar(content: Text('Failed: $e')),
         );
       }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Edit Task'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _displayNameController,
-              decoration: const InputDecoration(labelText: 'Display Name'),
+    return Dialog(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            decoration: const BoxDecoration(
+              gradient: AppTheme.gradientInfo,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _descriptionController,
-              decoration: const InputDecoration(labelText: 'Description'),
-              maxLines: 3,
+            child: Row(children: [
+              const Icon(Icons.edit_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 10),
+              const Expanded(child: Text('Edit Task', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
+              IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white, size: 18)),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: _displayNameController,
+                  decoration: const InputDecoration(labelText: 'Display Name'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _descriptionController,
+                  decoration: const InputDecoration(labelText: 'Description'),
+                  maxLines: 3,
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppTheme.border))),
+            child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                onPressed: _saving ? null : _updateTask,
+                icon: _saving
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.save_rounded, size: 16),
+                label: Text(_saving ? 'Updating…' : 'Update'),
+              ),
+            ]),
+          ),
+        ]),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: _updateTask,
-          child: const Text('Update'),
-        ),
-      ],
     );
   }
 }

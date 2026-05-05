@@ -57,6 +57,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tableTheme = Theme.of(context).copyWith(
+      dataTableTheme: DataTableThemeData(
+        headingRowColor: WidgetStatePropertyAll(Colors.white.withValues(alpha: 0.04)),
+        dataRowColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.hovered)) {
+            return AppTheme.accent.withValues(alpha: 0.05);
+          }
+          return Colors.transparent;
+        }),
+      ),
+    );
+
     return Consumer<RemediationService>(
       builder: (ctx, remediationSvc, _) {
         // Trigger reload ONLY when remediation count increases (new remediation)
@@ -68,19 +80,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
           padding: const EdgeInsets.all(24),
           child: Column(children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
               decoration: const BoxDecoration(gradient: AppTheme.gradientSecondary,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(14))),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
               child: Row(children: [
                 const Icon(Icons.history_rounded, color: Colors.white, size: 18),
                 const SizedBox(width: 10),
                 const Expanded(child: Text('Remediation History',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14))),
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14.5))),
                 IconButton(onPressed: _load, icon: const Icon(Icons.refresh, color: Colors.white, size: 18)),
               ]),
             ),
             Container(
-              color: AppTheme.bgCard,
+              color: Colors.white.withValues(alpha: 0.015),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(children: [
                 const Text('Filter:', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
@@ -94,14 +106,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
             Expanded(
               child: Container(
-                decoration: BoxDecoration(color: AppTheme.bgCard,
-                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(14)),
-                    border: Border.all(color: AppTheme.border)),
+                decoration: BoxDecoration(
+                    gradient: AppTheme.panelGradient,
+                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)),
+                    border: Border.all(color: AppTheme.border),
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.24), blurRadius: 24, offset: const Offset(0, 10))]),
                 child: _loading
                     ? const Center(child: CircularProgressIndicator(color: AppTheme.accent))
                     : _filtered.isEmpty
                         ? const Center(child: Text('No history yet', style: TextStyle(color: AppTheme.textMuted)))
-                        : _HistoryTable(history: _filtered),
+                        : Theme(data: tableTheme, child: _HistoryTable(history: _filtered)),
               ),
             ),
           ]),
@@ -122,7 +136,7 @@ class _FilterChip extends StatelessWidget {
       duration: const Duration(milliseconds: 150),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
-        color: selected ? AppTheme.accent.withOpacity(0.2) : Colors.transparent,
+        color: selected ? AppTheme.accent.withValues(alpha: 0.2) : Colors.transparent,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: selected ? AppTheme.accent : AppTheme.border),
       ),
@@ -142,8 +156,11 @@ class _HistoryTable extends StatelessWidget {
       child: SingleChildScrollView(
         child: DataTable(
           columnSpacing: 16,
-          headingRowColor: const WidgetStatePropertyAll(Color(0xFF181830)),
           headingTextStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
+          headingRowHeight: 52,
+          dataRowMinHeight: 56,
+          dataRowMaxHeight: 74,
+          horizontalMargin: 18,
           columns: const [
             DataColumn(label: Text('ID')),
             DataColumn(label: Text('Event ID')),

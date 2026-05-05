@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
@@ -17,19 +18,24 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 64,
+      height: 72,
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      decoration: const BoxDecoration(
-        color: Color(0xFF0d0d22),
-        border: Border(bottom: BorderSide(color: AppTheme.border)),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.025),
+        border: const Border(bottom: BorderSide(color: AppTheme.border)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.16), blurRadius: 20, offset: const Offset(0, 6))],
       ),
-      child: Row(children: [
+      child: ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Row(children: [
         // Title
         Expanded(
           child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 17, fontWeight: FontWeight.w700)),
+            Text(title, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
+            const SizedBox(height: 2),
             const Text('Automated system remediation and management',
-                style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+                style: TextStyle(color: AppTheme.textMuted, fontSize: 11.5, height: 1.2)),
           ]),
         ),
         // Monitor status pill
@@ -49,6 +55,8 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
           builder: (_, alertSvc, __) => _InjectBtn(alertSvc: alertSvc),
         ),
       ]),
+        ),
+      ),
     );
   }
 }
@@ -176,15 +184,14 @@ class _HeaderBtnState extends State<_HeaderBtn> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
           decoration: BoxDecoration(
             gradient: widget.gradient != null && (_hovered || widget.label.contains('Inject'))
                 ? widget.gradient : null,
-            color: widget.gradient == null ? (
-                _hovered ? AppTheme.bgCardAlt : Colors.transparent
-            ) : null,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: widget.color.withValues(alpha: 0.4)),
+            color: widget.gradient == null ? (_hovered ? AppTheme.bgCardAlt : Colors.white.withValues(alpha: 0.025)) : null,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: widget.color.withValues(alpha: 0.32)),
+            boxShadow: _hovered ? [BoxShadow(color: widget.color.withValues(alpha: 0.18), blurRadius: 16, offset: const Offset(0, 6))] : null,
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(widget.icon, size: 14, color: widget.color),

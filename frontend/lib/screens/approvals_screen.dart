@@ -30,11 +30,11 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
     try {
       await _api.approveRequest(id);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Request approved and remediation executed!')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Success: Request approved and remediation executed.')));
         _load();
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
     }
   }
 
@@ -42,41 +42,58 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
     try {
       await _api.denyRequest(id);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Request denied.')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Success: Request denied.')));
         _load();
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final tableTheme = Theme.of(context).copyWith(
+      dataTableTheme: DataTableThemeData(
+        headingRowColor: WidgetStatePropertyAll(Colors.white.withValues(alpha: 0.04)),
+        dataRowColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.hovered)) {
+            return AppTheme.accent.withValues(alpha: 0.05);
+          }
+          return Colors.transparent;
+        }),
+      ),
+    );
+
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(children: [
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           decoration: const BoxDecoration(gradient: AppTheme.gradientWarning,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(14))),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
           child: Row(children: [
             const Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
             const SizedBox(width: 10),
             const Expanded(child: Text('Pending Approval Requests',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14))),
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14.5))),
             IconButton(onPressed: _load, icon: const Icon(Icons.refresh, color: Colors.white, size: 18)),
           ]),
         ),
         Expanded(
           child: Container(
-            decoration: BoxDecoration(color: AppTheme.bgCard,
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(14)),
-                border: Border.all(color: AppTheme.border)),
+            decoration: BoxDecoration(
+                gradient: AppTheme.panelGradient,
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)),
+                border: Border.all(color: AppTheme.border),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.24), blurRadius: 24, offset: const Offset(0, 10))]),
             child: _loading
                 ? const Center(child: CircularProgressIndicator(color: AppTheme.accent))
                 : _requests.isEmpty
                     ? _EmptyState()
-                    : _ApprovalsTable(requests: _requests, onApprove: _approve, onDeny: _deny),
+                    : Theme(
+                        data: tableTheme,
+                        child: _ApprovalsTable(requests: _requests, onApprove: _approve, onDeny: _deny),
+                      ),
           ),
         ),
       ]),
@@ -107,8 +124,11 @@ class _ApprovalsTable extends StatelessWidget {
       child: SingleChildScrollView(
         child: DataTable(
           columnSpacing: 16,
-          headingRowColor: const WidgetStatePropertyAll(Color(0xFF181830)),
           headingTextStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
+          headingRowHeight: 52,
+          dataRowMinHeight: 56,
+          dataRowMaxHeight: 72,
+          horizontalMargin: 18,
           columns: const [
             DataColumn(label: Text('ID')),
             DataColumn(label: Text('Event ID')),
@@ -154,7 +174,9 @@ class _Btn extends StatelessWidget {
     icon: Icon(icon, size: 13, color: color),
     label: Text(label, style: TextStyle(color: color, fontSize: 11)),
     style: TextButton.styleFrom(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      backgroundColor: color.withValues(alpha: 0.12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
       minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap,
     ),
   );

@@ -25,20 +25,34 @@ class StatCard extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: AppTheme.bgCard,
-          borderRadius: BorderRadius.circular(14),
-          border: Border(left: BorderSide(color: accentColor, width: 4)),
-          boxShadow: [BoxShadow(color: accentColor.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, 4))],
+          color: Colors.white.withValues(alpha: 0.025),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: accentColor.withValues(alpha: 0.18)),
+          boxShadow: [BoxShadow(color: accentColor.withValues(alpha: 0.10), blurRadius: 24, offset: const Offset(0, 8))],
         ),
         child: Row(children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [accentColor.withValues(alpha: 0.95), accentColor.withValues(alpha: 0.35)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [BoxShadow(color: accentColor.withValues(alpha: 0.24), blurRadius: 14, offset: const Offset(0, 6))],
+            ),
+            child: Icon(icon, size: 24, color: Colors.white),
+          ),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(label, style: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w500)),
+              Text(label, style: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
-              Text(value, style: TextStyle(color: accentColor, fontSize: 28, fontWeight: FontWeight.w800)),
+              Text(value, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -0.6)),
             ]),
           ),
-          Icon(icon, size: 36, color: accentColor.withValues(alpha: 0.4)),
         ]),
       ),
     );

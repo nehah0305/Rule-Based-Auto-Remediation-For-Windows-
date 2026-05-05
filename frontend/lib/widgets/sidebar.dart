@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import '../config/theme.dart';
 
 enum AppTab { dashboard, events, rules, approvals, history, simulation, viewer, taskScheduler }
@@ -33,29 +34,57 @@ class _AppSidebarState extends State<AppSidebar> {
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeInOut,
       width: w,
-      decoration: const BoxDecoration(
-        color: Color(0xFF0d0d22),
-        border: Border(right: BorderSide(color: AppTheme.border)),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.025),
+        border: const Border(right: BorderSide(color: AppTheme.border)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.28), blurRadius: 24)],
       ),
-      child: Column(children: [
-        // Header
+      child: ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+          child: Column(children: [
         Container(
-          height: 64,
+          height: 80,
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: AppTheme.border))),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.white.withValues(alpha: 0.06), Colors.white.withValues(alpha: 0.02)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            border: const Border(bottom: BorderSide(color: AppTheme.border)),
+          ),
           child: Row(children: [
-            const Icon(Icons.shield_rounded, color: AppTheme.accent, size: 24),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                gradient: AppTheme.gradientPrimary,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [BoxShadow(color: AppTheme.accent.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 4))],
+              ),
+              child: const Icon(Icons.shield_rounded, color: Colors.white, size: 20),
+            ),
             if (!_collapsed) ...[
               const SizedBox(width: 10),
               const Expanded(
                 child: Text('Remediation\nCenter',
-                    style: TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700, height: 1.3)),
+                    style: TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w800, height: 1.15)),
               ),
             ],
             GestureDetector(
               onTap: () => setState(() => _collapsed = !_collapsed),
-              child: Icon(_collapsed ? Icons.chevron_right : Icons.chevron_left,
-                  color: AppTheme.textMuted, size: 18),
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: Icon(_collapsed ? Icons.chevron_right : Icons.chevron_left,
+                    color: AppTheme.textMuted, size: 18),
+              ),
             ),
           ]),
         ),
@@ -73,17 +102,23 @@ class _AppSidebarState extends State<AppSidebar> {
         ),
         // Footer
         Container(
-          height: 48,
+          height: 56,
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppTheme.border))),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.02),
+            border: const Border(top: BorderSide(color: AppTheme.border)),
+          ),
           child: Row(children: [
             const Icon(Icons.security, color: AppTheme.textDimmed, size: 14),
-            if (!_collapsed) const SizedBox(width: 8),
-            if (!_collapsed)
-              const Text('Unisys AB', style: TextStyle(color: AppTheme.textDimmed, fontSize: 11)),
+            if (!_collapsed) ...[
+              const SizedBox(width: 8),
+              const Text('Unisys AB', style: TextStyle(color: AppTheme.textMuted, fontSize: 11, fontWeight: FontWeight.w600)),
+            ],
           ]),
         ),
       ]),
+        ),
+      ),
     );
   }
 }
@@ -114,24 +149,34 @@ class _NavItemState extends State<_NavItem> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 12 : 14, vertical: 10),
+          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 12 : 14, vertical: 12),
           decoration: BoxDecoration(
-            color: active ? AppTheme.accent.withValues(alpha: 0.15)
-                : _hovered ? AppTheme.accent.withValues(alpha: 0.06)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-            border: active ? Border.all(color: AppTheme.accent.withValues(alpha: 0.4)) : null,
+            color: active ? AppTheme.accent.withValues(alpha: 0.14) : Colors.transparent,
+            gradient: !active && _hovered
+                ? LinearGradient(colors: [Colors.white.withValues(alpha: 0.08), Colors.white.withValues(alpha: 0.03)])
+                : null,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: active ? AppTheme.accent.withValues(alpha: 0.45) : Colors.transparent),
+            boxShadow: active ? [BoxShadow(color: AppTheme.accent.withValues(alpha: 0.16), blurRadius: 18, offset: const Offset(0, 6))] : null,
           ),
           child: Row(children: [
-            Icon(widget.icon,
-                size: 18,
-                color: active ? AppTheme.accent : _hovered ? AppTheme.textPrimary : AppTheme.textMuted),
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: active ? AppTheme.accent.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.03),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Icon(widget.icon,
+                  size: 16,
+                  color: active ? AppTheme.accent : _hovered ? AppTheme.textPrimary : AppTheme.textMuted),
+            ),
             if (!widget.collapsed) ...[
               const SizedBox(width: 12),
               Text(widget.label, style: TextStyle(
-                color: active ? AppTheme.accent : _hovered ? AppTheme.textPrimary : AppTheme.textMuted,
-                fontSize: 13, fontWeight: active ? FontWeight.w600 : FontWeight.w400)),
+                color: active ? AppTheme.textPrimary : _hovered ? AppTheme.textPrimary : AppTheme.textMuted,
+                fontSize: 13, fontWeight: active ? FontWeight.w700 : FontWeight.w500)),
             ],
           ]),
         ),

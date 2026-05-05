@@ -85,7 +85,12 @@ class _AppShellState extends State<AppShell> {
     return Scaffold(
       body: Stack(
         children: [
-          // Main layout
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(gradient: AppTheme.appBackground),
+              child: const _AmbientBackdrop(),
+            ),
+          ),
           Row(children: [
             AppSidebar(
               selected: _tab,
@@ -99,9 +104,19 @@ class _AppShellState extends State<AppShell> {
                 ),
                 Expanded(
                   child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 200),
-                    transitionBuilder: (child, anim) =>
-                        FadeTransition(opacity: anim, child: child),
+                    duration: const Duration(milliseconds: 220),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, anim) => FadeTransition(
+                      opacity: anim,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0.02, 0.02),
+                          end: Offset.zero,
+                        ).animate(anim),
+                        child: child,
+                      ),
+                    ),
                     child: KeyedSubtree(
                       key: ValueKey(_tab),
                       child: _screen(_tab),
@@ -111,9 +126,43 @@ class _AppShellState extends State<AppShell> {
               ]),
             ),
           ]),
-          // Live alert popup — floated over everything
           _LiveAlertLayer(),
         ],
+      ),
+    );
+  }
+}
+
+class _AmbientBackdrop extends StatelessWidget {
+  const _AmbientBackdrop();
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: const [
+        Positioned(top: -80, right: -40, child: _GlowBlob(color: Color(0x224A9EFF), size: 260)),
+        Positioned(top: 140, left: -90, child: _GlowBlob(color: Color(0x1A24D0A3), size: 220)),
+        Positioned(bottom: -100, right: 120, child: _GlowBlob(color: Color(0x1AAA6CFF), size: 300)),
+      ],
+    );
+  }
+}
+
+class _GlowBlob extends StatelessWidget {
+  final Color color;
+  final double size;
+
+  const _GlowBlob({required this.color, required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+        boxShadow: [BoxShadow(color: color, blurRadius: 90, spreadRadius: 8)],
       ),
     );
   }
@@ -163,7 +212,7 @@ class _LiveAlertLayer extends StatelessWidget {
               if (ctx.mounted) {
                 ScaffoldMessenger.of(ctx)
                     .showSnackBar(SnackBar(
-                      content: Text('Remediation error: $e'),
+                      content: Text('Failed: $e'),
                       duration: const Duration(seconds: 4),
                       backgroundColor: const Color(0xFFDC2626),
                     ));

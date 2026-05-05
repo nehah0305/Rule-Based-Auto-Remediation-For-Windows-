@@ -46,7 +46,7 @@ class _EventsScreenState extends State<EventsScreen> {
       await _api.dismissEventReview(id);
       await _load();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
     }
   }
 
@@ -59,34 +59,46 @@ class _EventsScreenState extends State<EventsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tableTheme = Theme.of(context).copyWith(
+      dataTableTheme: DataTableThemeData(
+        headingRowColor: WidgetStatePropertyAll(Colors.white.withValues(alpha: 0.04)),
+        dataRowColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.hovered)) {
+            return AppTheme.accent.withValues(alpha: 0.05);
+          }
+          return Colors.transparent;
+        }),
+      ),
+    );
+
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(children: [
-        // Header card
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           decoration: const BoxDecoration(
             gradient: AppTheme.gradientWarning,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
           ),
           child: Row(children: [
             const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 18),
             const SizedBox(width: 10),
             Expanded(child: Text(
               'Warnings & Errors (Filtered)${_lastUpdated.isNotEmpty ? "  ·  $_lastUpdated" : ""}',
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14.5),
             )),
             IconButton(onPressed: _load, icon: const Icon(Icons.refresh, color: Colors.white, size: 18),
                 tooltip: 'Refresh'),
           ]),
         ),
-        // Search + body
         Expanded(
           child: Container(
-            decoration: BoxDecoration(color: AppTheme.bgCard, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(14)),
-                border: Border.all(color: AppTheme.border)),
+            decoration: BoxDecoration(
+                gradient: AppTheme.panelGradient,
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)),
+                border: Border.all(color: AppTheme.border),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.24), blurRadius: 24, offset: const Offset(0, 10))]),
             child: Column(children: [
-              // Search bar
               Padding(
                 padding: const EdgeInsets.all(12),
                 child: TextField(
@@ -98,11 +110,13 @@ class _EventsScreenState extends State<EventsScreen> {
                   ),
                 ),
               ),
-              // Table
               Expanded(
                 child: _loading
                     ? const Center(child: CircularProgressIndicator(color: AppTheme.accent))
-                    : _EventsTable(events: _filtered, onDismiss: _dismissReview, onMatches: _showMatches),
+                    : Theme(
+                        data: tableTheme,
+                        child: _EventsTable(events: _filtered, onDismiss: _dismissReview, onMatches: _showMatches),
+                      ),
               ),
             ]),
           ),
@@ -130,10 +144,11 @@ class _EventsTable extends StatelessWidget {
         child: SingleChildScrollView(
           child: DataTable(
             columnSpacing: 16,
-            headingRowColor: const WidgetStatePropertyAll(Color(0xFF181830)),
-            dataRowColor: WidgetStateProperty.resolveWith((states) =>
-                states.contains(WidgetState.hovered) ? AppTheme.accent.withOpacity(0.05) : null),
             headingTextStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
+            headingRowHeight: 52,
+            dataRowMinHeight: 56,
+            dataRowMaxHeight: 74,
+            horizontalMargin: 18,
             columns: const [
               DataColumn(label: Text('Level')),
               DataColumn(label: Text('Event ID')),
@@ -161,7 +176,7 @@ class _EventsTable extends StatelessWidget {
               DataCell(e.dedupCount > 1
                   ? Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(color: AppTheme.accentPurple.withOpacity(0.2),
+                    decoration: BoxDecoration(color: AppTheme.accentPurple.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(12)),
                       child: Text('×${e.dedupCount}', style: const TextStyle(color: AppTheme.accentPurple, fontSize: 11, fontWeight: FontWeight.w700)))
                   : const Text('1', style: TextStyle(color: AppTheme.textDimmed, fontSize: 11))),
@@ -200,7 +215,9 @@ class _ActionBtn extends StatelessWidget {
     icon: Icon(icon, size: 13, color: color),
     label: Text(label, style: TextStyle(color: color, fontSize: 11)),
     style: TextButton.styleFrom(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      backgroundColor: color.withValues(alpha: 0.12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap,
     ),
   );
@@ -277,7 +294,7 @@ class _MatchCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     margin: const EdgeInsets.only(bottom: 12),
     padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(color: AppTheme.bgCardAlt, borderRadius: BorderRadius.circular(10),
+    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.02), borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.border)),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(match['name'] as String? ?? 'Rule', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),

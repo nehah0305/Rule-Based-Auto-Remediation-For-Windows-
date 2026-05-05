@@ -62,7 +62,7 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading events: $e')),
+          SnackBar(content: Text('Failed: $e')),
         );
         setState(() => _loading = false);
       }
@@ -135,7 +135,7 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
       _showExportDialog('export_${DateTime.now().millisecondsSinceEpoch}.json', json);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Export failed: $e')),
+        SnackBar(content: Text('Failed: $e')),
       );
     }
   }
@@ -151,7 +151,7 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
       _showExportDialog('export_${DateTime.now().millisecondsSinceEpoch}.csv', csv.toString());
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Export failed: $e')),
+        SnackBar(content: Text('Failed: $e')),
       );
     }
   }
@@ -192,7 +192,7 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
           ElevatedButton(
             onPressed: () {
               ScaffoldMessenger.of(_).showSnackBar(
-                SnackBar(content: Text('Copy this content:\n\n$content')),
+                const SnackBar(content: Text('Success: Export content ready to copy.')),
               );
             },
             child: const Text('Copy to Clipboard'),
@@ -231,37 +231,64 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
         _selectedEventId != null ||
         _dateRange != null;
 
+    final tableTheme = Theme.of(context).copyWith(
+      dataTableTheme: DataTableThemeData(
+        headingRowColor: WidgetStatePropertyAll(Colors.white.withValues(alpha: 0.04)),
+        dataRowColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.hovered)) {
+            return AppTheme.accent.withValues(alpha: 0.06);
+          }
+          return Colors.transparent;
+        }),
+        dividerThickness: 0.6,
+      ),
+    );
+
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          // Header
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
             decoration: const BoxDecoration(
-              gradient: AppTheme.gradientPrimary,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+              gradient: AppTheme.gradientInfo,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
             ),
             child: Row(
               children: [
-                const Icon(Icons.event_rounded, color: Colors.white, size: 18),
-                const SizedBox(width: 10),
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.event_rounded, color: Colors.white, size: 18),
+                ),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    'Event Viewer · ${_filteredEvents.length} / ${_allEvents.length} events${_lastUpdated.isNotEmpty ? " · Updated $_lastUpdated" : ""}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Event Viewer · ${_filteredEvents.length} / ${_allEvents.length} events',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14.5),
+                      ),
+                      if (_lastUpdated.isNotEmpty)
+                        Text(
+                          'Updated $_lastUpdated',
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 11.5),
+                        ),
+                    ],
                   ),
                 ),
                 IconButton(
                   onPressed: _load,
-                  icon: const Icon(Icons.refresh, color: Colors.white, size: 18),
+                  icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
                   tooltip: 'Refresh',
                 ),
                 PopupMenuButton(
+                  icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
                   itemBuilder: (_) => [
                     PopupMenuItem(
                       child: const Text('Export as JSON'),
@@ -276,24 +303,20 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
               ],
             ),
           ),
-
-          // Body
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: AppTheme.bgCard,
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(14)),
+                color: Colors.white.withValues(alpha: 0.03),
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)),
                 border: Border.all(color: AppTheme.border),
               ),
               child: Column(
                 children: [
-                  // Filters
                   Padding(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Search bar
                         TextField(
                           onChanged: (v) {
                             setState(() => _searchQuery = v);
@@ -301,91 +324,60 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
                           },
                           decoration: const InputDecoration(
                             hintText: 'Search by source, message, severity, category, or event ID…',
-                            prefixIcon: Icon(Icons.search, size: 18),
-                            contentPadding:
-                                EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            prefixIcon: Icon(Icons.search_rounded, size: 18),
                           ),
                         ),
-                        const SizedBox(height: 16),
-
-                        // Filter chips and dropdowns
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: [
-                              // Severity dropdown
-                              Padding(
-                                padding: const EdgeInsets.only(right: 12),
-                                child: _FilterDropdown(
-                                  label: 'Severity',
-                                  value: _selectedSeverity,
-                                  items: _severities,
-                                  onChanged: (v) {
-                                    setState(() => _selectedSeverity = v);
-                                    _applyFilters();
-                                  },
-                                ),
+                        const SizedBox(height: 14),
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [
+                            _FilterDropdown(
+                              label: 'Severity',
+                              value: _selectedSeverity,
+                              items: _severities,
+                              onChanged: (v) {
+                                setState(() => _selectedSeverity = v);
+                                _applyFilters();
+                              },
+                            ),
+                            _FilterDropdown(
+                              label: 'Log Name',
+                              value: _selectedLogName,
+                              items: _logNames,
+                              onChanged: (v) {
+                                setState(() => _selectedLogName = v);
+                                _applyFilters();
+                              },
+                            ),
+                            if (uniqueSources.isNotEmpty)
+                              _FilterDropdown(
+                                label: 'Source',
+                                value: _selectedSource,
+                                items: uniqueSources,
+                                onChanged: (v) {
+                                  setState(() => _selectedSource = v);
+                                  _applyFilters();
+                                },
                               ),
-
-                              // Log Name dropdown
-                              Padding(
-                                padding: const EdgeInsets.only(right: 12),
-                                child: _FilterDropdown(
-                                  label: 'Log Name',
-                                  value: _selectedLogName,
-                                  items: _logNames,
-                                  onChanged: (v) {
-                                    setState(() => _selectedLogName = v);
-                                    _applyFilters();
-                                  },
-                                ),
+                            _DateRangeButton(
+                              dateRange: _dateRange,
+                              onChanged: (range) {
+                                setState(() => _dateRange = range);
+                                _applyFilters();
+                              },
+                            ),
+                            if (hasActiveFilters)
+                              OutlinedButton.icon(
+                                onPressed: _clearAllFilters,
+                                icon: const Icon(Icons.clear_all_rounded, size: 16),
+                                label: const Text('Clear Filters'),
                               ),
-
-                              // Source dropdown
-                              if (uniqueSources.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 12),
-                                  child: _FilterDropdown(
-                                    label: 'Source',
-                                    value: _selectedSource,
-                                    items: uniqueSources,
-                                    onChanged: (v) {
-                                      setState(() => _selectedSource = v);
-                                      _applyFilters();
-                                    },
-                                  ),
-                                ),
-
-                              // Date range button
-                              Padding(
-                                padding: const EdgeInsets.only(right: 12),
-                                child: _DateRangeButton(
-                                  dateRange: _dateRange,
-                                  onChanged: (range) {
-                                    setState(() => _dateRange = range);
-                                    _applyFilters();
-                                  },
-                                ),
-                              ),
-
-                              // Clear filters button
-                              if (hasActiveFilters)
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 12),
-                                  child: OutlinedButton.icon(
-                                    onPressed: _clearAllFilters,
-                                    icon: const Icon(Icons.clear_all, size: 16),
-                                    label: const Text('Clear Filters'),
-                                  ),
-                                ),
-                            ],
-                          ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-
-                  // Events table/list
                   Expanded(
                     child: _loading
                         ? const Center(child: CircularProgressIndicator())
@@ -394,107 +386,88 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Icon(
-                                      Icons.event_busy_rounded,
-                                      size: 48,
-                                      color: AppTheme.textSecondary,
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      'No events found',
-                                      style: TextStyle(
-                                        color: AppTheme.textSecondary,
-                                        fontSize: 14,
+                                    Container(
+                                      width: 72,
+                                      height: 72,
+                                      decoration: BoxDecoration(
+                                        gradient: AppTheme.gradientInfo,
+                                        borderRadius: BorderRadius.circular(24),
                                       ),
+                                      child: const Icon(Icons.event_busy_rounded, color: Colors.white, size: 34),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    const Text(
+                                      'No events found',
+                                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 15, fontWeight: FontWeight.w700),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      hasActiveFilters ? 'Try clearing filters or widening the date range.' : 'New events will appear here automatically.',
+                                      style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
                                     ),
                                   ],
                                 ),
                               )
-                            : SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: SingleChildScrollView(
-                                  child: DataTable(
-                                    columnSpacing: 20,
-                                    columns: const [
-                                      DataColumn(label: Text('Event ID')),
-                                      DataColumn(label: Text('Source')),
-                                      DataColumn(label: Text('Severity')),
-                                      DataColumn(label: Text('Category')),
-                                      DataColumn(label: Text('Message')),
-                                      DataColumn(label: Text('Timestamp')),
-                                      DataColumn(label: Text('Log Name')),
-                                      DataColumn(label: Text('Remediated')),
-                                      DataColumn(label: Text('Actions')),
-                                    ],
-                                    rows: _filteredEvents.map((event) {
-                                      return DataRow(
-                                        cells: [
-                                          DataCell(
-                                            Text('${event.eventId}'),
-                                          ),
-                                          DataCell(
-                                            Text(event.source ?? '-'),
-                                          ),
-                                          DataCell(
-                                            SeverityBadge(event.severity ?? 'Unknown'),
-                                          ),
-                                          DataCell(
-                                            Text(event.category ?? '-'),
-                                          ),
-                                          DataCell(
-                                            Container(
-                                              constraints:
-                                                  const BoxConstraints(maxWidth: 200),
-                                              child: Text(
-                                                event.message ?? '-',
-                                                maxLines: 2,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                          ),
-                                          DataCell(
-                                            Text(
-                                              event.timestamp
-                                                      ?.toString()
-                                                      .substring(0, 16) ??
-                                                  '-',
-                                            ),
-                                          ),
-                                          DataCell(
-                                            Text(event.logName ?? 'Unknown'),
-                                          ),
-                                          DataCell(
-                                            event.remediated
-                                                ? const Text(
-                                                    '✓ Yes',
-                                                    style: TextStyle(
-                                                        color: Colors.green),
-                                                  )
-                                                : const Text(
-                                                    '○ No',
-                                                    style: TextStyle(
-                                                        color: AppTheme
-                                                            .textSecondary),
-                                                  ),
-                                          ),
-                                          DataCell(
-                                            Row(
-                                              children: [
-                                                IconButton(
-                                                  icon: const Icon(
-                                                    Icons.info_outline,
-                                                    size: 18,
-                                                  ),
-                                                  tooltip: 'View Details',
-                                                  onPressed: () =>
-                                                      _showEventDetails(event),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
+                            : Theme(
+                                data: tableTheme,
+                                child: Scrollbar(
+                                  thumbVisibility: true,
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: SingleChildScrollView(
+                                      child: DataTable(
+                                        columnSpacing: 22,
+                                        headingRowHeight: 54,
+                                        dataRowMinHeight: 56,
+                                        dataRowMaxHeight: 72,
+                                        horizontalMargin: 18,
+                                        columns: const [
+                                          DataColumn(label: Text('Event ID')),
+                                          DataColumn(label: Text('Source')),
+                                          DataColumn(label: Text('Severity')),
+                                          DataColumn(label: Text('Category')),
+                                          DataColumn(label: Text('Message')),
+                                          DataColumn(label: Text('Timestamp')),
+                                          DataColumn(label: Text('Log Name')),
+                                          DataColumn(label: Text('Remediated')),
+                                          DataColumn(label: Text('Actions')),
                                         ],
-                                      );
-                                    }).toList(),
+                                        rows: _filteredEvents.map((event) {
+                                          return DataRow(
+                                            cells: [
+                                              DataCell(Text('${event.eventId}')),
+                                              DataCell(Text(event.source ?? '-')),
+                                              DataCell(SeverityBadge(event.severity ?? 'Unknown')),
+                                              DataCell(Text(event.category ?? '-')),
+                                              DataCell(
+                                                Container(
+                                                  constraints: const BoxConstraints(maxWidth: 240),
+                                                  child: Text(
+                                                    event.message ?? '-',
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ),
+                                              DataCell(Text(event.timestamp?.toString().substring(0, 16) ?? '-')),
+                                              DataCell(Text(event.logName ?? 'Unknown')),
+                                              DataCell(
+                                                event.remediated
+                                                    ? const Text('✓ Yes', style: TextStyle(color: AppTheme.accentGreen, fontWeight: FontWeight.w700))
+                                                    : const Text('○ No', style: TextStyle(color: AppTheme.textSecondary)),
+                                              ),
+                                              DataCell(
+                                                IconButton(
+                                                  icon: const Icon(Icons.info_outline_rounded, size: 18),
+                                                  tooltip: 'View Details',
+                                                  onPressed: () => _showEventDetails(event),
+                                                ),
+                                              ),
+                                            ],
+                                          );
+                                        }).toList(),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -527,6 +500,8 @@ class _FilterDropdown extends StatelessWidget {
     return DropdownButton<String?>(
       value: value,
       hint: Text(label),
+      underline: const SizedBox.shrink(),
+      borderRadius: BorderRadius.circular(16),
       items: [
         DropdownMenuItem<String?>(
           value: null,

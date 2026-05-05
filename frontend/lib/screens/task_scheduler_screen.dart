@@ -68,7 +68,7 @@ class _TaskSchedulerScreenState extends State<TaskSchedulerScreen> {
       final count = result['events_ingested'] ?? 0;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('✓ Immediate poll complete — $count new event(s) ingested.'),
+          content: Text('Success: Immediate poll completed ($count new event(s) ingested).'),
           backgroundColor: AppTheme.accentGreen,
           behavior: SnackBarBehavior.floating,
           margin: const EdgeInsets.all(16),
@@ -78,7 +78,7 @@ class _TaskSchedulerScreenState extends State<TaskSchedulerScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Poll failed: $e'),
+          content: Text('Failed: $e'),
           backgroundColor: AppTheme.accentRed,
         ));
       }
@@ -89,7 +89,7 @@ class _TaskSchedulerScreenState extends State<TaskSchedulerScreen> {
     const cmd = r'powershell -ExecutionPolicy Bypass -File .\remediation_scripts\Setup_EventTriggers.ps1';
     Clipboard.setData(const ClipboardData(text: cmd));
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('Setup command copied to clipboard!'),
+      content: Text('Success: Setup command copied to clipboard.'),
       backgroundColor: AppTheme.accent,
       behavior: SnackBarBehavior.floating,
       margin: EdgeInsets.all(16),
@@ -192,9 +192,10 @@ class _StatusBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       decoration: BoxDecoration(
-        color: AppTheme.bgCard,
-        borderRadius: BorderRadius.circular(14),
+        gradient: AppTheme.panelGradient,
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: modeColor.withValues(alpha: 0.35)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.22), blurRadius: 22, offset: const Offset(0, 10))],
       ),
       child: Row(children: [
         Container(
@@ -614,9 +615,10 @@ class _Card extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     decoration: BoxDecoration(
-      color: AppTheme.bgCard,
-      borderRadius: BorderRadius.circular(14),
+      gradient: AppTheme.panelGradient,
+      borderRadius: BorderRadius.circular(18),
       border: Border.all(color: AppTheme.border),
+      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.22), blurRadius: 22, offset: const Offset(0, 10))],
     ),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       // Header
@@ -624,7 +626,7 @@ class _Card extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           gradient: headerGradient,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(13)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
         ),
         child: Row(children: [
           Icon(headerIcon, color: Colors.white, size: 16),

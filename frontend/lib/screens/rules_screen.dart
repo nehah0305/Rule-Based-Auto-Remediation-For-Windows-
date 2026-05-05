@@ -32,16 +32,31 @@ class _RulesScreenState extends State<RulesScreen> {
         await _api.deleteRule(id);
         _load();
       } catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
       }
     }
   }
 
   Future<void> _testRule(int id) async {
     showDialog(context: context, barrierDismissible: false,
-      builder: (_) => const AlertDialog(content: SizedBox(height: 60,
-        child: Row(children: [CircularProgressIndicator(color: AppTheme.accent), SizedBox(width: 16),
-          Text('Running test…', style: TextStyle(color: AppTheme.textPrimary))]))));
+      builder: (_) => Dialog(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              gradient: AppTheme.panelGradient,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppTheme.border),
+            ),
+            child: const Row(children: [
+              CircularProgressIndicator(color: AppTheme.accent),
+              SizedBox(width: 14),
+              Expanded(child: Text('Running test…', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600))),
+            ]),
+          ),
+        ),
+      ));
     try {
       final result = await _api.testRule(id);
       if (mounted) {
@@ -50,7 +65,7 @@ class _RulesScreenState extends State<RulesScreen> {
           title: 'Test Result', status: result['status'] as String? ?? '', output: result['output'] as String? ?? ''));
       }
     } catch (e) {
-      if (mounted) { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'))); }
+      if (mounted) { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'))); }
     }
   }
 
@@ -63,28 +78,40 @@ class _RulesScreenState extends State<RulesScreen> {
       final result = await _api.populateRulesFromJson();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Imported ${result['rules_created'] ?? 0} rules')));
+            SnackBar(content: Text('Success: Imported ${result['rules_created'] ?? 0} rules.')));
         _load();
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final tableTheme = Theme.of(context).copyWith(
+      dataTableTheme: DataTableThemeData(
+        headingRowColor: WidgetStatePropertyAll(Colors.white.withValues(alpha: 0.04)),
+        dataRowColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.hovered)) {
+            return AppTheme.accent.withValues(alpha: 0.05);
+          }
+          return Colors.transparent;
+        }),
+      ),
+    );
+
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(children: [
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           decoration: const BoxDecoration(gradient: AppTheme.gradientSuccess,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(14))),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
           child: Row(children: [
             const Icon(Icons.rule_rounded, color: Colors.white, size: 18),
             const SizedBox(width: 10),
             const Expanded(child: Text('Active Rules',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14))),
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14.5))),
             _HeaderBtn(icon: Icons.add, label: 'New Rule', onTap: () => _openRuleDialog()),
             const SizedBox(width: 8),
             _HeaderBtn(icon: Icons.download_rounded, label: 'Import from JSON', onTap: _importFromJson),
@@ -92,13 +119,16 @@ class _RulesScreenState extends State<RulesScreen> {
         ),
         Expanded(
           child: Container(
-            decoration: BoxDecoration(color: AppTheme.bgCard,
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(14)),
-                border: Border.all(color: AppTheme.border)),
+            decoration: BoxDecoration(
+                gradient: AppTheme.panelGradient,
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)),
+                border: Border.all(color: AppTheme.border),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.24), blurRadius: 24, offset: const Offset(0, 10))]),
             child: _loading
                 ? const Center(child: CircularProgressIndicator(color: AppTheme.accent))
-                : _RulesTable(rules: _rules,
+                : Theme(data: tableTheme, child: _RulesTable(rules: _rules,
                     onEdit: _openRuleDialog, onDelete: _deleteRule, onTest: _testRule),
+                  ),
           ),
         ),
       ]),
@@ -122,8 +152,11 @@ class _RulesTable extends StatelessWidget {
         child: SingleChildScrollView(
           child: DataTable(
             columnSpacing: 16,
-            headingRowColor: const WidgetStatePropertyAll(Color(0xFF181830)),
             headingTextStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
+            headingRowHeight: 52,
+            dataRowMinHeight: 56,
+            dataRowMaxHeight: 72,
+            horizontalMargin: 18,
             columns: const [
               DataColumn(label: Text('Rule Name')),
               DataColumn(label: Text('Priority')),
@@ -201,7 +234,9 @@ class _ActionBtn extends StatelessWidget {
     icon: Icon(icon, size: 13, color: color),
     label: Text(label, style: TextStyle(color: color, fontSize: 11)),
     style: TextButton.styleFrom(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      backgroundColor: color.withValues(alpha: 0.12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap,
     ),
   );
@@ -215,11 +250,11 @@ class _HeaderBtn extends StatelessWidget {
   Widget build(BuildContext context) => TextButton.icon(
     onPressed: onTap,
     icon: Icon(icon, size: 14, color: Colors.white),
-    label: Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
+    label: Text(label, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
     style: TextButton.styleFrom(
-      backgroundColor: Colors.white12,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      backgroundColor: Colors.white.withValues(alpha: 0.16),
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
     ),
   );
 }
@@ -312,7 +347,7 @@ class _RuleDialogState extends State<RuleDialog> {
       }
       if (mounted) { Navigator.pop(context); widget.onSaved(); }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

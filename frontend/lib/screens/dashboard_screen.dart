@@ -99,63 +99,86 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(24),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // Stat cards
-              LayoutBuilder(builder: (ctx, constraints) {
-                final cols = constraints.maxWidth > 700 ? 4 : 2;
-                return GridView.count(
-                  crossAxisCount: cols, shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisSpacing: 16, mainAxisSpacing: 16,
-                  childAspectRatio: constraints.maxWidth > 700 ? 2.4 : 2.0,
-                  children: [
-                    StatCard(label: 'Errors & Warnings', value: '${_events.length}',
-                        icon: Icons.warning_amber_rounded, accentColor: AppTheme.accent),
-                    StatCard(label: 'Active Rules', value: '$_totalRules',
-                        icon: Icons.rule_rounded, accentColor: AppTheme.accentGreen),
-                    StatCard(label: 'Pending Approvals', value: '$_pendingApprovals',
-                        icon: Icons.schedule_rounded, accentColor: AppTheme.accentYellow),
-                    StatCard(label: 'Remediations', value: '${_history.length}',
-                        icon: Icons.history_rounded, accentColor: const Color(0xFF17a2b8)),
-                  ],
-                );
-              }),
-              const SizedBox(height: 20),
-              // Manual review alert banner
-              if (_manualReview > 0) _ManualReviewBanner(count: _manualReview),
-              if (_manualReview > 0) const SizedBox(height: 16),
-              // Charts row
-              LayoutBuilder(builder: (ctx, constraints) {
-                final wide = constraints.maxWidth > 700;
-                final charts = [
-                  _ChartCard(title: 'Events by Severity', gradient: AppTheme.gradientPrimary,
-                      icon: Icons.pie_chart, child: _SeverityChart(data: _bySeverity)),
-                  _ChartCard(title: 'Events by Category', gradient: AppTheme.gradientSuccess,
-                      icon: Icons.bar_chart, child: _CategoryChart(data: _byCategory)),
-                ];
-                return wide
-                    ? Row(children: charts.map((c) => Expanded(child: c)).toList()
-                        .withSeparator(const SizedBox(width: 16)))
-                    : Column(children: charts.withSeparator(const SizedBox(height: 16)));
-              }),
-              const SizedBox(height: 20),
-              // Intelligence Summary
-              _IntelligenceCard(intel: _intel),
-              const SizedBox(height: 20),
-              // Recent activity
-              LayoutBuilder(builder: (ctx, constraints) {
-                final wide = constraints.maxWidth > 700;
-                final lists = [
-                  _RecentEventsCard(events: _events.take(8).toList()),
-                  _RecentRemediationsCard(history: _history.take(8).toList()),
-                ];
-                return wide
-                    ? Row(crossAxisAlignment: CrossAxisAlignment.start,
-                        children: lists.map((c) => Expanded(child: c)).toList()
-                            .withSeparator(const SizedBox(width: 16)))
-                    : Column(children: lists.withSeparator(const SizedBox(height: 16)));
-              }),
-            ]),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: AppTheme.panelGradient,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: AppTheme.border),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.28), blurRadius: 30, offset: const Offset(0, 12))],
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                  decoration: const BoxDecoration(
+                    gradient: AppTheme.gradientPrimary,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+                  ),
+                  child: const Row(children: [
+                    Icon(Icons.dashboard_rounded, color: Colors.white, size: 18),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text('Dashboard Overview',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14.5)),
+                    ),
+                  ]),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    LayoutBuilder(builder: (ctx, constraints) {
+                      final cols = constraints.maxWidth > 700 ? 4 : 2;
+                      return GridView.count(
+                        crossAxisCount: cols, shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        crossAxisSpacing: 16, mainAxisSpacing: 16,
+                        childAspectRatio: constraints.maxWidth > 700 ? 2.4 : 2.0,
+                        children: [
+                          StatCard(label: 'Errors & Warnings', value: '${_events.length}',
+                              icon: Icons.warning_amber_rounded, accentColor: AppTheme.accent),
+                          StatCard(label: 'Active Rules', value: '$_totalRules',
+                              icon: Icons.rule_rounded, accentColor: AppTheme.accentGreen),
+                          StatCard(label: 'Pending Approvals', value: '$_pendingApprovals',
+                              icon: Icons.schedule_rounded, accentColor: AppTheme.accentYellow),
+                          StatCard(label: 'Remediations', value: '${_history.length}',
+                              icon: Icons.history_rounded, accentColor: const Color(0xFF17a2b8)),
+                        ],
+                      );
+                    }),
+                    const SizedBox(height: 20),
+                    if (_manualReview > 0) _ManualReviewBanner(count: _manualReview),
+                    if (_manualReview > 0) const SizedBox(height: 16),
+                    LayoutBuilder(builder: (ctx, constraints) {
+                      final wide = constraints.maxWidth > 700;
+                      final charts = [
+                        _ChartCard(title: 'Events by Severity', gradient: AppTheme.gradientPrimary,
+                            icon: Icons.pie_chart, child: _SeverityChart(data: _bySeverity)),
+                        _ChartCard(title: 'Events by Category', gradient: AppTheme.gradientSuccess,
+                            icon: Icons.bar_chart, child: _CategoryChart(data: _byCategory)),
+                      ];
+                      return wide
+                          ? Row(children: charts.map((c) => Expanded(child: c)).toList()
+                              .withSeparator(const SizedBox(width: 16)))
+                          : Column(children: charts.withSeparator(const SizedBox(height: 16)));
+                    }),
+                    const SizedBox(height: 20),
+                    _IntelligenceCard(intel: _intel),
+                    const SizedBox(height: 20),
+                    LayoutBuilder(builder: (ctx, constraints) {
+                      final wide = constraints.maxWidth > 700;
+                      final lists = [
+                        _RecentEventsCard(events: _events.take(8).toList()),
+                        _RecentRemediationsCard(history: _history.take(8).toList()),
+                      ];
+                      return wide
+                          ? Row(crossAxisAlignment: CrossAxisAlignment.start,
+                              children: lists.map((c) => Expanded(child: c)).toList()
+                                  .withSeparator(const SizedBox(width: 16)))
+                          : Column(children: lists.withSeparator(const SizedBox(height: 16)));
+                    }),
+                  ]),
+                ),
+              ]),
+            ),
           ),
         );
       }, // End Consumer builder
@@ -172,9 +195,11 @@ class _ManualReviewBanner extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     decoration: BoxDecoration(
-      color: AppTheme.accentRed.withOpacity(0.1),
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: AppTheme.accentRed.withOpacity(0.4)),
+      gradient: LinearGradient(
+        colors: [AppTheme.accentRed.withValues(alpha: 0.18), AppTheme.accentRed.withValues(alpha: 0.06)],
+      ),
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: AppTheme.accentRed.withValues(alpha: 0.38)),
     ),
     child: Row(children: [
       const Icon(Icons.error_outline, color: AppTheme.accentRed, size: 22),
@@ -208,7 +233,7 @@ class _ChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    decoration: BoxDecoration(color: AppTheme.bgCard, borderRadius: BorderRadius.circular(14),
+    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.02), borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppTheme.border)),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Container(

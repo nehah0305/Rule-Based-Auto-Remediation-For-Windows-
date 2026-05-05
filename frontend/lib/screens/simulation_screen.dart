@@ -92,10 +92,10 @@ class _SimulationScreenState extends State<SimulationScreen> {
           final r = await _api.injectHighCpuAlert();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('High CPU Alert injected! Switch to Dashboard to see the live alert popup.')));
+              content: Text('Success: High CPU alert injected. Open Dashboard to view the live popup.')));
           }
           setState(() {
-            _statusMsg = 'Alert injected. Check Dashboard for live popup.';
+            _statusMsg = 'Success: Alert injected. Check Dashboard for the live popup.';
             _terminalOutput = r['script_output'] as String? ?? '';
             _running = false;
           });
@@ -104,10 +104,10 @@ class _SimulationScreenState extends State<SimulationScreen> {
           final r = await _api.injectServiceCrash();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Service Crash Alert injected! Switch to Dashboard to see the live alert popup.')));
+              content: Text('Success: Service crash alert injected. Open Dashboard to view the live popup.')));
           }
           setState(() {
-            _statusMsg = 'Alert injected. Check Dashboard for live popup.';
+            _statusMsg = 'Success: Alert injected. Check Dashboard for the live popup.';
             _terminalOutput = r['script_output'] as String? ?? '';
             _running = false;
           });
@@ -137,8 +137,8 @@ class _SimulationScreenState extends State<SimulationScreen> {
       });
     } catch (e) {
       if (mounted) {
-        setState(() { _statusMsg = 'Error: $e'; _running = false; });
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Simulation error: $e')));
+        setState(() { _statusMsg = 'Failed: $e'; _running = false; });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
       }
     }
   }
@@ -261,8 +261,12 @@ class _SimTypeSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(color: AppTheme.bgCard, borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.border)),
+    decoration: BoxDecoration(
+      gradient: AppTheme.panelGradient,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: AppTheme.border),
+      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.22), blurRadius: 20, offset: const Offset(0, 10))],
+    ),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Text('Select Simulation Type', style: TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w500)),
       const SizedBox(height: 12),
@@ -337,8 +341,12 @@ class _ControlPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SingleChildScrollView(child: Container(
     padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(color: AppTheme.bgCard, borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.border)),
+    decoration: BoxDecoration(
+      gradient: AppTheme.panelGradient,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: AppTheme.border),
+      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.22), blurRadius: 20, offset: const Offset(0, 10))],
+    ),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
       _ControlHeader(type: type),
       const SizedBox(height: 16),
@@ -648,12 +656,16 @@ class _CardWrap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    decoration: BoxDecoration(color: AppTheme.bgCard, borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.border)),
+    decoration: BoxDecoration(
+      gradient: AppTheme.panelGradient,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: AppTheme.border),
+      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.22), blurRadius: 20, offset: const Offset(0, 10))],
+    ),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(gradient: gradient, borderRadius: const BorderRadius.vertical(top: Radius.circular(14))),
+        decoration: BoxDecoration(gradient: gradient, borderRadius: const BorderRadius.vertical(top: Radius.circular(18))),
         child: Row(children: [
           Icon(icon, color: Colors.white, size: 16),
           const SizedBox(width: 8),

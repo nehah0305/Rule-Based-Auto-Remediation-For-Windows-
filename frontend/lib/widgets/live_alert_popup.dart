@@ -93,10 +93,20 @@ class _LiveAlertPopupState extends State<LiveAlertPopup> with SingleTickerProvid
           child: SizedBox(
             width: 380,
             child: Material(
-              elevation: 24,
+              elevation: 0,
+              color: Colors.transparent,
               borderRadius: BorderRadius.circular(16),
               clipBehavior: Clip.antiAlias,
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: AppTheme.panelGradient,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppTheme.border),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.45), blurRadius: 30, offset: const Offset(0, 14)),
+                  ],
+                ),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
                 // Header
                 Container(
                   decoration: BoxDecoration(gradient: _headerGradient),
@@ -129,7 +139,7 @@ class _LiveAlertPopupState extends State<LiveAlertPopup> with SingleTickerProvid
                 ),
                 // Body
                 Container(
-                  color: AppTheme.bgCard,
+                  color: Colors.white.withValues(alpha: 0.01),
                   padding: const EdgeInsets.all(18),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                     // Message
@@ -233,6 +243,7 @@ class _LiveAlertPopupState extends State<LiveAlertPopup> with SingleTickerProvid
                   ]),
                 ),
               ]),
+              ),
             ),
           ),
         ),
