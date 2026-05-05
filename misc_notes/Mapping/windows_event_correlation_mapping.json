@@ -1,0 +1,194 @@
+{
+  "Service": [
+    {
+      "EventId": 7031,
+      "Correlated": [
+        7032,
+        7036,
+        7000,
+        1000
+      ],
+      "Message": "Service terminated unexpectedly"
+    },
+    {
+      "EventId": 7034,
+      "Correlated": [
+        7031,
+        7036
+      ],
+      "Message": "Service terminated unexpectedly (per-user/session)"
+    },
+    {
+      "EventId": 7023,
+      "Correlated": [
+        7031,
+        7036
+      ],
+      "Message": "Service terminated with an error"
+    },
+    {
+      "EventId": 7024,
+      "Correlated": [
+        7023,
+        7031
+      ],
+      "Message": "Service terminated with service-specific error"
+    },
+    {
+      "EventId": 7022,
+      "Correlated": [
+        7009,
+        7011
+      ],
+      "Message": "Service hung on starting"
+    },
+    {
+      "EventId": 7000,
+      "Correlated": [
+        7022,
+        7031
+      ],
+      "Message": "Service failed to start"
+    }
+  ],
+  "Memory": [
+    {
+      "EventId": 2019,
+      "Correlated": [
+        7031,
+        1000
+      ],
+      "Message": "Non-paged pool memory exhausted"
+    },
+    {
+      "EventId": 2020,
+      "Correlated": [
+        7031,
+        1000
+      ],
+      "Message": "Paged pool memory exhausted"
+    },
+    {
+      "EventId": 2004,
+      "Correlated": [
+        2019,
+        2020
+      ],
+      "Message": "Resource exhaustion detected"
+    }
+  ],
+  "Disk": [
+    {
+      "EventId": 7,
+      "Correlated": [
+        11,
+        51,
+        7031
+      ],
+      "Message": "Bad blocks detected on disk"
+    },
+    {
+      "EventId": 11,
+      "Correlated": [
+        7,
+        51
+      ],
+      "Message": "Disk controller error"
+    },
+    {
+      "EventId": 51,
+      "Correlated": [
+        7,
+        11
+      ],
+      "Message": "Disk paging I/O error"
+    },
+    {
+      "EventId": 55,
+      "Correlated": [
+        7,
+        51
+      ],
+      "Message": "NTFS corruption detected"
+    }
+  ],
+  "Networking": [
+    {
+      "EventId": 1014,
+      "Correlated": [
+        7031
+      ],
+      "Message": "DNS name resolution timeout"
+    },
+    {
+      "EventId": 5719,
+      "Correlated": [
+        7031
+      ],
+      "Message": "Domain controller not reachable"
+    },
+    {
+      "EventId": 4202,
+      "Correlated": [
+        7031
+      ],
+      "Message": "Network interface disconnected"
+    }
+  ],
+  "Firewall": [
+    {
+      "EventId": 5157,
+      "Correlated": [
+        7031
+      ],
+      "Message": "Application blocked by firewall"
+    },
+    {
+      "EventId": 5025,
+      "Correlated": [
+        7031
+      ],
+      "Message": "Windows Firewall service stopped"
+    }
+  ],
+  "AppLocker": [
+    {
+      "EventId": 8003,
+      "Correlated": [
+        7031,
+        1000
+      ],
+      "Message": "AppLocker blocked executable"
+    },
+    {
+      "EventId": 8004,
+      "Correlated": [
+        7031
+      ],
+      "Message": "AppLocker blocked DLL"
+    }
+  ],
+  "Privilege": [
+    {
+      "EventId": 4625,
+      "Correlated": [
+        7031
+      ],
+      "Message": "Logon failure"
+    },
+    {
+      "EventId": 10016,
+      "Correlated": [
+        7031
+      ],
+      "Message": "DCOM permission denied"
+    },
+    {
+      "EventId": 1314,
+      "Correlated": [
+        7031
+      ],
+      "Message": "Required privilege not held"
+    }
+  ]
+}

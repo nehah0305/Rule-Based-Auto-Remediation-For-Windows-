@@ -17,9 +17,48 @@ import time
 import subprocess
 import shutil
 import logging
+import re
 from datetime import datetime, timezone
 
 import models
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Security: Sanitize environment variables for PowerShell injection safety
+# ─────────────────────────────────────────────────────────────────────────────
+
+def sanitize_for_powershell_env(value: str, max_length: int = 1000) -> str:
+    """
+    Sanitize a string before passing it as a PowerShell environment variable.
+    
+    Removes or escapes characters that could cause command injection:
+    - Backticks (`) - PowerShell command substitution
+    - Dollar signs ($) - PowerShell variable substitution
+    - Pipes (|) - PowerShell pipeline
+    - Semicolons (;) - PowerShell statement terminator
+    - Parentheses ( ) - PowerShell subexpression
+    
+    Also truncates to max_length to prevent buffer overflow.
+    
+    Args:
+        value: String to sanitize (typically from untrusted Event Log)
+        max_length: Maximum output length (default 1000 chars)
+    
+    Returns:
+        Sanitized string safe for use as PowerShell env var
+    """
+    if not value:
+        return ''
+    
+    # Truncate first
+    value = str(value)[:max_length]
+    
+    # Replace dangerous characters with underscore
+    # Backticks, pipes, dollar, semicolon, parens, ampersand
+    dangerous_chars = r'[`|$;()\&\n\r\t]'
+    sanitized = re.sub(dangerous_chars, '_', value)
+    
+    return sanitized
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Constants
@@ -192,7 +231,15 @@ def _process_event(raw: dict) -> int:
     """
     Ingest one Windows Event into the DB, run rule matching, handle
     auto-remediation or flag for manual review.
-    Returns the event row id.
+
+    IMPROVEMENTS IMPLEMENTED:
+      1. [CHRONOLOGICAL CORRELATION] Detects when multiple errors co-occur (e.g.,
+         memory exhaustion + service crash). Routes to compound remediation scripts
+         that fix the root cause first.
+      2. [DEEP SYSTEM REPAIR] Detects when an app crashed due to a corrupted
+         core Windows DLL. Escalates to sfc /scannow instead of just restarting.
+      3. [ENVIRONMENT INJECTION] Passes context to PowerShell scripts via env vars
+         so they can adapt their remediation strategy intelligently.
     """
     event_id  = str(raw.get('Id', '0'))
     log_name  = raw.get('LogName', 'Unknown')
@@ -202,32 +249,142 @@ def _process_event(raw: dict) -> int:
     severity  = LEVEL_MAP.get(int(level_num), 'Warning')
     timestamp = _parse_timestamp(raw.get('TimeCreated'))
 
+    # ── Enrich from catalog BEFORE inserting so category is available everywhere ──
+    catalog_defn = models.get_event_definition(event_id, source)
+    catalog_category    = catalog_defn.get('category')             if catalog_defn else None
+    catalog_severity    = catalog_defn.get('severity')             if catalog_defn else severity
+    catalog_description = catalog_defn.get('description')          if catalog_defn else None
+    catalog_action      = catalog_defn.get('recommended_action')   if catalog_defn else None
+
     event_dict = {
-        'event_id':  event_id,
-        'log_name':  log_name,
-        'source':    source,
-        'message':   message,
-        'timestamp': timestamp,
-        'severity':  severity,
-        'level':     severity,
+        'event_id':    event_id,
+        'log_name':    log_name,
+        'source':      source,
+        'message':     message,
+        'timestamp':   timestamp,
+        'severity':    catalog_severity or severity,
+        'level':       severity,
+        'category':    catalog_category,
         'source_type': 'eventlog',
     }
 
-    # Store the event (dedup logic is inside add_event)
+    # Store the event — pass enriched fields so the DB row has category populated
     row_id = models.add_event(
-        event_id   = event_id,
-        log_name   = log_name,
-        source     = source,
-        message    = message,
-        timestamp  = timestamp,
-        severity   = severity,
-        level      = severity,
-        source_type = 'eventlog',
+        event_id           = event_id,
+        log_name           = log_name,
+        source             = source,
+        message            = message,
+        timestamp          = timestamp,
+        category           = catalog_category,
+        severity           = catalog_severity or severity,
+        description        = catalog_description,
+        recommended_action = catalog_action,
+        level              = severity,
+        source_type        = 'eventlog',
     )
 
-    # Match rules
+    # ── [IMPROVEMENT 1] Chronological Event Correlation Engine ────────────────
+    # Multi-Event Inference: before matching rules, check if any co-related events
+    # fired in the same time window. If yes, we know the true root cause and can
+    # escalate the fix. For example, if memory exhaustion (2019) caused a service
+    # crash (7031), we fix memory first — restarting a starved service will just fail.
+    correlation = models.correlate_events(event_id, timestamp)
+    extra_env = {}   # passed to run_remediation as env vars for intelligent script behavior
+
+    if correlation['has_correlation']:
+        cause = correlation['compound_cause']
+        priority = correlation.get('priority', 'low')
+        script = correlation.get('compound_script')
+        co_ids = [str(e['event_id']) for e in correlation['correlated_events']]
+        
+        logger.info(
+            f'[CORRELATE-{priority.upper()}] Event {event_id} → '
+            f'Compound cause: "{cause}" | Co-events: {", ".join(co_ids)} | '
+            f'Escalating to: {script}'
+        )
+        
+        # Inject context into PowerShell scripts so they understand the full situation
+        extra_env['RM_COMPOUND_CAUSE']      = cause or ''
+        extra_env['RM_COMPOUND_PRIORITY']   = priority
+        extra_env['RM_COMPOUND_SCRIPT']     = script or ''
+        extra_env['RM_CO_EVENT_IDS']        = ','.join(co_ids)
+        extra_env['RM_CO_EVENT_DOMAINS']    = ','.join(
+            e['domain'] for e in correlation['correlated_events']
+        )
+        extra_env['RM_CO_EVENT_COUNT']      = str(len(correlation['correlated_events']))
+
+    # ── [IMPROVEMENT 2] Core OS Faulting Module Detection (Deep System Repair) ──
+    # If the crash message names a core Windows system DLL as the faulting module,
+    # restarting the app will just produce an infinite crash loop. We need to
+    # escalate to a deep system integrity check (sfc /scannow or DISM) to repair
+    # the corrupted system file. This is the "Deep System Repair Fallback."
+    is_os_module_crash = False
+    faulting_module = None
+    
+    if event_id == '1000' and message:  # Application crash
+        faulting_module = models.detect_faulting_module(message)
+        if faulting_module and models.is_core_os_module(faulting_module):
+            is_os_module_crash = True
+            extra_env['RM_FAULTING_MODULE']         = faulting_module
+            extra_env['RM_ESCALATION_REASON']       = f'Core OS module crash: {faulting_module}'
+            extra_env['RM_REQUIRES_DEEP_REPAIR']    = '1'
+            logger.warning(
+                f'[SYSREPAIR] Event {event_id} — CORE OS MODULE CRASH detected: '
+                f'{faulting_module}. Standard restart will loop infinitely. '
+                f'Escalating to deep system integrity check (sfc /scannow).'
+            )
+
+    # ── Match rules — event_dict already has category populated ──────────────
     matched = models.match_rules_for_event(event_dict)
 
+    # ── [IMPROVEMENT 2 cont.] DEEP SYSTEM REPAIR FALLBACK ──────────────────────
+    # If a core OS module crashed, escalate to system integrity repair immediately.
+    # This bypasses normal rules and goes straight to sfc /scannow or DISM.
+    if is_os_module_crash:
+        SYSREPAIR_SCRIPT = os.path.join(
+            os.path.dirname(__file__), '..', 'remediation_scripts',
+            'Remediate_SystemRepair_Fallback.ps1'
+        )
+        if os.path.exists(SYSREPAIR_SCRIPT):
+            logger.info(f'[SYSREPAIR] Invoking deep system repair fallback for {faulting_module}')
+            
+            # Prepare environment for the repair script
+            # CRITICAL SECURITY FIX: Sanitize all env vars to prevent command injection
+            env_copy = os.environ.copy()
+            env_copy.update(extra_env)
+            env_copy['RM_EVENT_ROW_ID']         = str(row_id)
+            env_copy['RM_EVENT_ID']             = sanitize_for_powershell_env(event_id)
+            env_copy['RM_SOURCE']               = sanitize_for_powershell_env(source)
+            env_copy['RM_MESSAGE']              = sanitize_for_powershell_env(message, max_length=500)
+            env_copy['RM_FAULTING_MODULE']      = sanitize_for_powershell_env(faulting_module or '')
+            env_copy['RM_ESCALATION_REASON']    = sanitize_for_powershell_env(
+                f'Core OS module crash: {faulting_module}'
+            )
+
+            try:
+                proc = subprocess.run(
+                    [_POWERSHELL, '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                     '-File', os.path.abspath(SYSREPAIR_SCRIPT)],
+                    capture_output=True, text=True, timeout=600, env=env_copy
+                )
+                status = 'success' if proc.returncode == 0 else 'failed'
+                output = (proc.stdout + '\n' + proc.stderr).strip()
+                
+                # Record with a synthetic rule ID (999) to track system repair
+                rule_id_sysrepair = 999
+                models.record_remediation(row_id, rule_id_sysrepair, status, output)
+                
+                logger.info(
+                    f'[SYSREPAIR-{status.upper()}] System integrity repair completed. '
+                    f'Module: {faulting_module}. Output: {output[:200]}'
+                )
+            except Exception as e:
+                logger.error(f'[SYSREPAIR-ERROR] Failed to invoke repair fallback: {e}')
+                models.record_remediation(row_id, 999, 'failed', f'Exception: {str(e)}')
+            
+            return row_id
+
+    # ── Rule-based auto-remediation ──────────────────────────────────────────
     if not matched:
         # No rule → flag for manual review
         models.set_manual_review(
@@ -238,15 +395,18 @@ def _process_event(raw: dict) -> int:
     else:
         for rule_tuple in matched:
             cooldown_active = rule_tuple[15] if len(rule_tuple) > 15 else False
-            regex_captures  = rule_tuple[16] if len(rule_tuple) > 16 else {}
+            regex_captures  = {**(rule_tuple[16] if len(rule_tuple) > 16 else {}), **extra_env}
             rid             = rule_tuple[0]
             auto_remediate  = rule_tuple[6]
             rule_name       = rule_tuple[1]
 
             if auto_remediate and not cooldown_active:
                 result = models.run_remediation(row_id, rid, regex_captures=regex_captures)
+                extra_info = ''
+                if correlation['has_correlation']:
+                    extra_info = f' [COMPOUND: {correlation["compound_cause"]} (priority={correlation.get("priority", "low")})]'
                 logger.info(
-                    f'[AUTO] Event {event_id} → rule "{rule_name}" → {result.get("status")}'
+                    f'[AUTO] Event {event_id} → rule "{rule_name}" → {result.get("status")}{extra_info}'
                 )
             elif auto_remediate and cooldown_active:
                 models.record_remediation(
@@ -258,6 +418,8 @@ def _process_event(raw: dict) -> int:
                 logger.info(f'[MATCH] Event {event_id} matched rule "{rule_name}" (auto_remediate=False)')
 
     return row_id
+
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────

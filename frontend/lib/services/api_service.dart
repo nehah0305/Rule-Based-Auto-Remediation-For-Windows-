@@ -144,6 +144,18 @@ class ApiService {
     return await _post('/api/monitor/trigger') as Map<String, dynamic>;
   }
 
+  /// Fetch the last N lines of the unified remediation log file.
+  /// Returns plain text — displayed as a monospace log viewer in the UI.
+  Future<String> getUnifiedLog({int lines = 200}) async {
+    final res = await _client.get(
+      Uri.parse(ApiConfig.url('/api/monitor/log?lines=$lines')),
+      headers: _headers,
+    );
+    if (res.statusCode >= 400) return 'Error ${res.statusCode}: could not load log.';
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return (data['content'] as String?) ?? '(log is empty)';
+  }
+
   // ─── Intelligence ──────────────────────────────────────────────────────────
   Future<IntelligenceSummary> getIntelligenceSummary() async {
     final data = await _get('/api/intelligence/summary') as Map<String, dynamic>;
