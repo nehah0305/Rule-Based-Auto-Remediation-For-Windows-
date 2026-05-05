@@ -48,6 +48,14 @@ class ApiService {
     return jsonDecode(res.body);
   }
 
+  Future<dynamic> getJson(String path) => _get(path);
+
+  Future<dynamic> postJson(String path, [dynamic body]) => _post(path, body);
+
+  Future<dynamic> putJson(String path, dynamic body) => _put(path, body);
+
+  Future<dynamic> deleteJson(String path) => _delete(path);
+
   // ─── Events ────────────────────────────────────────────────────────────────
   Future<List<AppEvent>> getEvents() async {
     final data = await _get('/api/events') as List;

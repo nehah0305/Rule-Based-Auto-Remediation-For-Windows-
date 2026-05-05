@@ -247,7 +247,6 @@ class _RootCauseVariantDemoState extends State<RootCauseVariantDemo> {
   }
 
   Widget _buildTimelineStep(Map<String, dynamic> step) {
-    final phase = step['phase'] ?? '';
     final title = step['title'] ?? '';
     final status = step['status'] ?? '';
     final detail = step['detail'] ?? '';
@@ -307,7 +306,6 @@ class _RootCauseVariantDemoState extends State<RootCauseVariantDemo> {
     final variantLabel = detectedVariant['label'] ?? 'Unknown';
     final confidence = detectedVariant['confidence'] ?? 0;
     final ruleName = matchedRule['name'] ?? '';
-    final remediationStatus = remediation['status'] ?? '';
     final remediationOutput = remediation['output'] ?? '';
 
     Color resultColor = Colors.orange;

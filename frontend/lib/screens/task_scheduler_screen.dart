@@ -163,7 +163,6 @@ class _StatusBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isRunning   = status['thread_alive'] == true;
-    final isTaskSched = status['running'] == false && !isRunning;
     final lastPoll    = status['last_poll'] as String?;
     final ingested    = status['events_ingested'] ?? 0;
     final interval    = status['poll_interval_s'] ?? 30;

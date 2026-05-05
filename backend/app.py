@@ -2996,5 +2996,5 @@ if __name__ == '__main__':
     print(f"Debug mode: {debug}")
     print(f"Access the dashboard at: http://localhost:{port}")
 
-    app.run(host=host, port=port, debug=debug)
+    app.run(host=host, port=port, debug=debug, use_reloader=False)
 

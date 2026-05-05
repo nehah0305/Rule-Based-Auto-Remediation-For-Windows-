@@ -35,6 +35,7 @@ class AppEvent {
     this.confidenceScore = 0.0,
     this.correlationId,
     this.sourceType,
+    this.remediated = false,
     this.needsManualReview = false,
     this.manualReviewReason,
     this.dismissedReview = false,
@@ -87,9 +88,9 @@ class AppEvent {
     confidenceScore:     _toDouble(j['confidence_score']),
     correlationId:       _toStringOrNull(j['correlation_id']),
     sourceType:          _toStringOrNull(j['source_type']),
+    remediated:          _toBool(j['remediated']),
     needsManualReview:   _toBool(j['needs_manual_review']),
     manualReviewReason:  _toStringOrNull(j['manual_review_reason']),
     dismissedReview:     _toBool(j['dismissed_review']),
-    remediated:           _toBool(j['remediated']),
   );
 }

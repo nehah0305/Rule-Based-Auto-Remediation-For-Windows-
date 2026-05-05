@@ -449,7 +449,7 @@ def _poll():
                 except Exception:
                     pass
         except Exception as e:
-            logger.error(f'Failed processing event: {e}')
+            logger.exception(f'Failed processing event: {e}')
 
     if ingested:
         logger.info(f'[MONITOR] Ingested {ingested} event(s) from Windows Event Log')
@@ -478,7 +478,7 @@ def _monitor_loop():
                 if len(_monitor_state['errors']) > 10:
                     _monitor_state['errors'].pop(0)
         except Exception as e:
-            logger.error(f'[MONITOR] Poll error: {e}')
+            logger.exception(f'[MONITOR] Poll error: {e}')
             with _state_lock:
                 _monitor_state['errors'].append(str(e))
 

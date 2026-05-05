@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
-import '../widgets/badges.dart';
 
 class TaskManagerScreen extends StatefulWidget {
   const TaskManagerScreen({super.key});
@@ -25,7 +24,7 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
   Future<void> _load() async {
     if (!mounted) return;
     try {
-      final response = await _api._get('/api/tasks');
+      final response = await _api.getJson('/api/tasks');
       setState(() {
         _tasks = (response['tasks'] as List?) ?? [];
         _lastUpdated = DateTime.now().toString().substring(0, 16);
@@ -56,7 +55,7 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
 
     if (confirm == true) {
       try {
-        await _api._delete('/api/tasks/$taskId');
+        await _api.deleteJson('/api/tasks/$taskId');
         await _load();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -75,7 +74,7 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
 
   Future<void> _runTaskNow(int taskId, String taskName) async {
     try {
-      await _api._post('/api/tasks/$taskId/run');
+      await _api.postJson('/api/tasks/$taskId/run');
       await _load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -94,7 +93,7 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
   Future<void> _toggleTaskEnabled(int taskId, bool enabled) async {
     try {
       final endpoint = enabled ? '/api/tasks/$taskId/enable' : '/api/tasks/$taskId/disable';
-      await _api._post(endpoint);
+      await _api.postJson(endpoint);
       await _load();
     } catch (e) {
       if (mounted) {
@@ -107,7 +106,7 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
 
   Future<void> _showTaskLogs(int taskId, String taskName) async {
     try {
-      final response = await _api._get('/api/tasks/$taskId/logs?limit=20');
+      final response = await _api.getJson('/api/tasks/$taskId/logs?limit=20');
       final logs = (response['logs'] as List?) ?? [];
 
       if (mounted) {
@@ -264,7 +263,7 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
                                         if (lastStatus == 'success')
                                           const Icon(Icons.check_circle, color: Colors.green, size: 16)
                                         else if (lastStatus == 'failed')
-                                          const Icon(Icons.error_circle, color: Colors.red, size: 16)
+                                          const Icon(Icons.error_outline, color: Colors.red, size: 16)
                                         else
                                           const Icon(Icons.schedule, color: AppTheme.textSecondary, size: 16),
                                       ],
@@ -489,7 +488,7 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
 
   Future<void> _createTask() async {
     try {
-      await widget.api._post('/api/tasks', {
+      await widget.api.postJson('/api/tasks', {
         'task_name': _nameController.text.trim(),
         'display_name': _displayNameController.text.trim(),
         'description': _descriptionController.text.trim(),
@@ -634,7 +633,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
 
   Future<void> _updateTask() async {
     try {
-      await widget.api._put('/api/tasks/${widget.task["id"]}', {
+      await widget.api.putJson('/api/tasks/${widget.task["id"]}', {
         'display_name': _displayNameController.text.trim(),
         'description': _descriptionController.text.trim(),
       });

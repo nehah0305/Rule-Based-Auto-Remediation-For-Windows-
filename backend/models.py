@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import re
+import logging
 import shutil
 import subprocess
 import json
@@ -12,6 +13,8 @@ from pathlib import Path
 
 # Root cause variant detection
 from root_cause_analyzer import analyze_event as analyze_root_cause, get_analyzer
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'rules.db')
 EVENT_DEFINITIONS_PATH = os.path.join(os.path.dirname(__file__), '..', 'windows_error_events.json')
@@ -680,6 +683,8 @@ def add_event(event_id, log_name, source, message,
         conn.close()
 
     # ── New event — compute correlation_id and confidence score ──────────────
+    conn = _conn()
+    c = conn.cursor()
     try:
         correlation_id = get_correlation_id(source, timestamp)
         event_dict = {
