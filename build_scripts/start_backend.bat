@@ -7,8 +7,8 @@ echo Flask Backend Server Launcher
 echo ========================================
 echo.
 
-REM Check if .env file exists
-if not exist "%~dp0.env" (
+REM Check if .env file exists (look in script dir first, then repo root)
+if not exist "%~dp0.env" if not exist "%~dp0..\.env" (
     echo WARNING: .env file not found!
     echo.
     echo Please run setup.ps1 first to create the configuration file:
@@ -20,8 +20,8 @@ if not exist "%~dp0.env" (
     exit /b 1
 )
 
-REM Check if virtual environment exists
-if not exist "%~dp0.venv\Scripts\activate.bat" (
+REM Check if virtual environment exists (allow repo-root .venv)
+if not exist "%~dp0.venv\Scripts\activate.bat" if not exist "%~dp0..\.venv\Scripts\activate.bat" (
     echo WARNING: Virtual environment not found!
     echo.
     echo Please run setup.ps1 first to create the virtual environment:
@@ -37,7 +37,12 @@ if not exist "%~dp0.venv\Scripts\activate.bat" (
 )
 
 echo Activating virtual environment...
-call "%~dp0.venv\Scripts\activate.bat"
+REM Prefer venv in script dir, fall back to repo root
+if exist "%~dp0.venv\Scripts\activate.bat" (
+    call "%~dp0.venv\Scripts\activate.bat"
+) else (
+    call "%~dp0..\.venv\Scripts\activate.bat"
+)
 
 echo.
 echo Starting Flask backend server...
@@ -46,8 +51,12 @@ echo.
 echo Press Ctrl+C to stop the server
 echo.
 
-REM Start the Flask application
-python "%~dp0backend\app.py"
+REM Start the Flask application (resolve path to repo-root backend)
+if exist "%~dp0backend\app.py" (
+    python "%~dp0backend\app.py"
+) else (
+    python "%~dp0..\backend\app.py"
+)
 
 pause
 

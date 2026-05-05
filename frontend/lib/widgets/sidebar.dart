@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../config/theme.dart';
 
-enum AppTab { dashboard, events, rules, approvals, history, simulation }
+enum AppTab { dashboard, events, rules, approvals, history, simulation, viewer }
 
 class AppSidebar extends StatefulWidget {
   final AppTab selected;
@@ -21,6 +21,7 @@ class _AppSidebarState extends State<AppSidebar> {
     (AppTab.rules,       Icons.rule_rounded,          'Rules'),
     (AppTab.approvals,   Icons.check_circle_outline,  'Approvals'),
     (AppTab.history,     Icons.history_rounded,        'History'),
+    (AppTab.viewer,      Icons.event_rounded,         'Event Viewer'),
     (AppTab.simulation,  Icons.science_rounded,        'Simulation'),
   ];
 

@@ -23,6 +23,7 @@ A lightweight, intelligent system for monitoring Windows Event Logs and automati
 - **🔄 Retractable Sidebar**: Collapsible navigation for better screen space management
 - **✅ Auto-Remediate Indicators**: Visual indicators for events eligible for auto-remediation
 - **➕ Quick Rule Creation**: Create rules directly from events with one click
+- **🔍 Comprehensive Event Viewer**: Advanced event inspection with filtering, search, and export capabilities
 
 ### Advanced Features
 - **✅ Approval Workflow**: Manual approval process for sensitive remediation actions
@@ -425,6 +426,76 @@ For sensitive operations:
 4. Review and approve/deny the request
 5. Check "History" tab for results
 
+### Using the Event Viewer
+
+The **Event Viewer** tab provides a comprehensive interface for exploring and analyzing all Windows events collected by the system.
+
+**Access the Event Viewer:**
+1. Open the dashboard at `http://localhost:5000`
+2. Click the **Event Viewer** tab in the sidebar
+3. You'll see a table of all events with detailed filtering options
+
+**Features:**
+
+**🔍 Search:**
+- Use the search bar to find events by any field
+- Searches across: Source, Message, Severity, Category, Event ID
+- Real-time filtering as you type
+
+**📊 Advanced Filtering:**
+- **Severity**: Filter by Critical, High, Medium, or Low
+- **Log Name**: Filter by System, Application, Security, or Simulation events
+- **Source**: Filter by event provider/source
+- **Date Range**: Select start and end dates (up to 30 days back)
+- **Combine Filters**: Use multiple filters together for precise results
+- **Clear Filters**: Quick button to reset all active filters
+
+**📋 Event Details:**
+1. Click the **ℹ️ icon** on any event row
+2. View complete event information including:
+   - Event ID and Source
+   - Severity and Category
+   - Full message text
+   - Timestamp
+   - Remediation status
+
+**📤 Export Data:**
+1. Click the **⋮ menu** in the top right
+2. Choose **Export as JSON** or **Export as CSV**
+3. Copy the exported data for external analysis, reporting, or archiving
+4. Useful for compliance, debugging, and trend analysis
+
+**🔄 Real-Time Updates:**
+- The viewer automatically refreshes every 5 seconds
+- New events from the monitor appear immediately
+- No manual refresh needed
+
+**Use Cases:**
+- **Troubleshooting**: Search for specific error codes or sources
+- **Analysis**: Use date range filtering to analyze trends over time
+- **Compliance**: Export events for audit trails and compliance reports
+- **Integration**: Export data to external monitoring or SIEM systems
+- **Performance**: Filter by specific categories (e.g., all Service Failures)
+
+**Example Workflows:**
+
+*Find all critical errors from the last 3 days:*
+1. Set Severity to "Critical"
+2. Click Date Range and select the past 3 days
+3. Events are filtered in real-time
+
+*Export all Application crashes for analysis:*
+1. Set Log Name to "Application"
+2. Set Source to "Application Error" (if available)
+3. Click the menu and select "Export as CSV"
+4. Open in Excel for detailed analysis
+
+*Investigate a specific service failure:*
+1. Use the search bar to find the Event ID (e.g., "7031")
+2. Click the ℹ️ icon to view full details
+3. Check the Message field for context
+4. Use "Create Rule" button from Warnings & Errors tab to set up remediation
+
 ---
 
 ## 🔧 Running as Windows Service (Production)
@@ -553,6 +624,18 @@ For more troubleshooting help, see **[INSTALLATION.md](INSTALLATION.md#troublesh
 - **🔄 Live Updates**: Auto-refreshes immediately when new remediations complete
 - **Type-Safe Data Parsing**: Robust handling of event IDs and mixed data types
 
+### Event Viewer Tab
+- **Comprehensive Event Inspection**: Full-featured event viewer with detailed event properties
+- **Advanced Filtering**: Filter by Event ID, Source, Severity, Category, Date Range, and Log Name
+- **Real-Time Updates**: Auto-refreshes every 5 seconds to show new events as they arrive
+- **Search Functionality**: Fast full-text search across all event fields
+- **Event Details**: View complete event information in an inspection modal
+- **Export Capabilities**: Export filtered events as JSON or CSV for external analysis
+- **Data Table View**: Sortable columns with horizontal scrolling for large datasets
+- **Multi-criterion Filtering**: Combine multiple filters to narrow down events
+- **Date Range Picker**: Filter events by specific date ranges (up to 30 days)
+- **Clear All Filters**: Quick button to reset all active filters
+
 ---
 
 ## 📋 Event Definitions
@@ -669,6 +752,7 @@ Rule-Based-Auto-Remediation-For-Windows-/
 │   │   ├── screens/
 │   │   │   ├── dashboard_screen.dart
 │   │   │   ├── events_screen.dart
+│   │   │   ├── event_viewer_screen.dart  # Comprehensive event viewer
 │   │   │   ├── rules_screen.dart
 │   │   │   ├── approvals_screen.dart
 │   │   │   ├── history_screen.dart
@@ -754,12 +838,16 @@ Rule-Based-Auto-Remediation-For-Windows-/
 ## 🎯 Recent Improvements (April 2026)
 
 ### ✅ Fixed in Latest Release
+- **Comprehensive Event Viewer** - New dedicated Event Viewer tab with advanced filtering, search, and export capabilities
+- **Real-Time Event Inspection** - Event details modal with full event properties
+- **Advanced Filtering** - Filter events by Severity, Source, Log Name, Event ID, and Date Range
+- **Export Functionality** - Export filtered events as JSON or CSV for external analysis
 - **Auto-Remediation History Refresh** - History tab now updates instantly when remediation completes
 - **Infinite Loop Prevention** - Dashboard and History screens no longer refresh continuously
 - **Type-Safe Data Parsing** - Backend /api/history endpoint handles mixed int/string event IDs robustly
 - **Consumer Pattern Integration** - RemediationService broadcasts to all interested screens
 - **Flutter Build Optimization** - Fixed PATH issues to enable consistent web builds
-- **Comprehensive Testing** - All 9 screens and 8 API categories verified working
+- **Comprehensive Testing** - All 10 screens and 8 API categories verified working
 
 ## 🚀 Future Enhancements
 
@@ -824,7 +912,7 @@ Built with:
 - ✅ Safe testing via Simulation tab before enabling auto-remediation
 
 **Get started in 4 simple steps:**
-1. Run `.\.setup.ps1` (automated setup)
+1. Run `\.\setup.ps1` (automated setup)
 2. Run `c:\flutter\bin\flutter build web --release` in `frontend/` (optional if pre-built)
 3. Run `start_backend.bat` (Flask API server)
 4. Run `start_event_monitor.bat` (Event collector)

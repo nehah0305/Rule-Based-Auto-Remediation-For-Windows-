@@ -15,6 +15,7 @@ import 'screens/rules_screen.dart';
 import 'screens/approvals_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/simulation_screen.dart';
+import 'screens/event_viewer_screen.dart';
 
 void main() {
   runApp(const RemediationApp());
@@ -65,6 +66,7 @@ class _AppShellState extends State<AppShell> {
     AppTab.rules:      'Rules',
     AppTab.approvals:  'Approvals',
     AppTab.history:    'Remediation History',
+    AppTab.viewer:     'Event Viewer',
     AppTab.simulation: 'Simulation Lab',
   };
 
@@ -74,6 +76,7 @@ class _AppShellState extends State<AppShell> {
     AppTab.rules       => const RulesScreen(),
     AppTab.approvals   => const ApprovalsScreen(),
     AppTab.history     => const HistoryScreen(),
+    AppTab.viewer      => const EventViewerScreen(),
     AppTab.simulation  => const SimulationScreen(),
   };
 
