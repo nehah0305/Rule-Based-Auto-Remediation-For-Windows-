@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
+﻿from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
 import subprocess
 import os
 import json
@@ -11,6 +11,7 @@ import time
 from db_init import init_db
 import models
 import event_log_monitor
+import task_scheduler
 
 # Load environment variables from .env file
 load_dotenv()
@@ -20,7 +21,7 @@ _filtered_events_cache = {'data': None, 'timestamp': 0, 'ttl': 15}
 
 app = Flask(__name__)
 
-# ─── CORS: allow Flutter dev server (port 8080) to hit the API ────────────────
+# â”€â”€â”€ CORS: allow Flutter dev server (port 8080) to hit the API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.after_request
 def add_cors_headers(response):
     origin = request.headers.get('Origin', '')
@@ -49,7 +50,7 @@ init_db()
 event_log_monitor.start_monitor()
 
 
-# ─── Flutter Web Frontend ────────────────────────────────────────────────────
+# â”€â”€â”€ Flutter Web Frontend â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Serve the Flutter build output. If build/web doesn't exist yet (dev mode),
 # fall back to the old index.html template.
 
@@ -74,9 +75,9 @@ def flutter_static(filename):
 
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #  Events
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route('/api/events', methods=['GET', 'POST'])
 def events():
@@ -113,7 +114,7 @@ def events():
         data.get('level'),
     )
 
-    # Match rules — now returns list of tuples with cooldown_active flag at [-1]
+    # Match rules â€” now returns list of tuples with cooldown_active flag at [-1]
     matched_tuples = models.match_rules_for_event(data)
     matched_info = []
 
@@ -135,7 +136,7 @@ def events():
         elif r[6] and cooldown_active:
             # Record a suppressed entry so the user can see it happened
             models.record_remediation(event_row_id, rid, 'suppressed',
-                                      'Auto-remediation suppressed — rule cooldown active')
+                                      'Auto-remediation suppressed â€” rule cooldown active')
 
     return jsonify({'status': 'ok', 'event_id': event_row_id, 'matched': matched_info})
 
@@ -221,9 +222,9 @@ def event_matches(event_id):
     return jsonify(matched_info)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #  Rules
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _rule_to_dict(r):
     return dict(
@@ -329,9 +330,9 @@ def test_rule(rule_id):
     })
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #  History
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route('/api/history', methods=['GET'])
 def history():
@@ -393,9 +394,9 @@ def history():
         return jsonify({'error': str(e), 'type': type(e).__name__}), 500
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #  Approvals / Requests
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route('/api/requests', methods=['GET', 'POST'])
 def requests_list():
@@ -447,9 +448,9 @@ def deny_request(req_id):
     return jsonify({'status': 'denied'})
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #  Event definitions & filtered events (CSV)
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route('/api/event-definitions', methods=['GET'])
 def event_definitions():
@@ -507,9 +508,9 @@ def populate_rules():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #  Alert Intelligence summary
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route('/api/intelligence/summary', methods=['GET'])
 def intelligence_summary():
@@ -523,9 +524,9 @@ def intelligence_summary():
         return jsonify({'error': str(e)}), 500
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #  Simulations
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route('/api/simulations/preferences/<sim_type>', methods=['GET'])
 def get_simulation_preference(sim_type):
@@ -2076,9 +2077,9 @@ def simulate_auditevents_auto_fix():
     })
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  High CPU Alert — Live Demo Simulation
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+#  High CPU Alert â€” Live Demo Simulation
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _HIGHCPU_EVENT_ID  = 9999
 _HIGHCPU_SOURCE    = 'AutoRemediationDemo'
@@ -2157,7 +2158,7 @@ def highcpu_inject():
         timestamp=now.isoformat(),
         category=_HIGHCPU_CATEGORY,
         severity='High',
-        description='Simulated High CPU Alert — DemoWorkload.exe spike to ' + str(cpu_pct) + '%',
+        description='Simulated High CPU Alert â€” DemoWorkload.exe spike to ' + str(cpu_pct) + '%',
         recommended_action='Run CPU throttle remediation (Remediate_HighCpuAlert.ps1)',
         level='Error',
     )
@@ -2208,9 +2209,9 @@ def highcpu_remediate():
     })
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Service Crash — Live Demo Simulation  (Event ID 7034)
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+#  Service Crash â€” Live Demo Simulation  (Event ID 7034)
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _SVCCRASH_EVENT_ID = 7034
 _SVCCRASH_SOURCE   = 'AutoRemediationDemo'
@@ -2290,7 +2291,7 @@ def servicecrash_inject():
         timestamp=now.isoformat(),
         category=_SVCCRASH_CATEGORY,
         severity='High',
-        description=f'Simulated Service Crash — PrintSpooler crashed {crash_count} time(s)',
+        description=f'Simulated Service Crash â€” PrintSpooler crashed {crash_count} time(s)',
         recommended_action='Run service restart remediation (Remediate_ServiceCrash.ps1)',
         level='Error',
     )
@@ -2424,9 +2425,9 @@ def live_alerts():
         return jsonify({'error': str(exc)}), 500
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #  Root Cause Variant Simulation - Demonstrates variant detection & remediation
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route('/api/simulations/root-cause-variants', methods=['POST'])
 def simulate_root_cause_variants():
@@ -2456,9 +2457,9 @@ def simulate_root_cause_variants():
         'detail': 'Demonstrating intelligent error classification and targeted remediation'
     })
     
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # VARIANT 1: HIGH MEMORY CRASH
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     
     event_time_1 = now - timedelta(minutes=5)
     event_message_1 = 'Service MSSQLSERVER crashed: out of memory condition, heap allocation failed'
@@ -2518,7 +2519,7 @@ def simulate_root_cause_variants():
             'status': 'success',
             'output': 'Service memory cache cleared. Service restarted successfully. Memory usage: 45% -> 12%',
         },
-        'result': '✓ RESOLVED - Memory issue fixed'
+        'result': 'âœ“ RESOLVED - Memory issue fixed'
     })
     
     timeline.append({
@@ -2528,9 +2529,9 @@ def simulate_root_cause_variants():
         'detail': 'Executed: Clear memory + Restart with monitoring [SUCCESS]'
     })
     
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # VARIANT 2: DEADLOCK CRASH
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     
     event_time_2 = now - timedelta(minutes=3)
     event_message_2 = 'Service DatabaseServer crashed: lock timeout waiting for database resource, deadlock detected'
@@ -2590,7 +2591,7 @@ def simulate_root_cause_variants():
             'status': 'success',
             'output': 'Killed 3 blocked threads. Released lock. Service restarted. Queries resumed.',
         },
-        'result': '✓ RESOLVED - Deadlock broken and recovered'
+        'result': 'âœ“ RESOLVED - Deadlock broken and recovered'
     })
     
     timeline.append({
@@ -2600,9 +2601,9 @@ def simulate_root_cause_variants():
         'detail': 'Executed: Kill locked threads + Restart [SUCCESS]'
     })
     
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # VARIANT 3: MISSING DEPENDENCY CRASH
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     
     event_time_3 = now - timedelta(minutes=1)
     event_message_3 = 'Service WebApp crashed: critical file not found - mscoree.dll missing from system'
@@ -2662,7 +2663,7 @@ def simulate_root_cause_variants():
             'status': 'alerted',
             'output': 'ALERT: Missing critical file detected. Operator notified. Awaiting manual intervention.',
         },
-        'result': '⚠ ESCALATED - Manual intervention required'
+        'result': 'âš  ESCALATED - Manual intervention required'
     })
     
     timeline.append({
@@ -2699,11 +2700,11 @@ def simulate_root_cause_variants():
     })
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #  Real Application Crash Detection & Remediation
 #  Detects actual crashes of monitored apps (e.g. notepad.exe) via Windows
 #  Event ID 1000 in the Application log, and relaunches them for real.
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import base64 as _base64
 import subprocess as _subprocess
@@ -2940,9 +2941,108 @@ def appcrash_remediate():
     })
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #  Server entry point
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+
+
+
 # ─────────────────────────────────────────────────────────────────────────────
+#  Task Scheduler Management
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/api/tasks', methods=['GET', 'POST'])
+def tasks():
+    """List all scheduled tasks or create a new one."""
+    if request.method == 'GET':
+        result = task_scheduler.list_tasks()
+        return jsonify(result)
+    
+    elif request.method == 'POST':
+        data = request.get_json(force=True)
+        result = task_scheduler.create_task(
+            task_name=data.get('task_name'),
+            display_name=data.get('display_name'),
+            description=data.get('description', ''),
+            task_type=data.get('task_type'),
+            script_path=data.get('script_path'),
+            script_content=data.get('script_content'),
+            schedule_type=data.get('schedule_type', 'once'),
+            schedule_value=data.get('schedule_value', ''),
+        )
+        return jsonify(result), 201 if result.get('success') else 400
+
+
+@app.route('/api/tasks/<int:task_id>', methods=['GET', 'PUT', 'DELETE'])
+def task_detail(task_id):
+    """Get, update, or delete a specific task."""
+    if request.method == 'GET':
+        result = task_scheduler.get_task(task_id)
+        return jsonify(result), 200 if result.get('success') else 404
+    
+    elif request.method == 'PUT':
+        data = request.get_json(force=True)
+        result = task_scheduler.update_task(
+            task_id=task_id,
+            display_name=data.get('display_name'),
+            description=data.get('description'),
+            schedule_type=data.get('schedule_type'),
+            schedule_value=data.get('schedule_value'),
+            script_content=data.get('script_content'),
+        )
+        return jsonify(result)
+    
+    elif request.method == 'DELETE':
+        result = task_scheduler.delete_task(task_id)
+        return jsonify(result)
+
+
+@app.route('/api/tasks/<int:task_id>/enable', methods=['POST'])
+def enable_task(task_id):
+    """Enable a scheduled task."""
+    result = task_scheduler.enable_task(task_id)
+    return jsonify(result)
+
+
+@app.route('/api/tasks/<int:task_id>/disable', methods=['POST'])
+def disable_task(task_id):
+    """Disable a scheduled task."""
+    result = task_scheduler.disable_task(task_id)
+    return jsonify(result)
+
+
+@app.route('/api/tasks/<int:task_id>/run', methods=['POST'])
+def run_task(task_id):
+    """Run a task immediately."""
+    result = task_scheduler.run_task_now(task_id)
+    return jsonify(result)
+
+
+@app.route('/api/tasks/<int:task_id>/logs', methods=['GET'])
+def task_logs(task_id):
+    """Get execution logs for a task."""
+    limit = int(request.args.get('limit', 50))
+    result = task_scheduler.get_task_logs(task_id, limit=limit)
+    return jsonify(result)
+
+
+@app.route('/api/tasks/<int:task_id>/register-windows', methods=['POST'])
+def register_task_windows(task_id):
+    """Register a task with Windows Task Scheduler."""
+    data = task_scheduler.get_task(task_id)
+    if not data.get('success'):
+        return jsonify({'error': 'Task not found'}), 404
+    
+    task = data.get('task')
+    result = task_scheduler.register_task_with_windows(
+        task_name=task.get('task_name'),
+        script_path=task.get('script_path'),
+        schedule_type=task.get('schedule_type'),
+        schedule_value=task.get('schedule_value'),
+    )
+    return jsonify(result)
+
 
 if __name__ == '__main__':
     host  = os.getenv('FLASK_HOST', '0.0.0.0')
@@ -2954,3 +3054,4 @@ if __name__ == '__main__':
     print(f"Access the dashboard at: http://localhost:{port}")
 
     app.run(host=host, port=port, debug=debug)
+

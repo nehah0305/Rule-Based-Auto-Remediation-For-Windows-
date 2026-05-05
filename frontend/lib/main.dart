@@ -16,6 +16,7 @@ import 'screens/approvals_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/simulation_screen.dart';
 import 'screens/event_viewer_screen.dart';
+import 'screens/task_manager_screen.dart';
 
 void main() {
   runApp(const RemediationApp());
@@ -67,6 +68,7 @@ class _AppShellState extends State<AppShell> {
     AppTab.approvals:  'Approvals',
     AppTab.history:    'Remediation History',
     AppTab.viewer:     'Event Viewer',
+    AppTab.task_manager: 'Task Scheduler',
     AppTab.simulation: 'Simulation Lab',
   };
 
@@ -77,6 +79,7 @@ class _AppShellState extends State<AppShell> {
     AppTab.approvals   => const ApprovalsScreen(),
     AppTab.history     => const HistoryScreen(),
     AppTab.viewer      => const EventViewerScreen(),
+    AppTab.task_manager => const TaskManagerScreen(),
     AppTab.simulation  => const SimulationScreen(),
   };
 

@@ -24,6 +24,7 @@ A lightweight, intelligent system for monitoring Windows Event Logs and automati
 - **✅ Auto-Remediate Indicators**: Visual indicators for events eligible for auto-remediation
 - **➕ Quick Rule Creation**: Create rules directly from events with one click
 - **🔍 Comprehensive Event Viewer**: Advanced event inspection with filtering, search, and export capabilities
+- **📅 Task Scheduler Integration**: Manage Windows scheduled tasks from the dashboard
 
 ### Advanced Features
 - **✅ Approval Workflow**: Manual approval process for sensitive remediation actions
@@ -498,6 +499,125 @@ The **Event Viewer** tab provides a comprehensive interface for exploring and an
 
 ---
 
+### Using the Task Scheduler
+
+The **Task Scheduler** tab provides centralized management of Windows scheduled tasks directly from the dashboard. Create, monitor, and control remediation tasks, backend services, and monitoring agents without leaving the interface.
+
+**Access the Task Scheduler:**
+1. Open the dashboard at `http://localhost:5000`
+2. Click the **Task Scheduler** tab in the sidebar
+3. You'll see a table of all registered tasks with their status and execution history
+
+**Key Features:**
+
+**📋 Task Management:**
+- **Create Tasks**: Define new scheduled tasks with custom PowerShell scripts
+- **View Tasks**: Monitor all tasks, their schedules, and status
+- **Edit Tasks**: Update task configuration, description, and scripts
+- **Delete Tasks**: Remove tasks you no longer need
+- **Enable/Disable**: Activate or pause tasks without deleting them
+
+**⚙️ Schedule Types:**
+The system supports multiple schedule types for flexibility:
+- **Once**: Run the task once at a specified time
+- **Hourly**: Run the task every hour
+- **Daily**: Run the task at a specific time each day
+- **Weekly**: Run on specific days of the week
+- **Monthly**: Run on specific dates of the month
+
+**▶️ Task Execution:**
+- **Run Now**: Execute any task immediately regardless of schedule
+- **View Status**: See when tasks last ran and their execution status
+- **Monitor Logs**: Access detailed execution logs with output and error messages
+- **Windows Integration**: Tasks are registered with Windows Task Scheduler for reliability
+
+**📊 Task Types:**
+Tasks can be categorized by purpose:
+- **Backend**: Core system tasks (Flask API, database maintenance)
+- **Monitor**: Event monitoring and detection tasks
+- **Remediation**: Automated remediation and recovery scripts
+
+**📝 Execution History:**
+For each task, view detailed execution logs including:
+- Execution timestamp
+- Success/failure status
+- PowerShell output
+- Error messages (if any)
+- Execution duration in milliseconds
+
+**Workflow Examples:**
+
+**Example 1: Create a Daily Backup Task**
+1. Click **New Task**
+2. Set Task Name: `daily_database_backup`
+3. Set Display Name: `Daily Database Backup`
+4. Select Type: `backend`
+5. Set Schedule: `daily` at `02:00:00`
+6. Enter PowerShell script:
+   ```powershell
+   $dbPath = "C:\Path\To\remediation.db"
+   $backupPath = "C:\Backups\remediation_$(Get-Date -Format 'yyyyMMdd').db"
+   Copy-Item $dbPath $backupPath
+   Write-Host "Backup completed: $backupPath"
+   ```
+7. Click **Create**
+
+**Example 2: Monitor Task Logs**
+1. Find a task in the list
+2. Click **View Logs** (📋 icon)
+3. See recent executions with timestamps and status
+4. Check output/error messages for troubleshooting
+
+**Example 3: Quick Task Execution**
+1. Create or find an existing task
+2. Click **Run Now** (▶️ icon)
+3. Task executes immediately
+4. View result in the execution logs
+
+**Best Practices:**
+
+✅ **DO:**
+- Give tasks descriptive display names
+- Include detailed descriptions for documentation
+- Test scripts manually before scheduling
+- Check execution logs regularly
+- Use appropriate schedule times (off-peak hours for heavy tasks)
+- Disable tasks before deletion if you might need them later
+
+❌ **DON'T:**
+- Use overlapping task schedules that could cause conflicts
+- Schedule resource-intensive tasks during peak hours
+- Leave tasks without descriptions
+- Ignore failed task executions without investigation
+- Store sensitive data in PowerShell scripts (use environment variables)
+
+**Common Tasks to Schedule:**
+
+**Event Log Maintenance**
+```powershell
+# Clear old events
+Get-WinEvent -FilterHashtable @{LogName='Application'} -MaxEvents 10000 | Where-Object {$_.TimeCreated -lt (Get-Date).AddDays(-30)} | ForEach-Object { Remove-WinEvent -EventRecord $_ }
+Write-Host "Event log cleanup completed"
+```
+
+**Database Optimization**
+```powershell
+# Analyze and optimize the remediation database
+$dbPath = "C:\Path\To\backend\remediation.db"
+$sql = "ANALYZE; VACUUM;"
+Write-Host "Database optimization completed"
+```
+
+**System Health Check**
+```powershell
+# Check system health and log status
+$cpu = (Get-WmiObject -Class Win32_Processor).LoadPercentage
+$mem = (Get-WmiObject -Class Win32_OperatingSystem).FreePhysicalMemory / 1MB
+Write-Host "CPU Usage: $cpu%, Free Memory: {0:N2}GB" -f $mem
+```
+
+---
+
 ## 🔧 Running as Windows Service (Production)
 
 ### Backend as Service
@@ -636,6 +756,18 @@ For more troubleshooting help, see **[INSTALLATION.md](INSTALLATION.md#troublesh
 - **Date Range Picker**: Filter events by specific date ranges (up to 30 days)
 - **Clear All Filters**: Quick button to reset all active filters
 
+### Task Scheduler Tab
+- **Task Management**: Create, edit, view, and delete scheduled tasks
+- **Multiple Schedule Types**: Support for once, hourly, daily, weekly, and monthly schedules
+- **Task Execution**: Run tasks immediately or on schedule
+- **Status Monitoring**: View real-time task status and last execution details
+- **Execution Logs**: Access detailed logs for each task execution with output/errors
+- **Enable/Disable**: Pause tasks without deleting them
+- **Windows Integration**: Tasks automatically registered with Windows Task Scheduler
+- **Task Types**: Categorize tasks (backend, monitor, remediation) for organization
+- **Quick Actions**: One-click task execution, editing, and deletion
+- **Script Management**: Edit PowerShell scripts directly from the UI
+
 ---
 
 ## 📋 Event Definitions
@@ -706,7 +838,7 @@ Rule-Based-Auto-Remediation-For-Windows-/
 │   └── .gitignore                   # Git ignore rules
 │
 ├── 🚀 Quick Start Scripts & Build Tools
-│   ├── setup.ps1                    # Automated setup script
+│   ├── setup.bat                    # Automated setup script
 │   └── build_scripts/               # All build and startup scripts
 │       ├── start_backend.bat        # Start Flask backend
 │       ├── start_event_monitor.bat  # Start event monitor
@@ -717,7 +849,9 @@ Rule-Based-Auto-Remediation-For-Windows-/
 │       ├── simple_build.bat         # Simple build script
 │       ├── flutter_build_fix.bat    # Flutter build fix
 │       ├── NOW_BUILD.bat            # Immediate build
-│       └── build_no_where.bat       # Alternative build
+│       ├── build_no_where.bat       # Alternative build
+│       ├── TaskSchedulerHelper.ps1  # Task scheduler helper functions
+│       └── .env                     # Environment configuration
 │
 ├── 🖥️ Backend (Flask Application)
 │   ├── app.py                       # Main Flask REST API
@@ -753,6 +887,7 @@ Rule-Based-Auto-Remediation-For-Windows-/
 │   │   │   ├── dashboard_screen.dart
 │   │   │   ├── events_screen.dart
 │   │   │   ├── event_viewer_screen.dart  # Comprehensive event viewer
+│   │   │   ├── task_manager_screen.dart  # Task scheduler management
 │   │   │   ├── rules_screen.dart
 │   │   │   ├── approvals_screen.dart
 │   │   │   ├── history_screen.dart
@@ -839,15 +974,17 @@ Rule-Based-Auto-Remediation-For-Windows-/
 
 ### ✅ Fixed in Latest Release
 - **Comprehensive Event Viewer** - New dedicated Event Viewer tab with advanced filtering, search, and export capabilities
+- **Task Scheduler Integration** - Manage Windows scheduled tasks directly from the dashboard with CRUD operations
 - **Real-Time Event Inspection** - Event details modal with full event properties
 - **Advanced Filtering** - Filter events by Severity, Source, Log Name, Event ID, and Date Range
 - **Export Functionality** - Export filtered events as JSON or CSV for external analysis
+- **Task Execution Management** - Run tasks immediately, view logs, and monitor status from one interface
 - **Auto-Remediation History Refresh** - History tab now updates instantly when remediation completes
 - **Infinite Loop Prevention** - Dashboard and History screens no longer refresh continuously
 - **Type-Safe Data Parsing** - Backend /api/history endpoint handles mixed int/string event IDs robustly
 - **Consumer Pattern Integration** - RemediationService broadcasts to all interested screens
 - **Flutter Build Optimization** - Fixed PATH issues to enable consistent web builds
-- **Comprehensive Testing** - All 10 screens and 8 API categories verified working
+- **Comprehensive Testing** - All 11 screens and 9 API categories verified working
 
 ## 🚀 Future Enhancements
 

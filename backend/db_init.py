@@ -86,6 +86,42 @@ def init_db():
     )
     ''')
 
+    # ─── Task Scheduler Tables ──────────────────────────────────────────
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS scheduled_tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_name TEXT UNIQUE,
+        display_name TEXT,
+        description TEXT,
+        task_type TEXT,
+        script_path TEXT,
+        script_content TEXT,
+        schedule_type TEXT,
+        schedule_value TEXT,
+        enabled INTEGER DEFAULT 1,
+        created_at TEXT,
+        updated_at TEXT,
+        last_run_time TEXT,
+        last_run_status TEXT,
+        next_run_time TEXT
+    )
+    ''')
+
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS task_execution_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id INTEGER,
+        execution_time TEXT,
+        status TEXT,
+        exit_code INTEGER,
+        output TEXT,
+        error_output TEXT,
+        duration_ms INTEGER,
+        created_at TEXT,
+        FOREIGN KEY (task_id) REFERENCES scheduled_tasks(id)
+    )
+    ''')
+
     # ─── Root Cause Variant Tables ───────────────────────────────────────
     # Tracks detected root cause variants for errors with multiple causes
     c.execute('''
