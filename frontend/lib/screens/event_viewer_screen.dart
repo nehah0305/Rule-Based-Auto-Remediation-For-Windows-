@@ -440,13 +440,20 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
                                               DataCell(SeverityBadge(event.severity ?? 'Unknown')),
                                               DataCell(Text(event.category ?? '-')),
                                               DataCell(
-                                                Container(
-                                                  constraints: const BoxConstraints(maxWidth: 240),
-                                                  child: Text(
-                                                    event.message ?? '-',
-                                                    maxLines: 2,
-                                                    overflow: TextOverflow.ellipsis,
-                                                  ),
+                                                LayoutBuilder(
+                                                  builder: (ctx, constraints) {
+                                                    final maxW = (constraints.maxWidth.isFinite && constraints.maxWidth > 0)
+                                                        ? (constraints.maxWidth * 0.45).clamp(160.0, 640.0)
+                                                        : 320.0;
+                                                    return ConstrainedBox(
+                                                      constraints: BoxConstraints(maxWidth: maxW),
+                                                      child: Text(
+                                                        event.message ?? '-',
+                                                        maxLines: 2,
+                                                        overflow: TextOverflow.ellipsis,
+                                                      ),
+                                                    );
+                                                  },
                                                 ),
                                               ),
                                               DataCell(Text(event.timestamp?.toString().substring(0, 16) ?? '-')),
@@ -613,11 +620,12 @@ class _DetailRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 100,
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 72, maxWidth: 160),
             child: Text(
               label,
               style: const TextStyle(fontWeight: FontWeight.w600),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
           Expanded(
