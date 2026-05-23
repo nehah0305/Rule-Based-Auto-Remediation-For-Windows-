@@ -12,8 +12,20 @@
 # -----------------------------------------------------------------------------
 
 param(
-    [string]$AppName = "notepad"
+    [string]$AppName = ""
 )
+
+# Extract dynamic AppName from the event message if not provided
+if (-not $AppName -and $env:RM_MESSAGE) {
+    if ($env:RM_MESSAGE -match "Faulting application name:\s*([^\,]+)") {
+        $AppName = $matches[1].Trim() -replace '\.exe$', ''
+    }
+}
+
+if (-not $AppName) {
+    Write-Host "[ERROR] Could not determine application name from event message."
+    exit 1
+}
 
 # Fix PATH dynamically in case the parent process has a corrupted environment path
 $env:Path += ";C:\Windows\System32;C:\Windows"

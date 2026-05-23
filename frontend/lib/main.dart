@@ -11,7 +11,6 @@ import 'widgets/live_alert_popup.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/events_screen.dart';
 import 'screens/rules_screen.dart';
-import 'screens/approvals_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/simulation_screen.dart';
 import 'screens/event_viewer_screen.dart';
@@ -70,13 +69,13 @@ class _AppShellState extends State<AppShell> {
   };
 
   Widget _screen(AppTab tab) => switch (tab) {
-    AppTab.dashboard => const DashboardScreen(),
-    AppTab.events => const EventsScreen(),
-    AppTab.rules => const RulesScreen(),
-    AppTab.approvals => const ApprovalsScreen(),
-    AppTab.history => const HistoryScreen(),
-    AppTab.viewer => const EventViewerScreen(),
-    AppTab.simulation => const SimulationScreen(),
+    AppTab.dashboard   => const DashboardScreen(),
+    AppTab.events      => const EventsScreen(),
+    AppTab.rules       => const RulesScreen(),
+    AppTab.approvals   => const Center(child: Text('Approvals coming soon', style: TextStyle(color: Colors.white))),
+    AppTab.history     => const HistoryScreen(),
+    AppTab.viewer      => const EventViewerScreen(),
+    AppTab.simulation  => const SimulationScreen(),
     AppTab.taskScheduler => const TaskSchedulerScreen(),
   };
 

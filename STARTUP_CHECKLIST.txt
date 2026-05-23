@@ -1,0 +1,159 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                  BACKEND STARTUP - CHECKLIST                              ║
+║                   "Backend unreachable" FIX APPLIED                        ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ STEP 1: CHOOSE YOUR STARTUP METHOD                                      │
+└─────────────────────────────────────────────────────────────────────────┘
+
+   ☐ OPTION A: PowerShell (Recommended) ⭐
+     • Run as Administrator
+     • Execute: .\start_backend.ps1
+     • Most comprehensive diagnostics
+
+   ☐ OPTION B: Batch File
+     • Run as Administrator  
+     • Execute: start_backend_fixed.bat
+     • Good alternative to PowerShell
+
+   ☐ OPTION C: Manual
+     • For debugging/development
+     • See BACKEND_FIX_SUMMARY.md for steps
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ STEP 2: VERIFY STARTUP COMPLETES                                        │
+└─────────────────────────────────────────────────────────────────────────┘
+
+During startup, you should see:
+   ☐ "Python found" 
+   ☐ "Virtual environment created/activated"
+   ☐ "Dependencies installed"
+   ☐ ".env file created"
+   ☐ "Database initialized"
+   ☐ "Port 5000 available"
+   ☐ "Flask server starting..."
+
+If any fails → See TROUBLESHOOTING section in BACKEND_CONNECTION_FIX.md
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ STEP 3: VERIFY BACKEND IS RUNNING                                       │
+└─────────────────────────────────────────────────────────────────────────┘
+
+Test in browser (copy/paste one at a time):
+
+   ☐ http://localhost:5000/api/health
+     Expected: {"status":"ok"}
+     If ✓ → Backend is responding
+
+   ☐ http://localhost:5000/api/monitor/status  
+     Expected: {"running":true/false, "events_ingested":N}
+     If ✓ → Event monitor connected
+
+   ☐ http://localhost:5000
+     Expected: Dashboard loads WITHOUT error message
+     If ✓ → Everything working!
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ STEP 4: VERIFY DASHBOARD                                                │
+└─────────────────────────────────────────────────────────────────────────┘
+
+Open: http://localhost:5000
+
+Dashboard should show:
+   ☐ No red error banner at top
+   ☐ "Backend unreachable" message GONE
+   ☐ Event stats visible
+   ☐ All tabs accessible (Dashboard, Events, Rules, etc.)
+   ☐ Can click between sections without errors
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ STEP 5: QUICK FUNCTIONALITY TEST                                        │
+└─────────────────────────────────────────────────────────────────────────┘
+
+   ☐ Check Events tab
+     - Should load event list (even if empty)
+     - No "Backend unreachable" error
+
+   ☐ Check Rules tab
+     - Should show configured remediation rules
+     - Can view rule details
+
+   ☐ Check History tab
+     - Should load remediation history
+     - Can filter/sort results
+
+   ☐ Check Simulation tab
+     - Can run simulation scenarios
+     - Results display without errors
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ DEBUGGING (IF SOMETHING GOES WRONG)                                      │
+└─────────────────────────────────────────────────────────────────────────┘
+
+❌ Still seeing "Backend unreachable"?
+   ☐ Flask app is not running → Start it with startup script
+   ☐ Port 5000 in use → Change FLASK_PORT in backend/.env
+   ☐ Check browser console for errors (F12 → Console tab)
+
+❌ Startup script fails?
+   ☐ Run as Administrator → Right-click, "Run as administrator"
+   ☐ Check Python installed → python --version in Command Prompt
+   ☐ Missing pip? → python -m pip install --upgrade pip
+
+❌ "Connection refused"?
+   ☐ Flask not started → Check console for startup messages
+   ☐ Wrong port? → Check browser address bar
+   ☐ Firewall blocking? → Add exception for Python.exe
+
+❌ "Database locked"?
+   ☐ Delete backend/rules.db
+   ☐ Restart Flask
+   ☐ Recreates database automatically
+
+📋 Detailed help: See BACKEND_CONNECTION_FIX.md
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ WHAT WAS FIXED                                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+
+   ✓ Created backend/.env configuration
+   ✓ Added /api/health endpoint (always works)
+   ✓ Better error handling in /api/monitor/status
+   ✓ Event monitor won't crash Flask
+   ✓ Database directory auto-creation
+   ✓ Comprehensive startup diagnostics
+   ✓ Added SQLAlchemy to dependencies
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ SUCCESS INDICATORS                                                       │
+└─────────────────────────────────────────────────────────────────────────┘
+
+✅ All fixed when:
+   • Browser shows dashboard (no error banner)
+   • http://localhost:5000/api/health returns 200
+   • Can navigate all dashboard tabs
+   • Events appear in Event list
+   • Rules are visible
+   • Simulation scenarios run
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ QUICK REFERENCE                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+
+Startup:        .\start_backend.ps1
+Test health:    http://localhost:5000/api/health
+Dashboard:      http://localhost:5000
+Logs:           backend/data/remediation_system.log
+Config:         backend/.env
+Help:           BACKEND_CONNECTION_FIX.md
+
+═══════════════════════════════════════════════════════════════════════════
+
+                    🎉 YOU'RE ALL SET! 🎉
+
+             The backend should now work perfectly.
+        If you encounter any issues, check BACKEND_CONNECTION_FIX.md
+                    for comprehensive troubleshooting.
+
+═══════════════════════════════════════════════════════════════════════════

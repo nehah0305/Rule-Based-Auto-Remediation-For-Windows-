@@ -1,0 +1,97 @@
+═══════════════════════════════════════════════════════════════════════════════
+                    BACKEND FIX - QUICK START (5 MINUTES)
+═══════════════════════════════════════════════════════════════════════════════
+
+YOUR PROBLEM:  "Backend unreachable - 404 Route not found"
+
+WHY IT HAPPENED:
+  ❌ Missing .env configuration file
+  ❌ Event monitor failing to initialize  
+  ❌ No health check endpoint
+
+═══════════════════════════════════════════════════════════════════════════════
+                           INSTANT FIX (Choose One)
+═══════════════════════════════════════════════════════════════════════════════
+
+OPTION A: POWERSHELL (BEST - Recommended) ⭐
+───────────────────────────────────────────────────────────────────────────────
+1. Open PowerShell as Administrator
+2. Run this command (copy/paste):
+
+   cd C:\Users\bios\Desktop\unisys-ab\Rule-Based-Auto-Remediation-For-Windows-
+   .\start_backend.ps1
+
+   → Then open browser to: http://localhost:5000
+
+
+OPTION B: BATCH FILE
+───────────────────────────────────────────────────────────────────────────────
+1. Open Command Prompt as Administrator
+2. Run:
+   
+   cd C:\Users\bios\Desktop\unisys-ab\Rule-Based-Auto-Remediation-For-Windows-
+   start_backend_fixed.bat
+
+   → Then open browser to: http://localhost:5000
+
+
+OPTION C: MANUAL (For debugging)
+───────────────────────────────────────────────────────────────────────────────
+cd backend
+python -m venv _env
+_env\Scripts\Activate.ps1
+pip install -r requirements.txt
+python db_init.py
+python app.py
+
+═══════════════════════════════════════════════════════════════════════════════
+                          VERIFY IT WORKS (30 seconds)
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ Check 1: Health Endpoint
+   Open: http://localhost:5000/api/health
+   Should show: {"status":"ok"}
+
+✅ Check 2: Dashboard
+   Open: http://localhost:5000
+   Should load WITHOUT "Backend unreachable" error
+
+✅ Check 3: Monitor Status  
+   Open: http://localhost:5000/api/monitor/status
+   Should show event monitor stats
+
+═══════════════════════════════════════════════════════════════════════════════
+                          WHAT WAS FIXED
+═══════════════════════════════════════════════════════════════════════════════
+
+File Changes:
+  ✓ Created: backend/.env (configuration)
+  ✓ Updated: backend/app.py (added /api/health endpoint)
+  ✓ Updated: backend/db_init.py (better error handling)
+  ✓ Created: start_backend.ps1 (startup with diagnostics)
+  ✓ Created: start_backend_fixed.bat (batch startup)
+
+Issue Fixes:
+  ✓ Missing .env configuration → FIXED
+  ✓ No health endpoint → FIXED (added /api/health)
+  ✓ Event monitor crashes → FIXED (error handling)
+  ✓ Missing data directory → FIXED
+  ✓ Poor diagnostics → FIXED (startup scripts)
+
+═══════════════════════════════════════════════════════════════════════════════
+                          TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════════════
+
+Problem                          | Solution
+─────────────────────────────────┼──────────────────────────────────
+Port 5000 already in use         | Edit backend/.env: FLASK_PORT=5001
+ModuleNotFoundError              | Run: pip install -r requirements.txt
+database is locked               | Delete backend/rules.db and restart
+Cannot find powershell           | Use batch file (start_backend_fixed.bat)
+Permission denied                | Run as Administrator
+
+═══════════════════════════════════════════════════════════════════════════════
+
+If still having issues, see: BACKEND_CONNECTION_FIX.md (comprehensive guide)
+
+═══════════════════════════════════════════════════════════════════════════════

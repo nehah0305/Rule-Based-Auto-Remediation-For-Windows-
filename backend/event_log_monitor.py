@@ -95,6 +95,7 @@ _monitor_state = {
     'errors':          [],     # last N error messages from poll failures
 }
 _state_lock = threading.Lock()
+_poll_lock = threading.Lock()
 
 logger = logging.getLogger('event_log_monitor')
 logging.basicConfig(level=logging.INFO,
@@ -140,13 +141,16 @@ param($Since, $MaxEvents, $LogNames, $Levels)
 $levelList = $Levels -split ',' | ForEach-Object { [int]$_ }
 $logList   = $LogNames -split ','
 try {
-    $parsedDate = [datetime]::ParseExact($Since, 'yyyy-MM-ddTHH:mm:ss', [System.Globalization.CultureInfo]::InvariantCulture)
+    # BUGFIX: FilterHashtable with StartTime returns 0 events in PowerShell 5.1
+    # WORKAROUND: Omit StartTime from FilterHashtable, fetch events, then filter by TimeCreated in pipeline
+    $parsedDate = [datetime]$Since
     $filter = @{
         LogName   = $logList
         Level     = $levelList
-        StartTime = $parsedDate
     }
-    $events = Get-WinEvent -FilterHashtable $filter -MaxEvents $MaxEvents -ErrorAction Stop |
+    $events = Get-WinEvent -FilterHashtable $filter -MaxEvents 5000 -ErrorAction Stop |
+              Where-Object { $_.TimeCreated -ge $parsedDate } |
+              Select-Object -First $MaxEvents |
               Select-Object Id, LogName, ProviderName, Message, TimeCreated, Level, LevelDisplayName
     if ($events) { $events | ConvertTo-Json -Depth 3 -Compress } else { '[]' }
 } catch [System.Exception] {
@@ -162,7 +166,7 @@ def _fetch_windows_events(since: datetime) -> list:
     handle multi-line scripts and parameters.
     """
     import base64
-    since_str = since.strftime('%Y-%m-%dT%H:%M:%S')
+    since_str = since.isoformat()
     levels_str = ','.join(str(l) for l in WATCH_LEVELS)
     logs_str   = ','.join(WATCH_LOGS)
 
@@ -268,8 +272,8 @@ def _process_event(raw: dict) -> int:
         'source_type': 'eventlog',
     }
 
-    # Store the event — pass enriched fields so the DB row has category populated
-    row_id = models.add_event(
+    # Store the event - pass enriched fields so the DB row has category populated
+    row_id, status = models.add_event(
         event_id           = event_id,
         log_name           = log_name,
         source             = source,
@@ -281,7 +285,13 @@ def _process_event(raw: dict) -> int:
         recommended_action = catalog_action,
         level              = severity,
         source_type        = 'eventlog',
+        return_status      = True
     )
+
+    # Prevent running remediation multiple times for identical duplicate events polled closely
+    if status == 'DUPLICATE_POLL':
+        logger.debug(f'[MONITOR] Event {event_id} ({source}) at {timestamp} is a duplicate poll, skipping rule matching.')
+        return row_id
 
     # ── [IMPROVEMENT 1] Chronological Event Correlation Engine ────────────────
     # Multi-Event Inference: before matching rules, check if any co-related events
@@ -323,7 +333,7 @@ def _process_event(raw: dict) -> int:
     
     if event_id == '1000' and message:  # Application crash
         faulting_module = models.detect_faulting_module(message)
-        if faulting_module and models.is_core_os_module(faulting_module):
+        if faulting_module and models.should_escalate_to_system_repair(faulting_module, message):
             is_os_module_crash = True
             extra_env['RM_FAULTING_MODULE']         = faulting_module
             extra_env['RM_ESCALATION_REASON']       = f'Core OS module crash: {faulting_module}'
@@ -394,8 +404,8 @@ def _process_event(raw: dict) -> int:
         logger.info(f'[REVIEW] Event {event_id} ({source}) — manual review required')
     else:
         for rule_tuple in matched:
-            cooldown_active = rule_tuple[15] if len(rule_tuple) > 15 else False
-            regex_captures  = {**(rule_tuple[16] if len(rule_tuple) > 16 else {}), **extra_env}
+            cooldown_active = rule_tuple[16] if len(rule_tuple) > 16 else False
+            regex_captures  = {**(rule_tuple[17] if len(rule_tuple) > 17 else {}), **extra_env}
             rid             = rule_tuple[0]
             auto_remediate  = rule_tuple[6]
             rule_name       = rule_tuple[1]
@@ -428,36 +438,37 @@ def _process_event(raw: dict) -> int:
 
 def _poll():
     """One poll cycle: fetch new events, process each one."""
-    since    = _load_watermark()
-    new_high = since   # will advance after each event
+    with _poll_lock:
+        since    = _load_watermark()
+        new_high = since   # will advance after each event
+    
+        raw_events = _fetch_windows_events(since)
+        ingested   = 0
+    
+        for raw in raw_events:
+            try:
+                _process_event(raw)
+                ingested += 1
 
-    raw_events = _fetch_windows_events(since)
-    ingested   = 0
-
-    for raw in raw_events:
-        try:
-            _process_event(raw)
-            ingested += 1
-
-            # Advance watermark to the latest event seen
-            ts_raw = raw.get('TimeCreated')
-            if ts_raw:
-                try:
-                    evt_dt = datetime.fromisoformat(_parse_timestamp(ts_raw).replace('Z', '+00:00'))
-                    if evt_dt > new_high:
-                        new_high = evt_dt
-                except Exception:
-                    pass
-        except Exception as e:
-            logger.exception(f'Failed processing event: {e}')
-
-    if ingested:
-        logger.info(f'[MONITOR] Ingested {ingested} event(s) from Windows Event Log')
-        # Move watermark forward by 1 second past last event to avoid re-ingesting
-        from datetime import timedelta
-        _save_watermark(new_high + timedelta(seconds=1))
-
-    return ingested
+                # Advance watermark to the latest event seen
+                ts_raw = raw.get('TimeCreated')
+                if ts_raw:
+                    try:
+                        evt_dt = datetime.fromisoformat(_parse_timestamp(ts_raw).replace('Z', '+00:00'))
+                        if evt_dt > new_high:
+                            new_high = evt_dt
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.exception(f'Failed processing event: {e}')
+    
+        if ingested:
+            logger.info(f'[MONITOR] Ingested {ingested} event(s) from Windows Event Log')
+            # Move watermark forward by 1 millisecond past last event to avoid re-ingesting
+            from datetime import timedelta
+            _save_watermark(new_high + timedelta(milliseconds=1))
+    
+        return ingested
 
 
 def _monitor_loop():

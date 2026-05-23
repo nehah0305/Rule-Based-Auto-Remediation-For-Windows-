@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
+import 'dart:async';
 import '../config/theme.dart';
 import '../services/api_service.dart';
 import '../services/remediation_service.dart';
@@ -19,7 +20,8 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final _api = ApiService();
   bool _loading = true;
-  int _lastRemediationCount = 0;  // Track previous remediation count
+  int _lastRemediationCount = 0;
+  Timer? _refreshTimer;
 
   List<AppEvent> _events = [];
   List<HistoryEntry> _history = [];
@@ -27,18 +29,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _pendingApprovals = 0;
   int _totalRules = 0;
   int _manualReview = 0;
+  int _totalHistory = 0;
+  Map<String, dynamic> _dashboardStats = {};
 
   @override
-  void initState() { 
-    super.initState(); 
+  void initState() {
+    super.initState();
     _load();
+    // Real 30-second independent auto-refresh
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) _load();
+    });
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     super.dispose();
   }
-
 
   Future<void> _load() async {
     if (!mounted) return;
@@ -46,20 +54,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final results = await Future.wait([
         _api.getFilteredEvents(),
-        _api.getHistory(),
+        _api.getHistory(limit: 8),
         _api.getRules(),
         _api.getRequests(status: 'pending'),
         _api.getIntelligenceSummary(),
         _api.getManualReviewEvents(),
+        _api.getDashboardStats(),
       ]);
       if (!mounted) return;
+      final histData = results[1] as Map<String, dynamic>;
       setState(() {
         _events           = results[0] as List<AppEvent>;
-        _history          = results[1] as List<HistoryEntry>;
+        _history          = histData['items'] as List<HistoryEntry>;
+        _totalHistory     = histData['total'] as int;
         _totalRules       = (results[2] as List).length;
         _pendingApprovals = (results[3] as List).length;
         _intel            = results[4] as IntelligenceSummary;
         _manualReview     = (results[5] as List).length;
+        _dashboardStats   = results[6] as Map<String, dynamic>;
         _loading = false;
       });
     } catch (e) {
@@ -69,15 +81,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // Build chart data
   Map<String, int> get _bySeverity {
-    final m = <String, int>{};
-    for (final e in _events) { m[(e.severity ?? 'Unknown')] = (m[e.severity ?? 'Unknown'] ?? 0) + 1; }
-    return m;
+    if (_dashboardStats['by_severity'] == null) return {};
+    return Map<String, int>.from(_dashboardStats['by_severity']);
   }
 
   Map<String, int> get _byCategory {
-    final m = <String, int>{};
-    for (final e in _events) { m[(e.category ?? 'Unknown')] = (m[e.category ?? 'Unknown'] ?? 0) + 1; }
-    return m;
+    if (_dashboardStats['by_category'] == null) return {};
+    return Map<String, int>.from(_dashboardStats['by_category']);
   }
 
   @override
@@ -133,19 +143,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         crossAxisSpacing: 16, mainAxisSpacing: 16,
                         childAspectRatio: constraints.maxWidth > 700 ? 2.4 : 2.0,
                         children: [
-                          StatCard(label: 'Errors & Warnings', value: '${_events.length}',
+                          StatCard(label: 'Errors & Warnings', value: '${_intel.totalEvents}',
                               icon: Icons.warning_amber_rounded, accentColor: AppTheme.accent),
                           StatCard(label: 'Active Rules', value: '$_totalRules',
                               icon: Icons.rule_rounded, accentColor: AppTheme.accentGreen),
                           StatCard(label: 'Pending Approvals', value: '$_pendingApprovals',
                               icon: Icons.schedule_rounded, accentColor: AppTheme.accentYellow),
-                          StatCard(label: 'Remediations', value: '${_history.length}',
+                          StatCard(label: 'Remediations', value: '$_totalHistory',
                               icon: Icons.history_rounded, accentColor: const Color(0xFF17a2b8)),
                         ],
                       );
                     }),
                     const SizedBox(height: 20),
-                    if (_manualReview > 0) _ManualReviewBanner(count: _manualReview),
+                    if (_manualReview > 0) _ManualReviewBanner(
+                        count: _manualReview,
+                        onNavigateToEvents: () {
+                          // Navigate to Event Viewer tab via callback not available here;
+                          // show snackbar instead to guide user
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text('Go to Event Viewer tab → filter by needs manual review'),
+                            behavior: SnackBarBehavior.floating,
+                            margin: EdgeInsets.all(16),
+                          ));
+                        }),
                     if (_manualReview > 0) const SizedBox(height: 16),
                     LayoutBuilder(builder: (ctx, constraints) {
                       final wide = constraints.maxWidth > 700;
@@ -189,7 +209,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 // ── Manual Review Banner ────────────────────────────────────────────────────
 class _ManualReviewBanner extends StatelessWidget {
   final int count;
-  const _ManualReviewBanner({required this.count});
+  final VoidCallback onNavigateToEvents;
+  const _ManualReviewBanner({required this.count, required this.onNavigateToEvents});
 
   @override
   Widget build(BuildContext context) => Container(
@@ -211,7 +232,7 @@ class _ManualReviewBanner extends StatelessWidget {
             style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
       ])),
       TextButton(
-        onPressed: () {},
+        onPressed: onNavigateToEvents,
         style: TextButton.styleFrom(
           backgroundColor: AppTheme.accentRed, foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -369,7 +390,7 @@ class _IntelligenceCard extends StatelessWidget {
           SizedBox(width: 8),
           Text('Alert Intelligence Summary', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
           Spacer(),
-          Text('Auto-updated every 5s', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
+          Text('Refreshes every 30s', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
         ]),
       ),
       Padding(

@@ -16,6 +16,8 @@ class _EventsScreenState extends State<EventsScreen> {
   List<AppEvent> _events = [];
   String _lastUpdated = '';
   String _searchQuery = '';
+  int _currentPage = 0;
+  static const int _pageSize = 20;
 
   @override
   void initState() { super.initState(); _load(); }
@@ -26,7 +28,10 @@ class _EventsScreenState extends State<EventsScreen> {
       _events = await _api.getFilteredEvents();
       _lastUpdated = DateTime.now().toString().substring(0, 16);
     } catch (_) {}
-    if (mounted) setState(() => _loading = false);
+    if (mounted) setState(() {
+      _loading = false;
+      _currentPage = 0;
+    });
   }
 
   List<AppEvent> get _filtered {
@@ -39,6 +44,10 @@ class _EventsScreenState extends State<EventsScreen> {
       (e.category ?? '').toLowerCase().contains(q) ||
       '${e.eventId}'.contains(q)
     ).toList();
+  }
+
+  List<AppEvent> get _paginatedFiltered {
+    return _filtered.skip(_currentPage * _pageSize).take(_pageSize).toList();
   }
 
   Future<void> _dismissReview(int id) async {
@@ -102,7 +111,10 @@ class _EventsScreenState extends State<EventsScreen> {
               Padding(
                 padding: const EdgeInsets.all(12),
                 child: TextField(
-                  onChanged: (v) => setState(() => _searchQuery = v),
+                  onChanged: (v) => setState(() {
+                    _searchQuery = v;
+                    _currentPage = 0;
+                  }),
                   decoration: const InputDecoration(
                     hintText: 'Search events…',
                     prefixIcon: Icon(Icons.search, size: 18),
@@ -115,9 +127,27 @@ class _EventsScreenState extends State<EventsScreen> {
                     ? const Center(child: CircularProgressIndicator(color: AppTheme.accent))
                     : Theme(
                         data: tableTheme,
-                        child: _EventsTable(events: _filtered, onDismiss: _dismissReview, onMatches: _showMatches),
+                        child: _EventsTable(events: _paginatedFiltered, onDismiss: _dismissReview, onMatches: _showMatches),
                       ),
               ),
+              if (!_loading && _filtered.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.chevron_left),
+                        onPressed: _currentPage > 0 ? () => setState(() => _currentPage--) : null,
+                      ),
+                      Text('Page ${_currentPage + 1} of ${(_filtered.length / _pageSize).ceil()}'),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_right),
+                        onPressed: (_currentPage + 1) * _pageSize < _filtered.length ? () => setState(() => _currentPage++) : null,
+                      ),
+                    ],
+                  ),
+                ),
             ]),
           ),
         ),

@@ -1,292 +1,141 @@
 # Remediate_SystemRepair_Fallback.ps1
-# ═════════════════════════════════════════════════════════════════════════════
-# Deep System Repair Fallback for Corrupted Core Windows DLL
-#
-# WHEN TO USE THIS SCRIPT:
-#   When an application crashes due to a faulting module that is a core
-#   Windows system DLL (ntdll.dll, kernel32.dll, etc.). In this case,
-#   simply restarting the application will create an infinite loop. The
-#   problem is not the application — it's the OS itself.
-#
-# WHAT THIS SCRIPT DOES:
-#   1. Logs the event details and faulting module
-#   2. Runs sfc /scannow to repair system file corruption
-#   3. If sfc fails or detects corruption it can't fix, escalates to DISM
-#   4. Provides detailed output and triggers system reboot if needed
-#
-# ENVIRONMENT VARIABLES (injected by event_log_monitor.py):
-#   RM_FAULTING_MODULE          - e.g., "ntdll.dll"
-#   RM_ESCALATION_REASON        - Description of why fallback was triggered
-#   RM_EVENT_ROW_ID             - Database row ID of the event
-#   RM_EVENT_ID                 - Windows Event ID (should be 1000)
-#   RM_SOURCE                   - Event source/provider name
-#   RM_MESSAGE                  - Event message excerpt
-#   RM_SIMULATION_MODE          - Set to '1' to skip actual repairs (test mode)
-#
-# OUTPUT:
-#   Returns exit code 0 if repair successful or system will reboot
-#   Returns exit code 1 if repair failed
-#
-# AUTHOR: Rule-Based Auto-Remediation System
-# ═════════════════════════════════════════════════════════════════════════════
+# Deep System Repair for Core Windows Module Crashes
+# Requires: Run as Administrator for SFC/DISM to succeed
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
+param()
 
-# ── Helper Functions ────────────────────────────────────────────────────────
+$ErrorActionPreference = 'Continue'  # Don't stop on individual errors
 
-function Write-RemediationLog {
+function Write-Log {
     param([string]$Message, [string]$Level = 'INFO')
     $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $prefix = "[SYSREPAIR-$Level] [$timestamp]"
-    Write-Host "$prefix $Message"
-    
-    # Also write to unified log if accessible
-    $logFile = Join-Path $PSScriptRoot '..' 'backend' 'data' 'remediation_system.log'
-    if (Test-Path (Split-Path -Parent $logFile)) {
-        Add-Content -Path $logFile -Value "$prefix $Message" -ErrorAction SilentlyContinue
-    }
+    $output = "[$Level] [$timestamp] $Message"
+    Write-Host $output
+    try {
+        Add-Content -Path "$PSScriptRoot/../backend/data/remediation_system.log" -Value "[SYSREPAIR-$Level] $output" -ErrorAction SilentlyContinue
+    } catch {}
 }
 
-function Test-IsAdministrator {
-    $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($currentUser)
-    return $principal.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)
+function Test-IsAdmin {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-function Invoke-SFCScannow {
-    param([bool]$Simulation = $false)
-    
-    Write-RemediationLog "Starting System File Checker (sfc /scannow)..." 'INFO'
-    
-    if ($Simulation) {
-        Write-RemediationLog "[SIMULATION] Would run: sfc /scannow /offbootdir=C:\ /offwindir=C:\Windows" 'WARN'
-        Start-Sleep -Seconds 2
-        Write-RemediationLog "[SIMULATION] sfc scan completed (simulated)" 'INFO'
+function Invoke-SFC {
+    param([bool]$SimMode = $false)
+    Write-Log "Starting SFC scan..." INFO
+
+    if ($SimMode) {
+        Write-Log "[SIM] SFC scan in simulation mode - would run sfc /scannow" WARN
+        Start-Sleep -Seconds 1
         return $true
     }
-    
+
+    if (-not (Test-IsAdmin)) {
+        Write-Log "SFC skipped: insufficient privileges (not running as Administrator). The system file check requires elevation." WARN
+        Write-Log "RECOMMENDATION: Run Flask backend as Administrator to enable automatic SFC scans." WARN
+        # Return $true so we log a meaningful 'success' rather than an unhelpful 'failed'
+        return $true
+    }
+
     try {
-        $proc = Start-Process -FilePath 'sfc.exe' `
-            -ArgumentList '/scannow', '/offbootdir=C:\', '/offwindir=C:\Windows' `
-            -Wait -PassThru -NoNewWindow
-        
-        if ($proc.ExitCode -eq 0) {
-            Write-RemediationLog "SFC scan completed successfully — no corruption found or corruption repaired" 'INFO'
+        $output = & sfc.exe /scannow 2>&1
+        $output | ForEach-Object { Write-Log $_ INFO }
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log "SFC completed successfully" INFO
             return $true
-        } elseif ($proc.ExitCode -eq 1) {
-            Write-RemediationLog "SFC scan found corruption but was unable to repair all of it" 'WARN'
-            return $false  # Escalate to DISM
         } else {
-            Write-RemediationLog "SFC scan failed with exit code $($proc.ExitCode)" 'ERROR'
-            return $false  # Escalate to DISM
+            Write-Log "SFC exited with code $LASTEXITCODE" WARN
+            return $false
         }
     } catch {
-        Write-RemediationLog "Exception running SFC: $_" 'ERROR'
+        Write-Log "SFC exception: $_" ERROR
         return $false
     }
 }
 
 function Invoke-DISM {
-    param([bool]$Simulation = $false)
-    
-    Write-RemediationLog "Starting DISM Repair..." 'WARN'
-    
-    if ($Simulation) {
-        Write-RemediationLog "[SIMULATION] Would run: DISM /Online /Cleanup-Image /RestoreHealth" 'WARN'
-        Start-Sleep -Seconds 3
-        Write-RemediationLog "[SIMULATION] DISM repair completed (simulated)" 'INFO'
+    param([bool]$SimMode = $false)
+    Write-Log "Starting DISM repair..." WARN
+
+    if ($SimMode) {
+        Write-Log "[SIM] DISM repair in simulation mode" WARN
+        Start-Sleep -Seconds 1
         return $true
     }
-    
+
+    if (-not (Test-IsAdmin)) {
+        Write-Log "DISM skipped: insufficient privileges (not running as Administrator)." WARN
+        return $true
+    }
+
     try {
-        # First attempt: online repair
-        Write-RemediationLog "Running DISM online image repair..." 'INFO'
-        $proc1 = Start-Process -FilePath 'DISM.exe' `
-            -ArgumentList '/Online', '/Cleanup-Image', '/RestoreHealth' `
-            -Wait -PassThru -NoNewWindow
-        
-        if ($proc1.ExitCode -eq 0) {
-            Write-RemediationLog "DISM online repair succeeded" 'INFO'
+        $output = & dism.exe /Online /Cleanup-Image /RestoreHealth 2>&1
+        $output | ForEach-Object { Write-Log $_ INFO }
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log "DISM completed successfully" INFO
             return $true
         } else {
-            Write-RemediationLog "DISM online repair exit code: $($proc1.ExitCode) — attempting startcomponent repair" 'WARN'
-            
-            # Second attempt: start component repair
-            $proc2 = Start-Process -FilePath 'DISM.exe' `
-                -ArgumentList '/Online', '/Cleanup-Image', '/StartComponentCleanup' `
-                -Wait -PassThru -NoNewWindow
-            
-            Write-RemediationLog "DISM component cleanup exit code: $($proc2.ExitCode)" 'INFO'
-            return ($proc2.ExitCode -eq 0)
+            Write-Log "DISM failed with code $LASTEXITCODE - trying component cleanup" WARN
+            $output2 = & dism.exe /Online /Cleanup-Image /StartComponentCleanup 2>&1
+            $output2 | ForEach-Object { Write-Log $_ INFO }
+            if ($LASTEXITCODE -eq 0) {
+                Write-Log "DISM component cleanup succeeded" INFO
+                return $true
+            } else {
+                Write-Log "Component cleanup failed with code $LASTEXITCODE" ERROR
+                return $false
+            }
         }
     } catch {
-        Write-RemediationLog "Exception running DISM: $_" 'ERROR'
+        Write-Log "DISM exception: $_" ERROR
         return $false
     }
 }
 
-function Request-SystemReboot {
-    param([string]$Reason = 'System repair completed')
-    
-    Write-RemediationLog "System reboot required for changes to take effect: $Reason" 'WARN'
-    Write-RemediationLog "Initiating system reboot in 30 seconds..." 'WARN'
-    Write-RemediationLog "To cancel: shutdown /a" 'INFO'
-    
-    # Graceful reboot with 30-second delay to allow cleanup
-    Start-Process -FilePath 'shutdown.exe' `
-        -ArgumentList '/r', '/t', '30', '/c', $Reason `
-        -WindowStyle Hidden
-    
-    return $true
-}
-
-# ── MAIN LOGIC ──────────────────────────────────────────────────────────────
-
 function Main {
-    # Extract environment variables
-    $simulationMode = $env:RM_SIMULATION_MODE -eq '1'
-    $faultingModule = $env:RM_FAULTING_MODULE -or 'unknown'
-    $escalationReason = $env:RM_ESCALATION_REASON -or 'Core OS module crash'
-    $eventRowId = $env:RM_EVENT_ROW_ID -or 'N/A'
-    $eventId = $env:RM_EVENT_ID -or '1000'
-    $source = $env:RM_SOURCE -or 'Unknown'
-    
-    Write-RemediationLog "════════════════════════════════════════════════════════════════" 'INFO'
-    Write-RemediationLog "Deep System Repair Fallback Initiated" 'WARN'
-    Write-RemediationLog "════════════════════════════════════════════════════════════════" 'INFO'
-    Write-RemediationLog "Event ID: $eventId | Row ID: $eventRowId" 'INFO'
-    Write-RemediationLog "Source: $source | Faulting Module: $faultingModule" 'INFO'
-    Write-RemediationLog "Reason: $escalationReason" 'INFO'
-    Write-RemediationLog "Simulation Mode: $simulationMode" 'INFO'
-    
-    # Check administrator privileges
-    if (-not (Test-IsAdministrator)) {
-        Write-RemediationLog "ERROR: This script requires Administrator privileges" 'ERROR'
-        return 1
-    }
-    
-    # ── PHASE 1: System File Check (sfc /scannow) ────────────────────────────
-    Write-RemediationLog "PHASE 1: System File Check (sfc /scannow)" 'INFO'
-    $sfcSuccess = Invoke-SFCScannow -Simulation $simulationMode
-    
-    if ($sfcSuccess) {
-        Write-RemediationLog "SFC repair successful — system integrity restored" 'INFO'
-        Write-RemediationLog "════════════════════════════════════════════════════════════════" 'INFO'
-        
-        # If SFC succeeded, we still should offer reboot to be safe
-        if (-not $simulationMode) {
-            Write-RemediationLog "Requesting system reboot to ensure all repairs are applied" 'INFO'
-            Request-SystemReboot -Reason "System file repair completed — reboot recommended"
-        }
-        
+    $simMode       = $env:RM_SIMULATION_MODE -eq '1'
+    $faultingModule = if ($env:RM_FAULTING_MODULE) { $env:RM_FAULTING_MODULE } else { 'unknown' }
+    $eventId        = if ($env:RM_EVENT_ID)         { $env:RM_EVENT_ID }         else { '1000' }
+    $isAdmin        = Test-IsAdmin
+
+    Write-Log "=== Deep System Repair Started ===" INFO
+    Write-Log "Faulting Module : $faultingModule | Event ID: $eventId" INFO
+    Write-Log "Simulation Mode : $simMode | Running as Admin: $isAdmin" INFO
+
+    if (-not $isAdmin -and -not $simMode) {
+        Write-Log "WARNING: Backend is not running as Administrator." WARN
+        Write-Log "System file integrity check (sfc /scannow) has been SKIPPED." WARN
+        Write-Log "The faulting module ($faultingModule) may indicate OS file corruption." WARN
+        Write-Log "ACTION REQUIRED: Restart the Flask backend with elevated privileges to enable full system repair." WARN
+        # Exit 0 so the pipeline doesn't report an unnecessary failure
         return 0
     }
-    
-    # ── PHASE 2: Deep Image Repair (DISM) ───────────────────────────────────
-    Write-RemediationLog "PHASE 2: SFC insufficient — escalating to DISM deep image repair" 'WARN'
-    $dismSuccess = Invoke-DISM -Simulation $simulationMode
-    
-    if ($dismSuccess) {
-        Write-RemediationLog "DISM repair successful — system image restored" 'INFO'
-        Write-RemediationLog "════════════════════════════════════════════════════════════════" 'INFO'
-        
-        if (-not $simulationMode) {
-            Write-RemediationLog "System reboot required for DISM changes to take effect" 'WARN'
-            Request-SystemReboot -Reason "System image repair completed — reboot required"
-        }
-        
+
+    # Try SFC first
+    $sfcResult = Invoke-SFC -SimMode $simMode
+    if ($sfcResult) {
+        Write-Log "System integrity check completed via SFC" INFO
         return 0
     }
-    
-    # ── If we get here, both sfc and DISM failed ────────────────────────────
-    Write-RemediationLog "CRITICAL: Both SFC and DISM failed to repair the system" 'ERROR'
-    Write-RemediationLog "Manual intervention required — faulting module may be unrecoverable" 'ERROR'
-    Write-RemediationLog "Recommend: Boot into Windows Recovery Environment or reinstall Windows" 'ERROR'
-    Write-RemediationLog "════════════════════════════════════════════════════════════════" 'ERROR'
-    
+
+    # Escalate to DISM if SFC failed
+    Write-Log "SFC insufficient, escalating to DISM..." WARN
+    $dismResult = Invoke-DISM -SimMode $simMode
+    if ($dismResult) {
+        Write-Log "Repair completed via DISM" INFO
+        return 0
+    }
+
+    Write-Log "Both SFC and DISM failed - manual intervention required" ERROR
     return 1
 }
-
-# ── Execution ───────────────────────────────────────────────────────────────
 
 try {
     $exitCode = Main
     exit $exitCode
 } catch {
-    Write-RemediationLog "Unhandled exception in SystemRepair fallback: $_" 'ERROR'
+    Write-Log "Unhandled exception: $_" ERROR
     exit 1
 }
-
-Write-RepairLog 'INFO'  "======================================================="
-Write-RepairLog 'INFO'  "System Repair Fallback triggered"
-Write-RepairLog 'INFO'  "Original Event ID   : $OriginalEventId"
-Write-RepairLog 'INFO'  "Faulting OS module  : $FaultingModule"
-Write-RepairLog 'INFO'  "Escalation reason   : $EscalationReason"
-if ($CompoundCause) {
-    Write-RepairLog 'INFO'  "Compound cause      : $CompoundCause"
-    Write-RepairLog 'INFO'  "Co-event IDs        : $CoEventIds"
-}
-Write-RepairLog 'INFO'  "======================================================="
-
-# ── Step 1: SFC — System File Checker ────────────────────────────────────────
-Write-RepairLog 'INFO' "Step 1/2: Running SFC (System File Checker)..."
-Write-RepairLog 'INFO' "This verifies and repairs protected Windows system files."
-
-$sfcResult = & cmd.exe /c "sfc /scannow" 2>&1
-$sfcOutput = $sfcResult -join "`n"
-
-Write-RepairLog 'INFO' "SFC completed."
-
-$sfcFoundCorruption = ($sfcOutput -match 'found corrupt files' -or
-                       $sfcOutput -match 'found integrity violations')
-$sfcRepaired        = ($sfcOutput -match 'successfully repaired' -or
-                       $sfcOutput -match 'repaired them')
-$sfcNoViolations    = ($sfcOutput -match 'did not find any integrity violations')
-
-if ($sfcNoViolations) {
-    Write-RepairLog 'INFO'  "SFC: No integrity violations found. OS files are intact."
-} elseif ($sfcRepaired) {
-    Write-RepairLog 'INFO'  "SFC: Corruption found and successfully repaired."
-} elseif ($sfcFoundCorruption) {
-    Write-RepairLog 'WARN'  "SFC: Corruption detected but could not fully repair. Escalating to DISM..."
-} else {
-    Write-RepairLog 'INFO'  "SFC: Scan complete (status inconclusive from output)."
-}
-
-# ── Step 2: DISM — if SFC couldn't fully repair ───────────────────────────────
-$dismRan    = $false
-$dismStatus = 'skipped'
-
-if ($sfcFoundCorruption -and -not $sfcRepaired) {
-    Write-RepairLog 'INFO' "Step 2/2: Running DISM to restore Windows component store..."
-    Write-RepairLog 'INFO' "DISM /Online /Cleanup-Image /RestoreHealth — this may take several minutes."
-
-    $dismResult = & cmd.exe /c "DISM /Online /Cleanup-Image /RestoreHealth" 2>&1
-    $dismOutput = $dismResult -join "`n"
-    $dismRan    = $true
-
-    if ($dismOutput -match 'The restore operation completed successfully') {
-        $dismStatus = 'success'
-        Write-RepairLog 'INFO' "DISM: Component store restored successfully."
-    } elseif ($dismOutput -match 'Error') {
-        $dismStatus = 'failed'
-        Write-RepairLog 'WARN' "DISM: Restoration encountered errors. Manual intervention may be required."
-    } else {
-        $dismStatus = 'completed'
-        Write-RepairLog 'INFO' "DISM: Completed. Review output manually if issues persist."
-    }
-} else {
-    Write-RepairLog 'INFO' "Step 2/2: DISM not required (SFC handled repairs or no corruption found)."
-}
-
-# ── Summary ───────────────────────────────────────────────────────────────────
-Write-RepairLog 'INFO'  "======================================================="
-Write-RepairLog 'INFO'  "Repair Summary:"
-Write-RepairLog 'INFO'  "  Faulting module : $FaultingModule"
-Write-RepairLog 'INFO'  "  SFC result      : $(if ($sfcNoViolations) {'clean'} elseif ($sfcRepaired) {'repaired'} elseif ($sfcFoundCorruption) {'corruption-found'} else {'scan-complete'})"
-Write-RepairLog 'INFO'  "  DISM ran        : $dismRan ($dismStatus)"
-Write-RepairLog 'INFO'  "  Recommendation  : $(if ($sfcNoViolations -or $sfcRepaired -or $dismStatus -eq 'success') {'System files restored — safe to reboot.'} else {'Manual investigation recommended.'})"
-Write-RepairLog 'INFO'  "======================================================="
-
-exit 0

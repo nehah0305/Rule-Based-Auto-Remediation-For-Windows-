@@ -62,16 +62,29 @@ class ApiService {
     return data.map((e) => AppEvent.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// Get events with pagination (PERFORMANCE FIX #2)
+  Future<Map<String, dynamic>> getEventsPaginated({int limit = 50, int offset = 0}) async {
+    final data = await _get('/api/events?limit=$limit&offset=$offset') as Map<String, dynamic>;
+    return {
+      'events': (data['events'] as List).map((e) => AppEvent.fromJson(e as Map<String, dynamic>)).toList(),
+      'total': data['total'] as int,
+      'has_more': data['has_more'] as bool,
+    };
+  }
+
   Future<List<AppEvent>> getFilteredEvents() async {
-    final data = await _get('/api/filtered-events');
-    if (data is List) {
-      return data.map((e) => AppEvent.fromJson(e as Map<String, dynamic>)).toList();
-    }
-    return [];
+    // Return all events efficiently using the CSV cache backend endpoint
+    final data = await _get('/api/filtered-events') as List;
+    return data.map((e) => AppEvent.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<HistoryEntry>> getEventHistory(int eventRowId) async {
+    final data = await _get('/api/events/$eventRowId/history') as List;
+    return data.map((h) => HistoryEntry.fromJson(h as Map<String, dynamic>)).toList();
   }
 
   Future<List<AppEvent>> getManualReviewEvents() async {
-    final data = await _get('/api/events/manual-review') as List;
+    final data = await _get('/api/events/manual-review?limit=20') as List;
     return data.map((e) => AppEvent.fromJson(e as Map<String, dynamic>)).toList();
   }
 
@@ -110,6 +123,14 @@ class ApiService {
     await _delete('/api/rules/$ruleId');
   }
 
+  Future<Map<String, dynamic>> toggleRuleActive(int ruleId, bool active) async {
+    return await _post('/api/rules/$ruleId/toggle', {'active': active}) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getRuleStats() async {
+    return await _get('/api/rules/stats') as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> runRule(int ruleId, int eventRowId) async {
     return await _post('/api/rules/$ruleId/run', {'event_row_id': eventRowId}) as Map<String, dynamic>;
   }
@@ -122,10 +143,39 @@ class ApiService {
     return await _post('/api/populate-rules', {}) as Map<String, dynamic>;
   }
 
+  Future<List<dynamic>> getTasksStatus() async {
+    return await _get('/api/tasks/status') as List;
+  }
+
   // ─── History ───────────────────────────────────────────────────────────────
-  Future<List<HistoryEntry>> getHistory() async {
-    final data = await _get('/api/history') as List;
-    return data.map((h) => HistoryEntry.fromJson(h as Map<String, dynamic>)).toList();
+  /// Get paginated, filterable, sortable remediation history.
+  Future<Map<String, dynamic>> getHistory({
+    int limit = 50,
+    int offset = 0,
+    String? status,
+    String? search,
+    String sort = 'id',
+    String dir = 'DESC',
+  }) async {
+    var path = '/api/history?limit=$limit&offset=$offset&sort=$sort&dir=$dir';
+    if (status != null && status != 'all') path += '&status=$status';
+    if (search != null && search.isNotEmpty) path += '&search=${Uri.encodeComponent(search)}';
+    final data = await _get(path) as Map<String, dynamic>;
+    return {
+      'items': (data['items'] as List)
+          .map((h) => HistoryEntry.fromJson(h as Map<String, dynamic>))
+          .toList(),
+      'total': data['total'] as int? ?? 0,
+      'has_more': data['has_more'] as bool? ?? false,
+    };
+  }
+
+  /// Get raw CSV export URL (opened in browser or parsed)
+  String getHistoryExportUrl({String? status, String? search}) {
+    var path = '/api/history/export?format=csv';
+    if (status != null && status != 'all') path += '&status=$status';
+    if (search != null && search.isNotEmpty) path += '&search=${Uri.encodeComponent(search)}';
+    return ApiConfig.url(path);
   }
 
   // ─── Approvals/Requests ────────────────────────────────────────────────────
@@ -168,6 +218,10 @@ class ApiService {
   Future<IntelligenceSummary> getIntelligenceSummary() async {
     final data = await _get('/api/intelligence/summary') as Map<String, dynamic>;
     return IntelligenceSummary.fromJson(data);
+  }
+
+  Future<Map<String, dynamic>> getDashboardStats() async {
+    return await _get('/api/dashboard-stats') as Map<String, dynamic>;
   }
 
   // ─── Live Alerts ───────────────────────────────────────────────────────────

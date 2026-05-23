@@ -549,6 +549,43 @@ def is_core_os_module(module_name: str) -> bool:
     return (module_name or '').lower() in CORE_OS_MODULES
 
 
+# Applications that routinely crash through core OS modules but do NOT
+# indicate OS corruption. Triggering sfc/scannow for these would be
+# both slow and noisy. We skip the deep-repair escalation for these.
+_TRIVIAL_APPS = {
+    'notepad.exe', 'wordpad.exe', 'mspaint.exe', 'calc.exe',
+    'iexplore.exe', 'msedge.exe', 'chrome.exe', 'firefox.exe',
+    'vlc.exe', 'winrar.exe', '7zfm.exe', 'crash.exe',
+    'notepad++.exe', 'code.exe',
+}
+
+
+def should_escalate_to_system_repair(faulting_module: str, message: str) -> bool:
+    """
+    Returns True only when a non-trivial application crashes through a
+    core Windows OS module, which genuinely indicates OS file corruption.
+    Trivial apps (notepad, browsers, etc.) frequently fault through ntdll.dll
+    for app-specific reasons — no SFC scan is warranted for those.
+    """
+    if not is_core_os_module(faulting_module):
+        return False
+    # Extract the faulting *application* name from the message
+    if message:
+        import re as _re
+        app_match = _re.search(
+            r'faulting application name:\s*([^\s,\n]+)', message, _re.IGNORECASE
+        )
+        if app_match:
+            app_name = app_match.group(1).strip().lower()
+            if app_name in _TRIVIAL_APPS:
+                logger.debug(
+                    f'[SYSREPAIR-SKIP] {app_name} crashed via {faulting_module} '
+                    'but it is a trivial app — skipping deep system repair escalation.'
+                )
+                return False
+    return True
+
+
 
 
 def is_rule_in_cooldown(rule_id, event_id_val, source_val, cooldown_minutes):
@@ -624,13 +661,14 @@ def get_intelligence_summary():
 def add_event(event_id, log_name, source, message,
               timestamp=None, category=None, severity=None,
               description=None, recommended_action=None, level=None,
-              remediated_at=None, source_type='api'):
+              remediated_at=None, source_type='api', return_status=False):
     """
     Smart event ingestion with deduplication, confidence scoring, and correlation.
 
     If an event with the same event_id + source was seen within DEDUP_WINDOW_SECONDS,
     this call increments its dedup_count and updates last_seen instead of inserting
-    a new row.  Returns the DB row id (new or existing).
+    a new row.  Returns the DB row id (new or existing) unless return_status is True,
+    in which case it returns (row_id, is_new).
     """
     if timestamp is None:
         timestamp = datetime.utcnow().isoformat()
@@ -651,7 +689,7 @@ def add_event(event_id, log_name, source, message,
         cutoff = (datetime.utcnow() - timedelta(seconds=DEDUP_WINDOW_SECONDS)).isoformat()
 
         c.execute('''
-            SELECT id, dedup_count
+            SELECT id, dedup_count, last_seen
             FROM events
             WHERE event_id = ?
               AND LOWER(COALESCE(source,'')) = LOWER(COALESCE(?,''))
@@ -662,12 +700,16 @@ def add_event(event_id, log_name, source, message,
         existing = c.fetchone()
 
         if existing:
-            # Merge into existing row — use atomic SQL update to avoid race condition
             existing_id = existing[0]
+            prev_count = existing[1] or 1
+            existing_last_seen = existing[2]
+
+            if existing_last_seen == timestamp:
+                # This is the exact same event being polled again, not a new crash.
+                return (existing_id, 'DUPLICATE_POLL') if return_status else existing_id
+
+            # Merge into existing row — use atomic SQL update to avoid race condition
             event_dict = {'severity': severity, 'level': level}
-            # Fetch old count for confidence recalc
-            c.execute('SELECT dedup_count FROM events WHERE id = ?', (existing_id,))
-            prev_count = c.fetchone()[0] or 1
             new_count = prev_count + 1
             new_score = calculate_confidence_score(event_dict, dedup_count=new_count)
             
@@ -678,7 +720,7 @@ def add_event(event_id, log_name, source, message,
                 WHERE id = ?
             ''', (new_count, timestamp, new_score, existing_id))
             conn.commit()
-            return existing_id
+            return (existing_id, 'NEW_OCCURRENCE') if return_status else existing_id
     finally:
         conn.close()
 
@@ -758,8 +800,7 @@ def add_event(event_id, log_name, source, message,
             json.dump({'last_rowid': rowid, 'last_timestamp': timestamp}, f)
     except Exception:
         pass
-
-    return rowid
+    return (rowid, 'NEW_ROW') if return_status else rowid
 
 
 def write_event_row_to_csv(path, rowdict):
@@ -865,6 +906,67 @@ def get_events(limit=100):
         return rows
     finally:
         conn.close()
+
+
+def get_events_paginated(offset=0, limit=50):
+    """Get events with pagination support (PERFORMANCE FIX #2).
+    
+    Uses indexed query for fast retrieval without full table scans.
+    """
+    conn = _conn()
+    try:
+        c = conn.cursor()
+        c.execute('''
+            SELECT id, event_id, log_name, source, message, timestamp,
+                   category, severity, description, recommended_action,
+                   COALESCE(dedup_count, 1), last_seen,
+                   COALESCE(confidence_score, 0.0), correlation_id,
+                   COALESCE(source_type, 'api'),
+                   COALESCE(needs_manual_review, 0),
+                   manual_review_reason,
+                   COALESCE(dismissed_review, 0)
+            FROM events
+            ORDER BY id DESC
+            LIMIT ? OFFSET ?
+        ''', (limit, offset))
+        rows = c.fetchall()
+        return rows
+    finally:
+        conn.close()
+
+
+_event_count_cache_py = {'count': None, 'timestamp': 0, 'ttl': 60}
+
+def count_events():
+    """Count total events (with caching to prevent expensive queries).
+    
+    PERFORMANCE FIX #5: Caches count for 60 seconds since COUNT queries
+    on large tables (166k+ rows) can be expensive.
+    """
+    import time
+    now = time.time()
+    
+    # Use cached count if valid
+    if (_event_count_cache_py['count'] is not None and 
+        (now - _event_count_cache_py['timestamp']) < _event_count_cache_py['ttl']):
+        return _event_count_cache_py['count']
+    
+    conn = _conn()
+    try:
+        c = conn.cursor()
+        c.execute('SELECT COUNT(*) FROM events')
+        count = c.fetchone()[0]
+        
+        # Update cache
+        _event_count_cache_py['count'] = count
+        _event_count_cache_py['timestamp'] = now
+        
+        return count
+    finally:
+        conn.close()
+
+
+# (REMOVED - see _event_count_cache_py version above with caching)
 
 
 def set_manual_review(event_row_id, reason=''):
@@ -978,15 +1080,55 @@ def get_rules():
     conn = _conn()
     try:
         c = conn.cursor()
+        # Ensure active column exists (added in schema v4)
+        try:
+            c.execute('ALTER TABLE rules ADD COLUMN active INTEGER DEFAULT 1')
+            conn.commit()
+        except Exception:
+            pass
         c.execute('''
             SELECT id, name, event_id, source, message_regex, remediation_script,
                    auto_remediate, category, severity, description, recommended_action,
-                   script_type, priority, cooldown_minutes, stop_processing
+                   script_type, priority, cooldown_minutes, stop_processing,
+                   COALESCE(active, 1) as active
             FROM rules
             ORDER BY priority ASC, id ASC
         ''')
         rows = c.fetchall()
         return rows
+    finally:
+        conn.close()
+
+
+def get_rule_hit_counts():
+    """Return a dict of rule_id -> hit count from remediation_history."""
+    conn = _conn()
+    try:
+        c = conn.cursor()
+        c.execute('''
+            SELECT rule_id, COUNT(*) as hits, MAX(timestamp) as last_hit
+            FROM remediation_history
+            WHERE rule_id IS NOT NULL
+            GROUP BY rule_id
+        ''')
+        return {row[0]: {'hits': row[1], 'last_hit': row[2]} for row in c.fetchall()}
+    finally:
+        conn.close()
+
+
+def toggle_rule_active(rule_id, active):
+    """Enable or disable a rule (1=active, 0=disabled)."""
+    conn = _conn()
+    try:
+        c = conn.cursor()
+        # Ensure column exists
+        try:
+            c.execute('ALTER TABLE rules ADD COLUMN active INTEGER DEFAULT 1')
+        except Exception:
+            pass
+        c.execute('UPDATE rules SET active=? WHERE id=?', (1 if active else 0, rule_id))
+        conn.commit()
+        return c.rowcount > 0
     finally:
         conn.close()
 
@@ -1220,13 +1362,16 @@ def _matches_base_criteria(event, rule_tuple):
     """Check if event matches base rule criteria (excluding variants)."""
     (rid, name, r_event_id, r_source, r_message_regex, remediation_script,
      auto_remediate, r_category, r_severity, description, recommended_action,
-     script_type, priority, cooldown_minutes, stop_processing) = rule_tuple
+     script_type, priority, cooldown_minutes, stop_processing, _active) = rule_tuple
     
     event_id_val = event.get('event_id')
     source_val = (event.get('source') or '').lower()
     category_val = (event.get('category') or '').lower()
     severity_val = (event.get('severity') or '').lower()
     
+    if not _active:
+        return False
+        
     if r_event_id and str(r_event_id) != str(event_id_val):
         return False
     if r_source and r_source.lower() != source_val:
@@ -1310,10 +1455,13 @@ def match_rules_for_event(event):
         # 0=id,1=name,2=event_id,3=source,4=message_regex,
         # 5=remediation_script,6=auto_remediate,7=category,
         # 8=severity,9=description,10=recommended_action,
-        # 11=script_type,12=priority,13=cooldown_minutes,14=stop_processing
+        # 11=script_type,12=priority,13=cooldown_minutes,14=stop_processing,15=_active
         (rid, name, r_event_id, r_source, r_message_regex, remediation_script,
          auto_remediate, r_category, r_severity, description, recommended_action,
-         script_type, priority, cooldown_minutes, stop_processing) = r
+         script_type, priority, cooldown_minutes, stop_processing, _active) = r
+
+        if not _active:
+            continue
 
         # ── Matching logic (AND semantics) ────────────────────────────────
         if r_event_id and str(r_event_id) != str(event_id_val):
@@ -1362,7 +1510,74 @@ def record_remediation(event_row_id, rule_id, status, output=''):
         conn.close()
 
 
-def get_history(limit=200):
+def get_history(limit=50, offset=0, status=None, search=None, sort_col='id', sort_dir='DESC'):
+    """Paginated, filterable, sortable remediation history."""
+    conn = _conn()
+    try:
+        c = conn.cursor()
+        # Whitelist sort columns to prevent injection
+        allowed_cols = {'id', 'timestamp', 'event_id', 'status'}
+        if sort_col not in allowed_cols:
+            sort_col = 'id'
+        sort_dir = 'DESC' if sort_dir.upper() != 'ASC' else 'ASC'
+
+        conditions = []
+        params = []
+        if status and status != 'all':
+            conditions.append('h.status = ?')
+            params.append(status)
+        if search:
+            conditions.append('(r.name LIKE ? OR CAST(e.event_id AS TEXT) LIKE ? OR e.source LIKE ?)')
+            term = f'%{search}%'
+            params.extend([term, term, term])
+
+        where = ('WHERE ' + ' AND '.join(conditions)) if conditions else ''
+        query = f'''
+            SELECT h.id, h.event_row_id, h.rule_id, h.status, h.output, h.timestamp,
+                   e.event_id, e.source, r.name, e.timestamp as event_timestamp
+            FROM remediation_history h
+            LEFT JOIN events e ON h.event_row_id = e.id
+            LEFT JOIN rules r ON h.rule_id = r.id
+            {where}
+            ORDER BY h.{sort_col} {sort_dir}
+            LIMIT ? OFFSET ?
+        '''
+        c.execute(query, params + [limit, offset])
+        rows = c.fetchall()
+        return rows
+    finally:
+        conn.close()
+
+
+def get_history_count(status=None, search=None):
+    """Return total count of history records for pagination."""
+    conn = _conn()
+    try:
+        c = conn.cursor()
+        conditions = []
+        params = []
+        if status and status != 'all':
+            conditions.append('h.status = ?')
+            params.append(status)
+        if search:
+            conditions.append('(r.name LIKE ? OR CAST(e.event_id AS TEXT) LIKE ? OR e.source LIKE ?)')
+            term = f'%{search}%'
+            params.extend([term, term, term])
+        where = ('WHERE ' + ' AND '.join(conditions)) if conditions else ''
+        query = f'''
+            SELECT COUNT(*)
+            FROM remediation_history h
+            LEFT JOIN events e ON h.event_row_id = e.id
+            LEFT JOIN rules r ON h.rule_id = r.id
+            {where}
+        '''
+        c.execute(query, params)
+        return c.fetchone()[0]
+    finally:
+        conn.close()
+
+
+def get_event_history(event_row_id):
     conn = _conn()
     try:
         c = conn.cursor()
@@ -1372,9 +1587,9 @@ def get_history(limit=200):
             FROM remediation_history h
             LEFT JOIN events e ON h.event_row_id = e.id
             LEFT JOIN rules r ON h.rule_id = r.id
+            WHERE h.event_row_id = ?
             ORDER BY h.id DESC
-            LIMIT ?
-        ''', (limit,))
+        ''', (event_row_id,))
         rows = c.fetchall()
         return rows
     finally:
@@ -1578,11 +1793,21 @@ def run_remediation(event_row_id, rule_id, timeout=60, regex_captures=None):
                 tmp_path = tmp.name
             script_to_run = tmp_path
         else:
-            if not os.path.exists(remediation_script):
-                record_remediation(event_row_id, rule_id, 'skipped',
-                                   f'script file not found: {remediation_script}')
-                return {'status': 'skipped', 'output': f'script file not found: {remediation_script}'}
-            script_to_run = remediation_script
+            script_path = remediation_script
+            if not os.path.isabs(script_path):
+                # Try relative to the backend directory's parent (project root)
+                project_root = os.path.join(os.path.dirname(__file__), '..')
+                script_path = os.path.abspath(os.path.join(project_root, script_path))
+                
+            if not os.path.exists(script_path):
+                # Fallback to current directory if not found in project root
+                if os.path.exists(remediation_script):
+                    script_path = os.path.abspath(remediation_script)
+                else:
+                    record_remediation(event_row_id, rule_id, 'skipped',
+                                       f'script file not found: {remediation_script}')
+                    return {'status': 'skipped', 'output': f'script file not found: {remediation_script}'}
+            script_to_run = script_path
 
         proc = subprocess.run(
             [_POWERSHELL, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script_to_run],
@@ -1708,6 +1933,25 @@ def set_simulation_preference(simulation_type, run_script, auto_remediate):
     
     conn.commit()
     conn.close()
+
+
+def get_dashboard_stats():
+    """Get aggregated stats for dashboard charts (severity and category)."""
+    conn = _conn()
+    try:
+        c = conn.cursor()
+        c.execute('SELECT severity, COUNT(*) FROM events GROUP BY severity')
+        severity_counts = {row[0] or 'Unknown': row[1] for row in c.fetchall()}
+        
+        c.execute('SELECT category, COUNT(*) FROM events GROUP BY category')
+        category_counts = {row[0] or 'Unknown': row[1] for row in c.fetchall()}
+        
+        return {
+            'by_severity': severity_counts,
+            'by_category': category_counts
+        }
+    finally:
+        conn.close()
 
 
 if __name__ == '__main__':

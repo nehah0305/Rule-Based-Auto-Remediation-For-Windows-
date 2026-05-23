@@ -11,11 +11,17 @@ class ApiConfig {
       }
 
       final origin = Uri.base.origin;
-      // If running locally via flutter dev server, point to Flask explicitly
+      // If running locally on localhost
       if (origin.contains('localhost') || origin.contains('127.0.0.1')) {
         return 'http://localhost:5000';
       }
-      // Production: served by Flask — use same origin
+      
+      // If accessed via an alternate port (like a flutter dev server port)
+      if (Uri.base.port > 10000 || Uri.base.port == 8080) {
+        return '${Uri.base.scheme}://${Uri.base.host}:5000';
+      }
+
+      // Production: served by Flask (port 5000) or reverse proxy (80/443) — use same origin
       return origin;
     } catch (_) {
       return 'http://localhost:5000';

@@ -3,12 +3,6 @@ import 'package:flutter/services.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Task Scheduler Screen
-//  Shows the live status of the Windows Task Scheduler integration, lets the
-//  operator install/verify tasks, monitor logs, and toggle the mode.
-// ─────────────────────────────────────────────────────────────────────────────
-
 class TaskSchedulerScreen extends StatefulWidget {
   const TaskSchedulerScreen({super.key});
   @override
@@ -19,22 +13,24 @@ class _TaskSchedulerScreenState extends State<TaskSchedulerScreen> {
   final _api = ApiService();
 
   bool _loadingStatus = true;
+  bool _loadingTasks = true;
   Map<String, dynamic> _monitorStatus = {};
+  List<dynamic> _tasks = [];
   String _logContent = '';
   bool _loadingLog = false;
   String? _error;
 
-  // The 8 tasks registered by Setup_EventTriggers.ps1
-  static const _registeredTasks = [
-    _TaskInfo(id: 1000, log: 'Application', name: 'AutoRemediate_AppCrash_1000',      label: 'Application Crash',              icon: Icons.bug_report_rounded,         color: Color(0xFFff4e50)),
-    _TaskInfo(id: 1001, log: 'Application', name: 'AutoRemediate_AppHang_1001',       label: 'Application Hang',               icon: Icons.pause_circle_rounded,        color: Color(0xFFfc913a)),
-    _TaskInfo(id: 1026, log: 'Application', name: 'AutoRemediate_DotNetCrash_1026',   label: '.NET Runtime Crash',              icon: Icons.code_rounded,                color: Color(0xFF9d4edd)),
-    _TaskInfo(id: 7034, log: 'System',      name: 'AutoRemediate_ServiceFail_7034',   label: 'Service Terminated (7034)',       icon: Icons.settings_rounded,            color: Color(0xFFff4e50)),
-    _TaskInfo(id: 7031, log: 'System',      name: 'AutoRemediate_ServiceFail_7031',   label: 'Service Terminated (7031)',       icon: Icons.settings_rounded,            color: Color(0xFFfc913a)),
-    _TaskInfo(id: 7000, log: 'System',      name: 'AutoRemediate_ServiceStart_7000',  label: 'Service Failed to Start',         icon: Icons.play_disabled_rounded,       color: Color(0xFFf9d423)),
-    _TaskInfo(id: 11,   log: 'System',      name: 'AutoRemediate_DiskError_11',        label: 'Disk Controller Error',           icon: Icons.storage_rounded,             color: Color(0xFFfc913a)),
-    _TaskInfo(id: 55,   log: 'System',      name: 'AutoRemediate_NTFSCorruption_55',  label: 'NTFS Corruption',                 icon: Icons.folder_off_rounded,          color: Color(0xFFff4e50)),
-  ];
+  // Static metadata about the 8 known tasks
+  static const _taskMeta = {
+    'AutoRemediate_AppCrash_1000':     (Icons.bug_report_rounded,        'Application Crash',              Color(0xFFff4e50), 1000),
+    'AutoRemediate_AppHang_1001':      (Icons.pause_circle_rounded,       'Application Hang',               Color(0xFFfc913a), 1001),
+    'AutoRemediate_DotNetCrash_1026':  (Icons.code_rounded,               '.NET Runtime Crash',             Color(0xFF9d4edd), 1026),
+    'AutoRemediate_ServiceFail_7034':  (Icons.settings_rounded,           'Service Terminated (7034)',       Color(0xFFff4e50), 7034),
+    'AutoRemediate_ServiceFail_7031':  (Icons.settings_rounded,           'Service Terminated (7031)',       Color(0xFFfc913a), 7031),
+    'AutoRemediate_ServiceStart_7000': (Icons.play_disabled_rounded,      'Service Failed to Start',         Color(0xFFf9d423), 7000),
+    'AutoRemediate_DiskError_11':      (Icons.storage_rounded,            'Disk Controller Error',           Color(0xFFfc913a), 11),
+    'AutoRemediate_NTFSCorruption_55': (Icons.folder_off_rounded,         'NTFS Corruption',                Color(0xFFff4e50), 55),
+  };
 
   @override
   void initState() {
@@ -43,12 +39,20 @@ class _TaskSchedulerScreenState extends State<TaskSchedulerScreen> {
   }
 
   Future<void> _load() async {
-    setState(() { _loadingStatus = true; _error = null; });
+    setState(() { _loadingStatus = true; _loadingTasks = true; _error = null; });
     try {
-      final status = await _api.getMonitorStatus();
-      if (mounted) setState(() { _monitorStatus = status; _loadingStatus = false; });
+      final results = await Future.wait([
+        _api.getMonitorStatus(),
+        _api.getTasksStatus(),
+      ]);
+      if (mounted) setState(() {
+        _monitorStatus = results[0] as Map<String, dynamic>;
+        _tasks = results[1] as List;
+        _loadingStatus = false;
+        _loadingTasks = false;
+      });
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loadingStatus = false; });
+      if (mounted) setState(() { _error = e.toString(); _loadingStatus = false; _loadingTasks = false; });
     }
   }
 
@@ -114,7 +118,7 @@ class _TaskSchedulerScreenState extends State<TaskSchedulerScreen> {
             child: Column(children: [
               _SetupCard(onCopy: _copySetupCommand),
               const SizedBox(height: 16),
-              _WatchedTasksCard(tasks: _registeredTasks),
+              _WatchedTasksCard(tasks: _tasks, loading: _loadingTasks, meta: _taskMeta),
             ]),
           ),
           const SizedBox(width: 16),
@@ -136,19 +140,6 @@ class _TaskSchedulerScreenState extends State<TaskSchedulerScreen> {
       ]),
     );
   }
-}
-
-// ─── Data class ──────────────────────────────────────────────────────────────
-
-class _TaskInfo {
-  final int id;
-  final String log;
-  final String name;
-  final String label;
-  final IconData icon;
-  final Color color;
-  const _TaskInfo({required this.id, required this.log, required this.name,
-    required this.label, required this.icon, required this.color});
 }
 
 // ─── Status Banner ───────────────────────────────────────────────────────────
@@ -329,63 +320,144 @@ class _Step extends StatelessWidget {
   );
 }
 
-// ─── Watched Tasks Card ───────────────────────────────────────────────────────
+// ─── Watched Tasks Card (Live) ─────────────────────────────────────────────────
 
 class _WatchedTasksCard extends StatelessWidget {
-  final List<_TaskInfo> tasks;
-  const _WatchedTasksCard({required this.tasks});
+  final List<dynamic> tasks;
+  final bool loading;
+  final Map<String, dynamic> meta;
+  const _WatchedTasksCard({required this.tasks, required this.loading, required this.meta});
 
   @override
   Widget build(BuildContext context) {
+    final installedCount = tasks.where((t) => t['installed'] == true).length;
     return _Card(
       headerGradient: AppTheme.gradientInfo,
       headerIcon: Icons.list_alt_rounded,
-      headerTitle: '8 Watched Event Triggers',
-      child: Column(
-        children: tasks.map((t) => _TaskRow(task: t)).toList(),
-      ),
+      headerTitle: '8 Event Triggers — $installedCount/8 Installed',
+      child: loading
+          ? const Center(child: Padding(
+              padding: EdgeInsets.all(16),
+              child: CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 2)))
+          : Column(
+              children: tasks.map((t) {
+                final name = t['name'] as String;
+                final installed = t['installed'] as bool? ?? false;
+                final enabled = t['enabled'] as bool? ?? false;
+                final status = t['status'] as String? ?? '—';
+                final lastRun = t['last_run'] as String? ?? '—';
+                final lastResult = t['last_result'] as String? ?? '—';
+                final m = meta[name];
+                final icon  = m != null ? m.$1 as IconData  : Icons.task_alt_rounded;
+                final label = m != null ? m.$2 as String    : name;
+                final color = m != null ? m.$3 as Color     : AppTheme.textMuted;
+                final id    = m != null ? m.$4 as int        : 0;
+                return _LiveTaskRow(
+                  name: name, label: label, icon: icon, color: color, id: id,
+                  installed: installed, enabled: enabled, status: status,
+                  lastRun: lastRun, lastResult: lastResult,
+                );
+              }).toList(),
+            ),
     );
   }
 }
 
-class _TaskRow extends StatelessWidget {
-  final _TaskInfo task;
-  const _TaskRow({required this.task});
+class _LiveTaskRow extends StatelessWidget {
+  final String name, label, status, lastRun, lastResult;
+  final IconData icon;
+  final Color color;
+  final int id;
+  final bool installed, enabled;
+  const _LiveTaskRow({required this.name, required this.label, required this.icon,
+      required this.color, required this.id, required this.installed,
+      required this.enabled, required this.status, required this.lastRun,
+      required this.lastResult});
 
   @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(bottom: 8),
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-    decoration: BoxDecoration(
-      color: AppTheme.bgCardAlt,
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: AppTheme.border),
-    ),
-    child: Row(children: [
-      Container(
-        width: 32, height: 32,
-        decoration: BoxDecoration(
-          color: task.color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(task.icon, color: task.color, size: 16),
+  Widget build(BuildContext context) {
+    final statusColor = !installed
+        ? AppTheme.textDimmed
+        : enabled ? AppTheme.accentGreen : AppTheme.accentYellow;
+    final statusLabel = !installed ? 'Not Installed' : (enabled ? 'Enabled' : 'Disabled');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCardAlt,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: installed ? color.withValues(alpha: 0.25) : AppTheme.border),
       ),
-      const SizedBox(width: 10),
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(task.label, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
-        Text('${task.name}  •  Log: ${task.log}', style: const TextStyle(color: AppTheme.textDimmed, fontSize: 10)),
-      ])),
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: task.color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: task.color.withValues(alpha: 0.3)),
-        ),
-        child: Text('ID ${task.id}', style: TextStyle(color: task.color, fontSize: 10, fontWeight: FontWeight.w700)),
-      ),
-    ]),
-  );
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 32, height: 32,
+            decoration: BoxDecoration(
+              color: (installed ? color : AppTheme.textDimmed).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: installed ? color : AppTheme.textDimmed, size: 16),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: TextStyle(
+                color: installed ? AppTheme.textPrimary : AppTheme.textDimmed,
+                fontSize: 12, fontWeight: FontWeight.w600)),
+            Text(name, style: const TextStyle(color: AppTheme.textDimmed, fontSize: 10)),
+          ])),
+          // Status badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: statusColor.withValues(alpha: 0.35)),
+            ),
+            child: Text(statusLabel, style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w700)),
+          ),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: color.withValues(alpha: 0.3)),
+            ),
+            child: Text('ID $id', style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700)),
+          ),
+        ]),
+        if (installed) ...[ 
+          const SizedBox(height: 6),
+          Row(children: [
+            const SizedBox(width: 42),
+            Expanded(child: Wrap(spacing: 12, children: [
+              _InfoChip(label: 'Last Run', value: _trimDate(lastRun), color: AppTheme.textMuted),
+              _InfoChip(label: 'Result', value: lastResult == '0' ? '✓ OK' : lastResult, 
+                  color: lastResult == '0' ? AppTheme.accentGreen : AppTheme.accentYellow),
+              _InfoChip(label: 'Status', value: status, color: AppTheme.textMuted),
+            ])),
+          ]),
+        ],
+      ]),
+    );
+  }
+
+  String _trimDate(String s) {
+    if (s == '—' || s.isEmpty || s == 'N/A') return 'Never';
+    return s.length > 16 ? s.substring(0, 16) : s;
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  final String label, value; final Color color;
+  const _InfoChip({required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
+    Text('$label: ', style: const TextStyle(color: AppTheme.textDimmed, fontSize: 10)),
+    Text(value, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600)),
+  ]);
 }
 
 // ─── Loop Diagram Card ───────────────────────────────────────────────────────

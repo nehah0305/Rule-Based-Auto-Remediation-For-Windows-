@@ -14,13 +14,18 @@ class _RulesScreenState extends State<RulesScreen> {
   final _api = ApiService();
   bool _loading = true;
   List<Rule> _rules = [];
+  Map<String, dynamic> _hitCounts = {};  // rule_id -> {hits, last_hit}
 
   @override
   void initState() { super.initState(); _load(); }
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    try { _rules = await _api.getRules(); } catch (_) {}
+    try {
+      final results = await Future.wait([_api.getRules(), _api.getRuleStats()]);
+      _rules = results[0] as List<Rule>;
+      _hitCounts = results[1] as Map<String, dynamic>;
+    } catch (_) {}
     if (mounted) setState(() => _loading = false);
   }
 
@@ -73,6 +78,25 @@ class _RulesScreenState extends State<RulesScreen> {
     showDialog(context: context, builder: (_) => RuleDialog(api: _api, rule: rule, onSaved: _load));
   }
 
+  Future<void> _toggleRule(Rule rule) async {
+    final newActive = !rule.active;
+    setState(() {
+      final idx = _rules.indexWhere((r) => r.id == rule.id);
+      if (idx != -1) _rules[idx] = _rules[idx].copyWith(active: newActive);
+    });
+    try {
+      await _api.toggleRuleActive(rule.id, newActive);
+    } catch (e) {
+      // Revert on failure
+      setState(() {
+        final idx = _rules.indexWhere((r) => r.id == rule.id);
+        if (idx != -1) _rules[idx] = _rules[idx].copyWith(active: rule.active);
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Toggle failed: $e'), backgroundColor: AppTheme.accentRed));
+    }
+  }
+
   Future<void> _importFromJson() async {
     try {
       final result = await _api.populateRulesFromJson();
@@ -110,8 +134,8 @@ class _RulesScreenState extends State<RulesScreen> {
           child: Row(children: [
             const Icon(Icons.rule_rounded, color: Colors.white, size: 18),
             const SizedBox(width: 10),
-            const Expanded(child: Text('Active Rules',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14.5))),
+            Expanded(child: Text('Rules — ${_rules.length} total',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14.5))),
             _HeaderBtn(icon: Icons.add, label: 'New Rule', onTap: () => _openRuleDialog()),
             const SizedBox(width: 8),
             _HeaderBtn(icon: Icons.download_rounded, label: 'Import from JSON', onTap: _importFromJson),
@@ -126,8 +150,8 @@ class _RulesScreenState extends State<RulesScreen> {
                 boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.24), blurRadius: 24, offset: const Offset(0, 10))]),
             child: _loading
                 ? const Center(child: CircularProgressIndicator(color: AppTheme.accent))
-                : Theme(data: tableTheme, child: _RulesTable(rules: _rules,
-                    onEdit: _openRuleDialog, onDelete: _deleteRule, onTest: _testRule),
+                : Theme(data: tableTheme, child: _RulesTable(rules: _rules, hitCounts: _hitCounts,
+                    onEdit: _openRuleDialog, onDelete: _deleteRule, onTest: _testRule, onToggle: _toggleRule),
                   ),
           ),
         ),
@@ -138,10 +162,13 @@ class _RulesScreenState extends State<RulesScreen> {
 
 class _RulesTable extends StatelessWidget {
   final List<Rule> rules;
+  final Map<String, dynamic> hitCounts;
   final void Function(Rule) onEdit;
   final Future<void> Function(int) onDelete;
   final Future<void> Function(int) onTest;
-  const _RulesTable({required this.rules, required this.onEdit, required this.onDelete, required this.onTest});
+  final Future<void> Function(Rule) onToggle;
+  const _RulesTable({required this.rules, required this.hitCounts, required this.onEdit,
+      required this.onDelete, required this.onTest, required this.onToggle});
 
   @override
   Widget build(BuildContext context) {
@@ -158,37 +185,69 @@ class _RulesTable extends StatelessWidget {
             dataRowMaxHeight: 72,
             horizontalMargin: 18,
             columns: const [
+              DataColumn(label: Text('On/Off')),
               DataColumn(label: Text('Rule Name')),
               DataColumn(label: Text('Priority')),
               DataColumn(label: Text('Criteria')),
               DataColumn(label: Text('Severity')),
               DataColumn(label: Text('Auto')),
-              DataColumn(label: Text('Cooldown')),
+              DataColumn(label: Text('Fires')),
               DataColumn(label: Text('Actions')),
             ],
-            rows: rules.map((r) => DataRow(cells: [
-              DataCell(SizedBox(width: 180, child: Text(r.name, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600),
-                  maxLines: 2, overflow: TextOverflow.ellipsis))),
-              DataCell(_PriorityBadge(r.priority)),
-              DataCell(SizedBox(width: 160, child: _CriteriaText(rule: r))),
-              DataCell(SeverityBadge(r.severity)),
-              DataCell(r.autoRemediate
-                  ? const Icon(Icons.check_circle, color: AppTheme.accentGreen, size: 18)
-                  : const Icon(Icons.cancel_outlined, color: AppTheme.textDimmed, size: 18)),
-              DataCell(r.cooldownMinutes > 0
-                  ? Text('${r.cooldownMinutes}m', style: const TextStyle(color: AppTheme.accentYellow, fontSize: 12))
-                  : const Text('—', style: TextStyle(color: AppTheme.textDimmed))),
-              DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
-                _ActionBtn(icon: Icons.play_arrow_rounded, label: 'Test', color: AppTheme.accentGreen, onTap: () => onTest(r.id)),
-                const SizedBox(width: 4),
-                _ActionBtn(icon: Icons.edit_rounded, label: 'Edit', color: AppTheme.accent, onTap: () => onEdit(r)),
-                const SizedBox(width: 4),
-                _ActionBtn(icon: Icons.delete_outline_rounded, label: 'Delete', color: AppTheme.accentRed, onTap: () => onDelete(r.id)),
-              ])),
-            ])).toList(),
+            rows: rules.map((r) {
+              final stats = hitCounts[r.id.toString()] as Map<String, dynamic>?;
+              final hits = stats?['hits'] as int? ?? 0;
+              return DataRow(
+                color: WidgetStatePropertyAll(
+                  r.active ? Colors.transparent : Colors.white.withValues(alpha: 0.015)),
+                cells: [
+                  DataCell(Switch(
+                    value: r.active,
+                    activeColor: AppTheme.accentGreen,
+                    onChanged: (_) => onToggle(r),
+                  )),
+                  DataCell(SizedBox(width: 180, child: Text(r.name,
+                      style: TextStyle(
+                        color: r.active ? AppTheme.textPrimary : AppTheme.textDimmed,
+                        fontSize: 12, fontWeight: FontWeight.w600,
+                        decoration: r.active ? null : TextDecoration.lineThrough),
+                      maxLines: 2, overflow: TextOverflow.ellipsis))),
+                  DataCell(_PriorityBadge(r.priority)),
+                  DataCell(SizedBox(width: 160, child: _CriteriaText(rule: r))),
+                  DataCell(SeverityBadge(r.severity)),
+                  DataCell(r.autoRemediate
+                      ? const Icon(Icons.check_circle, color: AppTheme.accentGreen, size: 18)
+                      : const Icon(Icons.cancel_outlined, color: AppTheme.textDimmed, size: 18)),
+                  DataCell(_HitBadge(hits)),
+                  DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
+                    _ActionBtn(icon: Icons.play_arrow_rounded, label: 'Test', color: AppTheme.accentGreen, onTap: () => onTest(r.id)),
+                    const SizedBox(width: 4),
+                    _ActionBtn(icon: Icons.edit_rounded, label: 'Edit', color: AppTheme.accent, onTap: () => onEdit(r)),
+                    const SizedBox(width: 4),
+                    _ActionBtn(icon: Icons.delete_outline_rounded, label: 'Delete', color: AppTheme.accentRed, onTap: () => onDelete(r.id)),
+                  ])),
+                ],
+              );
+            }).toList(),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _HitBadge extends StatelessWidget {
+  final int hits;
+  const _HitBadge(this.hits);
+
+  @override
+  Widget build(BuildContext context) {
+    final color = hits > 50 ? AppTheme.accentRed : hits > 10 ? AppTheme.accentYellow : AppTheme.accentGreen;
+    if (hits == 0) return const Text('—', style: TextStyle(color: AppTheme.textDimmed, fontSize: 12));
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+      child: Text('$hits×', style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
     );
   }
 }

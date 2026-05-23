@@ -1,4 +1,4 @@
-﻿from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
+from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
 import subprocess
 import os
 import json
@@ -62,7 +62,10 @@ def validate_input(data, schema):
     return True
 
 # Load environment variables from .env file
-load_dotenv()
+env_path = os.path.join(os.path.dirname(__file__), '.env')
+if not os.path.exists(env_path):
+    env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+load_dotenv(env_path)
 
 # ── Unified log file shared with cli_process_event.py and Task Scheduler ─────
 # Both the Flask server and the background CLI script write to this single file
@@ -84,6 +87,12 @@ _log.info('Flask server starting up — unified log initialised.')
 
 # Simple cache for filtered events to improve response time
 _filtered_events_cache = {'data': None, 'timestamp': 0, 'ttl': 15}
+
+# PERFORMANCE FIX #3: Cache for intelligence summary (30-second TTL)
+_intelligence_summary_cache = {'data': None, 'timestamp': 0, 'ttl': 30}
+
+# PERFORMANCE FIX #5: Cache event count to avoid expensive COUNT queries
+_event_count_cache = {'count': None, 'timestamp': 0, 'ttl': 60}
 
 app = Flask(__name__)
 
@@ -137,7 +146,12 @@ if _use_task_scheduler:
     print('[INFO] Task Scheduler mode active — polling thread disabled.')
 else:
     _log.info('USE_TASK_SCHEDULER not set — starting background polling thread.')
-    event_log_monitor.start_monitor()
+    try:
+        event_log_monitor.start_monitor()
+        print('[INFO] Event log monitoring thread started successfully.')
+    except Exception as e:
+        _log.warning(f'Failed to start event log monitor: {e}. Continuing without polling.')
+        print(f'[WARNING] Event log monitor not available: {e}')
 
 
 # â”€â”€â”€ Flutter Web Frontend â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -172,7 +186,24 @@ def flutter_static(filename):
 @app.route('/api/events', methods=['GET', 'POST'])
 def events():
     if request.method == 'GET':
-        rows = models.get_events(limit=200)
+        # PERFORMANCE FIX #2: Add pagination support
+        try:
+            limit = min(int(request.args.get('limit', 50)), 100)  # Cap at 100 items
+            offset = max(int(request.args.get('offset', 0)), 0)
+        except (ValueError, TypeError):
+            limit = 50
+            offset = 0
+        
+        rows = models.get_events_paginated(offset=offset, limit=limit)
+        
+        # PERFORMANCE FIX #5: Cache count query (expensive on 166k+ events)
+        global _event_count_cache
+        now = time.time()
+        if _event_count_cache['count'] is None or (now - _event_count_cache['timestamp']) > _event_count_cache['ttl']:
+            _event_count_cache['count'] = models.count_events()
+            _event_count_cache['timestamp'] = now
+        total = _event_count_cache['count']
+        
         result = []
         for r in rows:
             result.append(dict(
@@ -188,7 +219,14 @@ def events():
                 manual_review_reason=r[16] if len(r) > 16 else None,
                 dismissed_review=bool(r[17]) if len(r) > 17 else False,
             ))
-        return jsonify(result)
+        
+        return jsonify({
+            'events': result,
+            'offset': offset,
+            'limit': limit,
+            'total': total,
+            'has_more': (offset + limit) < total
+        })
 
     data = request.get_json(force=True)
     event_row_id = models.add_event(
@@ -233,8 +271,21 @@ def events():
 
 @app.route('/api/events/manual-review', methods=['GET'])
 def events_manual_review():
-    """Return all events that need manual intervention (no rule matched)."""
-    rows = models.get_events_needing_review(limit=200)
+    """Return events that need manual intervention (no rule matched).
+    
+    PERFORMANCE FIX #2: Supports pagination to prevent loading all events.
+    Default limit: 20 (can be overridden with ?limit=X&offset=Y)
+    """
+    try:
+        limit = min(int(request.args.get('limit', 20)), 100)  # Default 20, cap at 100
+        offset = max(int(request.args.get('offset', 0)), 0)
+    except (ValueError, TypeError):
+        limit = 20
+        offset = 0
+    
+    rows = models.get_events_needing_review(limit=limit + offset)  # Get enough for pagination
+    rows = rows[offset:offset + limit]  # Apply offset
+    
     result = []
     for r in rows:
         result.append(dict(
@@ -258,7 +309,26 @@ def dismiss_event_review(event_row_id):
 @app.route('/api/monitor/status', methods=['GET'])
 def monitor_status():
     """Return the current status of the Windows Event Log monitor thread."""
-    return jsonify(event_log_monitor.get_status())
+    try:
+        status = event_log_monitor.get_status()
+        return jsonify(status)
+    except Exception as e:
+        _log.error(f'Error getting monitor status: {str(e)}')
+        return jsonify({
+            'running': False,
+            'last_poll': None,
+            'events_ingested': 0,
+            'error': str(e)
+        }), 200  # Return 200 with error details instead of 404
+
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """
+    Basic health check endpoint - no dependencies.
+    Returns 200 if Flask backend is running.
+    """
+    return jsonify({'status': 'ok', 'service': 'Flask Backend'}), 200
 
 
 @app.route('/api/monitor/trigger', methods=['POST'])
@@ -353,6 +423,7 @@ def _rule_to_dict(r):
         priority=r[12] if len(r) > 12 else 100,
         cooldown_minutes=r[13] if len(r) > 13 else 0,
         stop_processing=bool(r[14] if len(r) > 14 else 0),
+        active=int(r[15] if len(r) > 15 else 1),  # 1=enabled, 0=disabled
     )
 
 
@@ -503,6 +574,65 @@ def test_rule(rule_id):
     })
 
 
+@app.route('/api/rules/<int:rule_id>/toggle', methods=['POST'])
+def toggle_rule(rule_id):
+    """Enable or disable a rule."""
+    data   = request.get_json(force=True) or {}
+    active = bool(data.get('active', True))
+    ok     = models.toggle_rule_active(rule_id, active)
+    if not ok:
+        return jsonify({'error': 'rule not found'}), 404
+    return jsonify({'id': rule_id, 'active': active})
+
+
+@app.route('/api/rules/stats', methods=['GET'])
+def rules_stats():
+    """Return hit counts and last hit times for all rules."""
+    return jsonify(models.get_rule_hit_counts())
+
+
+@app.route('/api/tasks/status', methods=['GET'])
+def tasks_status():
+    """Query real Windows Task Scheduler tasks via schtasks."""
+    import subprocess, json as _json
+    task_names = [
+        'AutoRemediate_AppCrash_1000',
+        'AutoRemediate_AppHang_1001',
+        'AutoRemediate_DotNetCrash_1026',
+        'AutoRemediate_ServiceFail_7034',
+        'AutoRemediate_ServiceFail_7031',
+        'AutoRemediate_ServiceStart_7000',
+        'AutoRemediate_DiskError_11',
+        'AutoRemediate_NTFSCorruption_55',
+    ]
+    results = []
+    for name in task_names:
+        try:
+            out = subprocess.run(
+                ['schtasks', '/query', '/tn', name, '/fo', 'LIST', '/v'],
+                capture_output=True, text=True, timeout=8
+            )
+            if out.returncode != 0:
+                results.append({'name': name, 'installed': False})
+                continue
+            info = {'name': name, 'installed': True}
+            for line in out.stdout.splitlines():
+                if 'Status:' in line:
+                    info['status'] = line.split(':', 1)[-1].strip()
+                elif 'Last Run Time:' in line:
+                    info['last_run'] = line.split(':', 1)[-1].strip()
+                elif 'Next Run Time:' in line:
+                    info['next_run'] = line.split(':', 1)[-1].strip()
+                elif 'Last Result:' in line:
+                    info['last_result'] = line.split(':', 1)[-1].strip()
+                elif 'Scheduled Task State:' in line:
+                    info['enabled'] = 'Enabled' in line
+            results.append(info)
+        except Exception as e:
+            results.append({'name': name, 'installed': False, 'error': str(e)})
+    return jsonify(results)
+
+
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #  History
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -510,61 +640,90 @@ def test_rule(rule_id):
 @app.route('/api/history', methods=['GET'])
 def history():
     try:
-        rows = models.get_history(limit=500)
-        print(f'[DEBUG] get_history returned {len(rows)} rows', flush=True)
-        if rows:
-            print(f'[DEBUG] First row has {len(rows[0])} columns', flush=True)
-            print(f'[DEBUG] First row data: {rows[0]}', flush=True)
-        
+        limit  = min(max(int(request.args.get('limit',  50)),  1), 200)
+        offset = max(int(request.args.get('offset', 0)), 0)
+        status = request.args.get('status', None)
+        search = request.args.get('search', None)
+        sort_col = request.args.get('sort', 'id')
+        sort_dir = request.args.get('dir', 'DESC')
+
+        rows  = models.get_history(limit=limit, offset=offset, status=status,
+                                   search=search, sort_col=sort_col, sort_dir=sort_dir)
+        total = models.get_history_count(status=status, search=search)
+
         hist = []
-        for i, h in enumerate(rows):
-            try:
-                # Check row structure
-                if len(h) < 10:
-                    print(f'[ERROR] Row {i} has only {len(h)} columns, expected 10', flush=True)
-                    raise ValueError(f'Row has {len(h)} columns, expected 10. Row: {h}')
+        for h in rows:
+            hist.append(dict(
+                id=h[0], event_row_id=h[1], rule_id=h[2],
+                status=h[3], output=h[4], timestamp=h[5],
+                event_id=h[6], event_source=h[7],
+                rule_name=h[8], event_timestamp=h[9],
+            ))
+        return jsonify({'items': hist, 'total': total, 'has_more': offset + limit < total})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/history/export', methods=['GET'])
+def history_export():
+    """Export full remediation history as CSV."""
+    try:
+        fmt    = request.args.get('format', 'csv')
+        status = request.args.get('status', None)
+        search = request.args.get('search', None)
+        rows   = models.get_history(limit=10000, offset=0, status=status, search=search)
+        if fmt == 'csv':
+            import io, csv as csv_mod
+            buf = io.StringIO()
+            writer = csv_mod.writer(buf)
+            writer.writerow(['ID', 'Event ID', 'Rule', 'Status', 'Output', 'Remediation Time', 'Event Time', 'Source'])
+            for h in rows:
+                writer.writerow([h[0], h[6], h[8], h[3],
+                                 (h[4] or '')[:500], h[5], h[9], h[7]])
+            from flask import Response
+            return Response(
+                buf.getvalue(),
+                mimetype='text/csv',
+                headers={'Content-Disposition': 'attachment; filename=remediation_history.csv'}
+            )
+        return jsonify([dict(id=h[0], event_id=h[6], rule_name=h[8], status=h[3],
+                             output=h[4], timestamp=h[5]) for h in rows])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+
+
+@app.route('/api/events/<int:event_row_id>/history', methods=['GET'])
+def event_history(event_row_id):
+    try:
+        rows = models.get_event_history(event_row_id)
+        hist = []
+        for h in rows:
+            def safe_int(val):
+                if val is None: return None
+                if isinstance(val, int): return val
+                try: return int(val)
+                except (ValueError, TypeError): return None
+            def safe_str(val):
+                return str(val) if val else None
                 
-                # Safely parse each field
-                def safe_int(val):
-                    if val is None:
-                        return None
-                    if isinstance(val, int):
-                        return val
-                    try:
-                        return int(val)
-                    except (ValueError, TypeError):
-                        return None
-                
-                def safe_str(val):
-                    if val is None:
-                        return None
-                    return str(val) if val else None
-                
-                entry = dict(
-                    id=safe_int(h[0]),
-                    event_row_id=safe_int(h[1]),
-                    rule_id=safe_int(h[2]),
-                    status=safe_str(h[3]),
-                    output=safe_str(h[4]),
-                    timestamp=safe_str(h[5]),
-                    event_id=safe_int(h[6]),
-                    event_source=safe_str(h[7]),
-                    rule_name=safe_str(h[8]),
-                    event_timestamp=safe_str(h[9]),
-                )
-                hist.append(entry)
-            except Exception as row_err:
-                print(f'[ERROR] Failed to parse row {i}: {h}', flush=True)
-                print(f'  Error: {row_err}', flush=True)
-                raise
-        
-        print(f'[DEBUG] Successfully converted {len(hist)} rows', flush=True)
+            hist.append(dict(
+                id=safe_int(h[0]),
+                event_row_id=safe_int(h[1]),
+                rule_id=safe_int(h[2]),
+                status=safe_str(h[3]),
+                output=safe_str(h[4]),
+                timestamp=safe_str(h[5]),
+                event_id=safe_int(h[6]),
+                event_source=safe_str(h[7]),
+                rule_name=safe_str(h[8]),
+                event_timestamp=safe_str(h[9]),
+            ))
         return jsonify(hist)
     except Exception as e:
-        print(f'[ERROR] /api/history failed: {e}', flush=True)
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e), 'type': type(e).__name__}), 500
+        _log.error(f'Event history error: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -689,11 +848,39 @@ def populate_rules():
 def intelligence_summary():
     """
     Returns aggregated Alert Intelligence metrics for the Dashboard card.
+    PERFORMANCE FIX #3: Caches results for 30 seconds to reduce query load.
+    PERFORMANCE FIX #5: Uses cached event count to avoid expensive queries.
     """
     try:
+        global _intelligence_summary_cache
+        now = time.time()
+        
+        # Return cached result if available and not expired
+        if (_intelligence_summary_cache['data'] is not None and 
+            (now - _intelligence_summary_cache['timestamp']) < _intelligence_summary_cache['ttl']):
+            return jsonify(_intelligence_summary_cache['data'])
+        
+        # Fetch fresh data (using cached count internally)
         summary = models.get_intelligence_summary()
+        
+        # Update cache
+        _intelligence_summary_cache['data'] = summary
+        _intelligence_summary_cache['timestamp'] = now
+        
         return jsonify(summary)
     except Exception as e:
+        _log.error(f'Intelligence summary error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/dashboard-stats', methods=['GET'])
+def dashboard_stats():
+    """Returns real aggregated stats for the dashboard."""
+    try:
+        stats = models.get_dashboard_stats()
+        return jsonify(stats)
+    except Exception as e:
+        _log.error(f'Dashboard stats error: {e}')
         return jsonify({'error': str(e)}), 500
 
 

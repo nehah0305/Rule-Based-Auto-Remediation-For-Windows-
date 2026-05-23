@@ -14,6 +14,9 @@ class Rule {
   final int priority;
   final int cooldownMinutes;
   final bool stopProcessing;
+  final bool active;
+  final int hitCount;
+  final String? lastHit;
 
   Rule({
     required this.id,
@@ -31,6 +34,9 @@ class Rule {
     this.priority = 100,
     this.cooldownMinutes = 0,
     this.stopProcessing = false,
+    this.active = true,
+    this.hitCount = 0,
+    this.lastHit,
   });
 
   factory Rule.fromJson(Map<String, dynamic> j) => Rule(
@@ -49,6 +55,20 @@ class Rule {
     priority:           (j['priority'] as num?)?.toInt() ?? 100,
     cooldownMinutes:    (j['cooldown_minutes'] as num?)?.toInt() ?? 0,
     stopProcessing:     j['stop_processing'] as bool? ?? false,
+    active:             (j['active'] as int? ?? 1) == 1,
+    hitCount:           (j['hit_count'] as num?)?.toInt() ?? 0,
+    lastHit:            j['last_hit'] as String?,
+  );
+
+  Rule copyWith({bool? active}) => Rule(
+    id: id, name: name, eventId: eventId, source: source,
+    messageRegex: messageRegex, remediationScript: remediationScript,
+    autoRemediate: autoRemediate, category: category, severity: severity,
+    description: description, recommendedAction: recommendedAction,
+    scriptType: scriptType, priority: priority, cooldownMinutes: cooldownMinutes,
+    stopProcessing: stopProcessing,
+    active: active ?? this.active,
+    hitCount: hitCount, lastHit: lastHit,
   );
 
   Map<String, dynamic> toJson() => {

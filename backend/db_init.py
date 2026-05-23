@@ -3,9 +3,20 @@ import sqlite3
 from datetime import datetime
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'rules.db')
+_DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
+
+# Ensure data directory exists
+os.makedirs(_DATA_DIR, exist_ok=True)
 
 def init_db():
     """Initialize database with proper schema versioning (PRIORITY 3 FIX)."""
+    # Ensure data directory exists
+    os.makedirs(_DATA_DIR, exist_ok=True)
+    
+    # PERFORMANCE FIX #1: Clean oversized CSV files on startup
+    _cleanup_oversized_csv_files()
+    
+    # PERFORMANCE FIX #4: Add database indexes for query optimization
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
@@ -48,6 +59,8 @@ def init_db():
         )
         print(f'Applied schema migration v3')
     
+    conn.commit()
+    _add_performance_indexes(c)
     conn.commit()
     conn.close()
 
@@ -254,6 +267,67 @@ def _apply_schema_v3_migrations(c):
                 print(f'  Added column {col_name} to rules table')
             except sqlite3.OperationalError:
                 pass
+
+
+def _cleanup_oversized_csv_files():
+    """Delete CSV files larger than 50 MB to prevent memory bloat."""
+    if not os.path.exists(_DATA_DIR):
+        return
+    
+    oversized_files = [
+        'all_events.csv',
+        'errors_warnings.csv',
+        'filtered_events.csv'
+    ]
+    
+    for filename in oversized_files:
+        filepath = os.path.join(_DATA_DIR, filename)
+        if os.path.exists(filepath):
+            file_size_mb = os.path.getsize(filepath) / (1024 * 1024)
+            if file_size_mb > 50:
+                try:
+                    os.remove(filepath)
+                    print(f'[PERF FIX #1] Cleaned up oversized CSV: {filename} ({file_size_mb:.1f} MB)')
+                except Exception as e:
+                    print(f'[WARNING] Failed to clean CSV {filename}: {e}')
+
+
+def _add_performance_indexes(c):
+    """Add database indexes to optimize common query patterns.
+    
+    PERFORMANCE FIX #4: Creates non-blocking indexes with PRAGMA for
+    concurrent query support without locking during development.
+    """
+    # Disable synchronous mode temporarily for faster indexing
+    try:
+        c.execute('PRAGMA synchronous = NORMAL')  # Safer than OFF, faster than FULL
+    except:
+        pass
+    
+    indexes = [
+        ('idx_events_id', 'events', 'id'),
+        ('idx_events_event_id', 'events', 'event_id'),
+        ('idx_events_timestamp', 'events', 'timestamp'),
+        ('idx_events_event_id_ts', 'events', 'event_id, timestamp'),   # composite for range queries
+        ('idx_events_severity', 'events', 'severity'),
+        ('idx_events_manual_review', 'events', 'needs_manual_review'),
+        ('idx_rules_event_id', 'rules', 'event_id'),
+        ('idx_rules_source', 'rules', 'source'),
+        ('idx_rules_active', 'rules', 'active'),                        # for filtering inactive rules
+        ('idx_history_event_row_id', 'remediation_history', 'event_row_id'),  # critical FK join
+        ('idx_history_rule_id', 'remediation_history', 'rule_id'),
+        ('idx_history_timestamp', 'remediation_history', 'timestamp'),
+        ('idx_history_status', 'remediation_history', 'status'),
+        ('idx_variants_event_id', 'event_root_cause_variants', 'event_id'),
+    ]
+    
+    for idx_name, table, columns in indexes:
+        try:
+            c.execute(f'CREATE INDEX IF NOT EXISTS {idx_name} ON {table}({columns})')
+        except Exception as e:
+            pass  # Index may already exist
+    
+    print('[PERF FIX #4] Database indexes added for optimization')
 
 
 if __name__ == '__main__':
