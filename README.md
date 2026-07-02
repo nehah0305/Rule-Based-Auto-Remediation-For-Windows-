@@ -156,4 +156,3 @@ Then copy `frontend/build/web/` contents to `backend/static/` and restart `app.p
 
 ---
 
-*Maintained by the Unisys Development Team.*
