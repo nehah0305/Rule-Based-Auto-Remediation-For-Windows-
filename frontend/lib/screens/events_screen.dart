@@ -168,9 +168,8 @@ class _EventsTable extends StatelessWidget {
     if (events.isEmpty) {
       return const Center(child: Text('No warnings or errors yet', style: TextStyle(color: AppTheme.textMuted)));
     }
-    return Scrollbar(
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
         child: SingleChildScrollView(
           child: DataTable(
             columnSpacing: 16,

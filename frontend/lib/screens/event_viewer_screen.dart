@@ -464,10 +464,8 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
     return Column(
       children: [
         Expanded(
-          child: Scrollbar(
-            thumbVisibility: true,
-            child: ListView.builder(
-              itemCount: _paginatedEvents.length,
+          child: ListView.builder(
+            itemCount: _paginatedEvents.length,
               padding: const EdgeInsets.all(12),
               itemBuilder: (context, index) {
                 final event = _paginatedEvents[index];

@@ -1734,7 +1734,7 @@ def get_remediation_script_for_event(event_id):
         2020: 'remediation_scripts/Error2020_PagedPoolMemoryExhausted.ps1',
         26: 'remediation_scripts/Error26_ApplicationFailedDueToMemoryLimits.ps1',
         41: 'remediation_scripts/Error41_SystemRebootDueToResourceExhaustion.ps1',
-        1000: 'remediation_scripts/Error1000_ApplicationCrash.ps1',
+        1000: 'remediation_scripts/Remediate_AppCrash_Live.ps1',
         1001: 'remediation_scripts/Error1001_ApplicationHang.ps1',
         1026: 'remediation_scripts/Error1026_DotNetRuntimeCrash.ps1',
         2013: 'remediation_scripts/LowDiskSpace_Remediation.ps1',

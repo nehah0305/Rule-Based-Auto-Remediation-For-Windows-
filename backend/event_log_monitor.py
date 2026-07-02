@@ -538,10 +538,39 @@ def get_status() -> dict:
 def trigger_poll() -> int:
     """
     Manually force an immediate poll cycle and return the number of ingested events.
-    Useful for 'Refresh' buttons in the UI.
+    Useful for 'Refresh' buttons in the UI and demo scripts.
+
+    GRACE PERIOD FIX: uses a 5-minute look-back window so that an event written
+    to the Windows Event Log just before this call is always captured, regardless
+    of when the background auto-poll cycle last ran.  The watermark is restored to
+    max(prior_watermark, new_high) after the poll, so the next automatic cycle
+    never re-processes these events.
     """
     try:
+        GRACE_MINUTES = 5
+
+        # Save the current watermark so we can restore it if needed
+        prior_watermark = _load_watermark()
+
+        # Temporarily roll back the watermark by GRACE_MINUTES so recently
+        # written events are always within the query window
+        grace_since = datetime.now(timezone.utc) - timedelta(minutes=GRACE_MINUTES)
+        # Only roll back if the grace window is earlier than the saved watermark
+        if grace_since < prior_watermark:
+            _save_watermark(grace_since)
+            logger.info(
+                f'[TRIGGER] Manual trigger: rolling watermark back {GRACE_MINUTES} min '
+                f'({grace_since.isoformat()}) to catch recently written events.'
+            )
+
         count = _poll()
+
+        # Restore watermark to at least the prior value so the next auto-cycle
+        # doesn't re-process old events
+        after_watermark = _load_watermark()
+        if prior_watermark > after_watermark:
+            _save_watermark(prior_watermark)
+
         now = datetime.now(timezone.utc).isoformat()
         with _state_lock:
             _monitor_state['last_poll'] = now

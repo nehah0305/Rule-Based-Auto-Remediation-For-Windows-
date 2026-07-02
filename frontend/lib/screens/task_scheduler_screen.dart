@@ -582,10 +582,9 @@ class _ManualControlsCardState extends State<_ManualControlsCard> {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: AppTheme.border),
             ),
-            child: Scrollbar(
-              child: SingleChildScrollView(
-                child: SelectableText(
-                  widget.logContent,
+            child: SingleChildScrollView(
+              child: SelectableText(
+                widget.logContent,
                   style: const TextStyle(
                     color: AppTheme.accentGreen,
                     fontSize: 10,

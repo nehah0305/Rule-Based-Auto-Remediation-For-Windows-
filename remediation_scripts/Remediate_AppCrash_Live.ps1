@@ -17,7 +17,7 @@ param(
 
 # Extract dynamic AppName from the event message if not provided
 if (-not $AppName -and $env:RM_MESSAGE) {
-    if ($env:RM_MESSAGE -match "Faulting application name:\s*([^\,]+)") {
+    if ($env:RM_MESSAGE -match "Faulting application name:\s*(?:Faulting application name:\s*)?([^,\s]+)") {
         $AppName = $matches[1].Trim() -replace '\.exe$', ''
     }
 }
@@ -35,40 +35,36 @@ $timestamp = Get-Date -Format 'yyyy-MM-ddTHH:mm:ss'
 Write-Host "[$timestamp] [REMEDIATION] Starting real application crash recovery..."
 Write-Host "[$timestamp] [INFO] Target application: $AppName.exe"
 
-# -- Step 1: Verify the process is NOT already running ----------------------
-$existing = Get-Process -Name $AppName -ErrorAction SilentlyContinue
-if ($existing) {
-    Write-Host "[$timestamp] [INFO] $AppName.exe is already running (PID: $($existing.Id)). No restart needed."
-    exit 0
+# -- Step 1: Map short names to full executable paths ----------------------
+$exePath = switch ($AppName.ToLower()) {
+    "notepad"    { "C:\Windows\System32\notepad.exe" }
+    "calc"       { "C:\Windows\System32\calc.exe" }
+    "mspaint"    { "C:\Windows\System32\mspaint.exe" }
+    "wordpad"    { "C:\Program Files\Windows NT\Accessories\wordpad.exe" }
+    default      { "$AppName.exe" }
 }
 
-Write-Host "[$timestamp] [DETECT] $AppName.exe is NOT running -- crash confirmed. Proceeding with restart..."
+Write-Host "[$timestamp] [DETECT] Crash confirmed for $AppName.exe. Proceeding with restart..."
 
-# -- Step 2: Relaunch the application --------------------------------------
+# -- Step 3: Relaunch on the interactive desktop ----------------------------
+# IMPORTANT: -WindowStyle Normal forces the process to appear on the user's
+# visible desktop even when this script is invoked from Flask (a background
+# service-like process that has no interactive console window).
 try {
-    # Map short names to full executable paths if needed
-    $exePath = switch ($AppName.ToLower()) {
-        "notepad"    { "C:\Windows\System32\notepad.exe" }
-        "calc"       { "C:\Windows\System32\calc.exe" }
-        "mspaint"    { "C:\Windows\System32\mspaint.exe" }
-        "wordpad"    { "C:\Program Files\Windows NT\Accessories\wordpad.exe" }
-        default      { "$AppName.exe" }
-    }
+    Write-Host "[$timestamp] [ACTION] Launching: $exePath (WindowStyle: Normal)"
+    Start-Process -FilePath $exePath -WindowStyle Normal -ErrorAction Stop
 
-    Write-Host "[$timestamp] [ACTION] Launching: $exePath"
-    Start-Process $exePath -ErrorAction Stop
+    Start-Sleep -Milliseconds 1200
 
-    Start-Sleep -Milliseconds 800
-
-    # -- Step 3: Verify it started ------------------------------------------
+    # -- Step 4: Verify it started ------------------------------------------
     $started = Get-Process -Name $AppName -ErrorAction SilentlyContinue
     if ($started) {
         Write-Host "[$timestamp] [SUCCESS] $AppName.exe restarted successfully. PID: $($started.Id)"
-        Write-Host "[$timestamp] [INFO] Application is now running and stable."
+        Write-Host "[$timestamp] [INFO] Application is now running and visible on the desktop."
         exit 0
     } else {
         Write-Host "[$timestamp] [WARNING] Process launched but could not be confirmed in process list."
-        Write-Host "[$timestamp] [INFO] This may be normal for applications that spawn child processes."
+        Write-Host "[$timestamp] [INFO] This may be normal for UWP or shell-hosted applications."
         exit 0
     }
 } catch {
@@ -76,3 +72,4 @@ try {
     Write-Host "[$timestamp] [HINT] Ensure the executable is in PATH or provide full path."
     exit 1
 }
+

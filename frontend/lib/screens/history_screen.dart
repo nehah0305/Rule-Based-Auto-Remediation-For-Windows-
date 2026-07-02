@@ -206,7 +206,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(color: const Color(0xFF050510), borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: AppTheme.border)),
-                  child: Scrollbar(child: SingleChildScrollView(
+                  child: SingleChildScrollView(
                     child: SelectableText(
                       h.output ?? '(no output)',
                       style: const TextStyle(color: Color(0xFF00ff88), fontSize: 11, fontFamily: 'monospace', height: 1.5),
@@ -389,11 +389,10 @@ class _HistoryTable extends StatelessWidget {
       required this.onSort, required this.onRowTap});
 
   @override
-  Widget build(BuildContext context) => Scrollbar(
+  Widget build(BuildContext context) => SingleChildScrollView(
+    scrollDirection: Axis.horizontal,
     child: SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: SingleChildScrollView(
-        child: DataTable(
+      child: DataTable(
           columnSpacing: 16,
           headingTextStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
           headingRowHeight: 52,

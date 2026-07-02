@@ -373,11 +373,15 @@ class _IntelligenceCard extends StatelessWidget {
   const _IntelligenceCard({required this.intel});
 
   @override
-  Widget build(BuildContext context) => Container(
-    decoration: BoxDecoration(color: AppTheme.bgCard, borderRadius: BorderRadius.circular(14),
-        border: const Border(left: BorderSide(color: AppTheme.accentPurple, width: 4),
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(14),
+    child: Container(
+      decoration: const BoxDecoration(
+        color: AppTheme.bgCard,
+        border: Border(left: BorderSide(color: AppTheme.accentPurple, width: 4),
             top: BorderSide(color: AppTheme.border), right: BorderSide(color: AppTheme.border),
-            bottom: BorderSide(color: AppTheme.border))),
+            bottom: BorderSide(color: AppTheme.border)),
+      ),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),

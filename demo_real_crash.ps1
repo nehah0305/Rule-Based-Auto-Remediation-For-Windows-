@@ -1,3 +1,15 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# UAC Self-Elevation — re-launch as Administrator if not already elevated
+# ─────────────────────────────────────────────────────────────────────────────
+$currentPrincipal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+$isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    Write-Host "  [UAC] Requesting elevation to Administrator..." -ForegroundColor Yellow
+    $scriptPath = $MyInvocation.MyCommand.Path
+    Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`"" -Verb RunAs -Wait
+    exit
+}
+
 Write-Host "=== REAL NOTEPAD CRASH DEMO ===" -ForegroundColor Green
 Write-Host "Starting live remediation demo..." -ForegroundColor Cyan
 

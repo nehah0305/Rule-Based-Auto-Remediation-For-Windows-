@@ -173,9 +173,8 @@ class _RulesTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (rules.isEmpty) return const Center(child: Text('No rules yet — create one!', style: TextStyle(color: AppTheme.textMuted)));
-    return Scrollbar(
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
         child: SingleChildScrollView(
           child: DataTable(
             columnSpacing: 16,
