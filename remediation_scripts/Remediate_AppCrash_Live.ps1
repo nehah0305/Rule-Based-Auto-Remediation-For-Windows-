@@ -15,9 +15,16 @@ param(
     [string]$AppName = ""
 )
 
-# Extract dynamic AppName from the event message if not provided
+# Prefer the rule's named regex capture when the backend provides it
+if (-not $AppName -and $env:RM_MATCH_AppName) {
+    $AppName = $env:RM_MATCH_AppName.Trim() -replace '\.exe$', ''
+}
+
+# Extract dynamic AppName from the event message if not provided.
+# Tolerates the OS template doubling the prefix
+# ("Faulting application name: Faulting application name: excel").
 if (-not $AppName -and $env:RM_MESSAGE) {
-    if ($env:RM_MESSAGE -match "Faulting application name:\s*(?:Faulting application name:\s*)?([^,\s]+)") {
+    if ($env:RM_MESSAGE -match "(?i)Faulting application name:\s*(?:Faulting app(?:lication)? name:\s*)?([^\s,:]+)") {
         $AppName = $matches[1].Trim() -replace '\.exe$', ''
     }
 }
@@ -35,41 +42,89 @@ $timestamp = Get-Date -Format 'yyyy-MM-ddTHH:mm:ss'
 Write-Host "[$timestamp] [REMEDIATION] Starting real application crash recovery..."
 Write-Host "[$timestamp] [INFO] Target application: $AppName.exe"
 
-# -- Step 1: Map short names to full executable paths ----------------------
-$exePath = switch ($AppName.ToLower()) {
+# -- Step 1: Verify the process is NOT already running ----------------------
+$existing = Get-Process -Name $AppName -ErrorAction SilentlyContinue
+if ($existing) {
+    Write-Host "[$timestamp] [INFO] $AppName.exe is already running (PID: $($existing.Id)). No restart needed."
+    exit 0
+}
+
+Write-Host "[$timestamp] [DETECT] $AppName.exe is NOT running -- crash confirmed. Proceeding with restart..."
+
+# -- Step 2: Relaunch the application ---------------------------------------
+# Attempt to relaunch the crashed application by trying common install locations
+$appBase = $AppName -replace '\.exe$', ''
+$launched = $false
+
+# 0. Known Windows system app locations (fast path)
+$knownPath = switch ($appBase.ToLower()) {
     "notepad"    { "C:\Windows\System32\notepad.exe" }
     "calc"       { "C:\Windows\System32\calc.exe" }
     "mspaint"    { "C:\Windows\System32\mspaint.exe" }
     "wordpad"    { "C:\Program Files\Windows NT\Accessories\wordpad.exe" }
-    default      { "$AppName.exe" }
+    default      { $null }
+}
+if ($knownPath -and (Test-Path $knownPath)) {
+    try {
+        Start-Process $knownPath -ErrorAction Stop
+        $launched = $true
+        Write-Output "[OK] Relaunched $appBase from: $knownPath"
+    } catch {}
 }
 
-Write-Host "[$timestamp] [DETECT] Crash confirmed for $AppName.exe. Proceeding with restart..."
+# 1. Try direct process name (works if app is on PATH)
+if (-not $launched) {
+    try {
+        Start-Process "$appBase.exe" -ErrorAction Stop
+        $launched = $true
+        Write-Output "[OK] Relaunched $appBase via PATH"
+    } catch {}
+}
 
-# -- Step 3: Relaunch on the interactive desktop ----------------------------
-# IMPORTANT: -WindowStyle Normal forces the process to appear on the user's
-# visible desktop even when this script is invoked from Flask (a background
-# service-like process that has no interactive console window).
-try {
-    Write-Host "[$timestamp] [ACTION] Launching: $exePath (WindowStyle: Normal)"
-    Start-Process -FilePath $exePath -WindowStyle Normal -ErrorAction Stop
-
-    Start-Sleep -Milliseconds 1200
-
-    # -- Step 4: Verify it started ------------------------------------------
-    $started = Get-Process -Name $AppName -ErrorAction SilentlyContinue
-    if ($started) {
-        Write-Host "[$timestamp] [SUCCESS] $AppName.exe restarted successfully. PID: $($started.Id)"
-        Write-Host "[$timestamp] [INFO] Application is now running and visible on the desktop."
-        exit 0
-    } else {
-        Write-Host "[$timestamp] [WARNING] Process launched but could not be confirmed in process list."
-        Write-Host "[$timestamp] [INFO] This may be normal for UWP or shell-hosted applications."
-        exit 0
+# 2. Try common Office/application locations
+if (-not $launched) {
+    $searchPaths = @(
+        "$env:ProgramFiles\Microsoft Office\root\Office16\$appBase.exe",
+        "$env:ProgramFiles\Microsoft Office\Office16\$appBase.exe",
+        "${env:ProgramFiles(x86)}\Microsoft Office\root\Office16\$appBase.exe",
+        "${env:ProgramFiles(x86)}\Microsoft Office\Office16\$appBase.exe",
+        "$env:LOCALAPPDATA\Microsoft\WindowsApps\$appBase.exe"
+    )
+    foreach ($path in $searchPaths) {
+        if (Test-Path $path) {
+            try {
+                Start-Process $path -ErrorAction Stop
+                $launched = $true
+                Write-Output "[OK] Relaunched $appBase from: $path"
+                break
+            } catch {}
+        }
     }
-} catch {
-    Write-Host "[$timestamp] [ERROR] Failed to restart $AppName.exe: $_"
-    Write-Host "[$timestamp] [HINT] Ensure the executable is in PATH or provide full path."
+}
+
+# 3. Fallback: try shell verb (opens via file association/Windows Store)
+if (-not $launched) {
+    try {
+        Start-Process "shell:appsFolder\$appBase" -ErrorAction Stop
+        $launched = $true
+        Write-Output "[OK] Relaunched $appBase via shell:appsFolder"
+    } catch {}
+}
+
+if (-not $launched) {
+    Write-Output "[WARN] Could not automatically relaunch $appBase. Please reopen it manually."
     exit 1
 }
 
+Start-Sleep -Milliseconds 800
+
+# -- Step 3: Verify it started ------------------------------------------
+$started = Get-Process -Name $appBase -ErrorAction SilentlyContinue
+if ($started) {
+    Write-Host "[$timestamp] [SUCCESS] $appBase.exe restarted successfully. PID: $($started.Id)"
+    Write-Host "[$timestamp] [INFO] Application is now running and stable."
+} else {
+    Write-Host "[$timestamp] [WARNING] Process launched but could not be confirmed in process list."
+    Write-Host "[$timestamp] [INFO] This may be normal for applications that spawn child processes."
+}
+exit 0

@@ -17,6 +17,8 @@ class Rule {
   final bool active;
   final int hitCount;
   final String? lastHit;
+  final String? rollbackScript;
+  final int verificationTimeoutSec;
 
   Rule({
     required this.id,
@@ -37,6 +39,8 @@ class Rule {
     this.active = true,
     this.hitCount = 0,
     this.lastHit,
+    this.rollbackScript,
+    this.verificationTimeoutSec = 60,
   });
 
   factory Rule.fromJson(Map<String, dynamic> j) => Rule(
@@ -58,6 +62,8 @@ class Rule {
     active:             (j['active'] as int? ?? 1) == 1,
     hitCount:           (j['hit_count'] as num?)?.toInt() ?? 0,
     lastHit:            j['last_hit'] as String?,
+    rollbackScript:     j['rollback_script'] as String?,
+    verificationTimeoutSec: (j['verification_timeout_sec'] as num?)?.toInt() ?? 60,
   );
 
   Rule copyWith({bool? active}) => Rule(
@@ -69,6 +75,7 @@ class Rule {
     stopProcessing: stopProcessing,
     active: active ?? this.active,
     hitCount: hitCount, lastHit: lastHit,
+    rollbackScript: rollbackScript, verificationTimeoutSec: verificationTimeoutSec,
   );
 
   Map<String, dynamic> toJson() => {
@@ -86,5 +93,7 @@ class Rule {
     'priority':            priority,
     'cooldown_minutes':    cooldownMinutes,
     'stop_processing':     stopProcessing,
+    'rollback_script':     rollbackScript,
+    'verification_timeout_sec': verificationTimeoutSec,
   };
 }

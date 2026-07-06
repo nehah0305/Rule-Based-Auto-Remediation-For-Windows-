@@ -7,6 +7,7 @@ import '../models/history_entry.dart';
 import '../models/approval_request.dart';
 import '../models/alert.dart';
 import '../models/intelligence_summary.dart';
+import '../models/metrics_summary.dart';
 
 class ApiService {
   final http.Client _client = http.Client();
@@ -191,6 +192,27 @@ class ApiService {
 
   Future<Map<String, dynamic>> denyRequest(int reqId, {String note = 'denied by admin'}) async {
     return await _post('/api/requests/$reqId/deny', {'processed_by': 'admin', 'note': note}) as Map<String, dynamic>;
+  }
+
+  // ─── Approval Gate (new-event-type sign-off) ─────────────────────────────────
+  Future<List<ApprovalGateRequest>> getApprovals({String? status}) async {
+    final path = status != null && status != 'all' ? '/api/approvals?status=$status' : '/api/approvals';
+    final data = await _get(path) as List;
+    return data.map((r) => ApprovalGateRequest.fromJson(r as Map<String, dynamic>)).toList();
+  }
+
+  Future<Map<String, dynamic>> approveApprovalRequest(int reqId) async {
+    return await _post('/api/approvals/$reqId/approve', {'resolved_by': 'operator'}) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> rejectApprovalRequest(int reqId) async {
+    return await _post('/api/approvals/$reqId/reject', {'resolved_by': 'operator'}) as Map<String, dynamic>;
+  }
+
+  // ─── Metrics / Observability ──────────────────────────────────────────────
+  Future<MetricsSummary> getMetrics({int days = 14}) async {
+    final data = await _get('/api/metrics?days=$days') as Map<String, dynamic>;
+    return MetricsSummary.fromJson(data);
   }
 
   // ─── Monitor ───────────────────────────────────────────────────────────────

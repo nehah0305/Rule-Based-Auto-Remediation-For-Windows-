@@ -206,12 +206,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(color: const Color(0xFF050510), borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: AppTheme.border)),
-                  child: SingleChildScrollView(
-                    child: SelectableText(
-                      h.output ?? '(no output)',
-                      style: const TextStyle(color: Color(0xFF00ff88), fontSize: 11, fontFamily: 'monospace', height: 1.5),
-                    ),
-                  )),
+                  child: _OutputViewer(output: h.output ?? '(no output)'),
                 )),
               ]),
             )),
@@ -333,6 +328,39 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ]),
                   ),
                 ),
+                const SizedBox(width: 8),
+                // Sort Dropdown
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: '$_sortCol:$_sortDir',
+                      dropdownColor: const Color(0xFF1A1A2E),
+                      icon: const Icon(Icons.sort_rounded, color: Colors.white, size: 15),
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                      onChanged: (v) {
+                        if (v == null) return;
+                        final parts = v.split(':');
+                        setState(() { _sortCol = parts[0]; _sortDir = parts[1]; });
+                        _load();
+                      },
+                      items: const [
+                        DropdownMenuItem(value: 'id:DESC', child: Text('Newest First')),
+                        DropdownMenuItem(value: 'id:ASC', child: Text('Oldest First')),
+                        DropdownMenuItem(value: 'status:DESC', child: Text('Status (Z→A)')),
+                        DropdownMenuItem(value: 'status:ASC', child: Text('Status (A→Z)')),
+                        DropdownMenuItem(value: 'event_id:DESC', child: Text('Event ID (Z→A)')),
+                        DropdownMenuItem(value: 'event_id:ASC', child: Text('Event ID (A→Z)')),
+                        DropdownMenuItem(value: 'timestamp:DESC', child: Text('Time (Newest)')),
+                        DropdownMenuItem(value: 'timestamp:ASC', child: Text('Time (Oldest)')),
+                      ],
+                    ),
+                  ),
+                ),
               ]),
             ),
 
@@ -379,8 +407,36 @@ class _HistoryScreenState extends State<HistoryScreen> {
   String _fmtDate(DateTime d) => '${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}';
 }
 
+// ── Script output viewer with a properly-attached scrollbar ─────────────────
+class _OutputViewer extends StatefulWidget {
+  final String output;
+  const _OutputViewer({required this.output});
+
+  @override
+  State<_OutputViewer> createState() => _OutputViewerState();
+}
+
+class _OutputViewerState extends State<_OutputViewer> {
+  final _controller = ScrollController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+    controller: _controller,
+    child: SelectableText(
+      widget.output,
+      style: const TextStyle(color: Color(0xFF00ff88), fontSize: 11, fontFamily: 'monospace', height: 1.5),
+    ),
+  );
+}
+
 // ── Sort-able table ────────────────────────────────────────────────────────────
-class _HistoryTable extends StatelessWidget {
+class _HistoryTable extends StatefulWidget {
   final List<HistoryEntry> history;
   final String sortCol, sortDir;
   final void Function(String col) onSort;
@@ -389,10 +445,53 @@ class _HistoryTable extends StatelessWidget {
       required this.onSort, required this.onRowTap});
 
   @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-    scrollDirection: Axis.horizontal,
-    child: SingleChildScrollView(
-      child: DataTable(
+  State<_HistoryTable> createState() => _HistoryTableState();
+}
+
+class _HistoryTableState extends State<_HistoryTable> {
+  final _horizontalController = ScrollController();
+  final _verticalController = ScrollController();
+
+  @override
+  void dispose() {
+    _horizontalController.dispose();
+    _verticalController.dispose();
+    super.dispose();
+  }
+
+  // Forward to the widget's fields so the rest of this class's body (which
+  // was written against StatelessWidget-style bare field names) needs no
+  // other changes.
+  List<HistoryEntry> get history => widget.history;
+  String get sortCol => widget.sortCol;
+  String get sortDir => widget.sortDir;
+  void Function(String col) get onSort => widget.onSort;
+  void Function(HistoryEntry) get onRowTap => widget.onRowTap;
+
+  // Both Scrollbars sit OUTSIDE both scroll views so they paint on the visible
+  // viewport edges (right + bottom) instead of scrolling away with the content.
+  // The ConstrainedBox stretches the table to the full panel width when it is
+  // narrower than the panel.
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => Scrollbar(
+      controller: _verticalController,
+      thumbVisibility: true,
+      trackVisibility: true,
+      child: Scrollbar(
+        controller: _horizontalController,
+        thumbVisibility: true,
+        trackVisibility: true,
+        notificationPredicate: (n) => n.depth == 1,
+        child: SingleChildScrollView(
+          controller: _verticalController,
+          scrollDirection: Axis.vertical,
+          child: SingleChildScrollView(
+            controller: _horizontalController,
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: DataTable(
           columnSpacing: 16,
           headingTextStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
           headingRowHeight: 52,
@@ -402,6 +501,7 @@ class _HistoryTable extends StatelessWidget {
           columns: [
             _sortCol('id',        'ID'),
             _sortCol('event_id',  'Event ID'),
+            const DataColumn(label: Text('Name')),
             const DataColumn(label: Text('Rule')),
             _sortCol('status',    'Status'),
             const DataColumn(label: Text('Output')),
@@ -414,6 +514,18 @@ class _HistoryTable extends StatelessWidget {
               DataCell(Text('#${h.id}', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12))),
               DataCell(Text('${h.eventId ?? '—'}',
                   style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.w600))),
+              DataCell((h.appContext != null && h.appContext!.isNotEmpty)
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accentYellow.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(h.appContext!,
+                          style: const TextStyle(
+                              color: AppTheme.accentYellow, fontWeight: FontWeight.w600, fontSize: 11.5)),
+                    )
+                  : const Text('—', style: TextStyle(color: AppTheme.textDimmed, fontSize: 12))),
               DataCell(SizedBox(width: 180, child: Text(h.ruleName ?? 'Rule #${h.ruleId}',
                   style: const TextStyle(color: AppTheme.textPrimary, fontSize: 11),
                   maxLines: 2, overflow: TextOverflow.ellipsis))),
@@ -428,6 +540,9 @@ class _HistoryTable extends StatelessWidget {
               DataCell(Text(_fmtTs(h.eventTimestamp), style: const TextStyle(color: AppTheme.textMuted, fontSize: 11))),
             ],
           )).toList(),
+              ),
+            ),
+          ),
         ),
       ),
     ),

@@ -9,6 +9,7 @@ class HistoryEntry {
   final String? eventSource;
   final String? ruleName;
   final String? eventTimestamp;
+  final String? appContext;
 
   HistoryEntry({
     required this.id,
@@ -21,6 +22,7 @@ class HistoryEntry {
     this.eventSource,
     this.ruleName,
     this.eventTimestamp,
+    this.appContext,
   });
 
   factory HistoryEntry.fromJson(Map<String, dynamic> j) {
@@ -42,6 +44,7 @@ class HistoryEntry {
       eventSource:    j['event_source'] as String? ?? j['source'] as String?,
       ruleName:       j['rule_name'] as String?,
       eventTimestamp: j['event_timestamp'] as String?,
+      appContext:     j['app_context'] as String?,
     );
   }
 }

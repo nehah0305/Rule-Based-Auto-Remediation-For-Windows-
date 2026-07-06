@@ -466,18 +466,17 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
         Expanded(
           child: ListView.builder(
             itemCount: _paginatedEvents.length,
-              padding: const EdgeInsets.all(12),
-              itemBuilder: (context, index) {
-                final event = _paginatedEvents[index];
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _EventCard(
-                    event: event,
-                    onTap: () => _showEventDetails(event),
-                  ),
-                );
-              },
-            ),
+            padding: const EdgeInsets.all(12),
+            itemBuilder: (context, index) {
+              final event = _paginatedEvents[index];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _EventCard(
+                  event: event,
+                  onTap: () => _showEventDetails(event),
+                ),
+              );
+            },
           ),
         ),
         if (!_loading && _filteredEvents.isNotEmpty)

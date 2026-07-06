@@ -1,0 +1,211 @@
+I need you to implement 3 targeted fixes in my Rule-Based Auto-Remediation Windows desktop app (Flutter + Flask/Python + SQLite).
+
+PROJECT ROOT: d:\OneDrive\Desktop\Rule-Based-Auto-Remediation-For-Windows-
+
+---
+
+## FIX 1: History tab shows "faulting" instead of app name
+
+### Root Cause
+`backend/app.py` around line 685, inside the `history()` route:
+```python
+m = re.search(r'faulting application name:\s*([^\s,:\n]+)', msg, re.IGNORECASE)
+```
+Windows OS prepends "Faulting application name: " to what simulate_crash.ps1 writes, so the
+stored message reads: "Faulting application name: Faulting application name: excel"
+The current pattern matches on the first occurrence and captures "Faulting" (the next word).
+
+### Fix
+Replace that single regex line (line ~685) in `backend/app.py` with this duplicate-prefix-tolerant version:
+```python
+m = re.search(
+    r'faulting application name:\s*(?:faulting app(?:lication)? name:\s*)?([^\s,:\n]+)',
+    msg, re.IGNORECASE
+)
+```
+
+ALSO apply the exact same fix in `backend/event_log_monitor.py` in the `_extract_app_context()` function
+(around line 270), where the same regex pattern is used:
+```python
+m = re.search(
+    r'faulting application name:\s*(?:faulting app(?:lication)? name:\s*)?([^\s,:\n]+)',
+    message, re.IGNORECASE
+)
+```
+
+This fix must be applied in BOTH files. Do not change anything else in either function.
+
+---
+
+## FIX 2: Crashed app does not reopen after Approve
+
+### Root Cause
+The remediation script for Event 1000 crashes tries to restart the app by name. When `AppName` is
+a bare name like "excel" or "word", `Start-Process excel` fails because PowerShell cannot resolve
+the short name to an executable path. The script needs smarter process restart logic.
+
+### Fix — Update `backend/app.py` in the inline PowerShell remediation block
+
+Find the function `simulate_error1000_auto_fix` (around line 1099) or any inline powershell script
+that handles Event 1000 app crash remediation. If the actual script is at a file path like
+`Error1000_ApplicationCrash.ps1`, find and open that file.
+
+In whichever file handles the "restart app" step, replace the naive `Start-Process $AppName` call
+with this robust multi-path restart logic:
+```powershell
+# Attempt to relaunch the crashed application by trying common install locations
+$appBase = $AppName -replace '\.exe$', ''
+$launched = $false
+
+# 1. Try direct process name (works if app is on PATH)
+try {
+    Start-Process "$appBase.exe" -ErrorAction Stop
+    $launched = $true
+    Write-Output "[OK] Relaunched $appBase via PATH"
+} catch {}
+
+# 2. Try common Office/application locations
+if (-not $launched) {
+    $searchPaths = @(
+        "$env:ProgramFiles\Microsoft Office\root\Office16\$appBase.exe",
+        "$env:ProgramFiles\Microsoft Office\Office16\$appBase.exe",
+        "${env:ProgramFiles(x86)}\Microsoft Office\root\Office16\$appBase.exe",
+        "${env:ProgramFiles(x86)}\Microsoft Office\Office16\$appBase.exe",
+        "$env:LOCALAPPDATA\Microsoft\WindowsApps\$appBase.exe"
+    )
+    foreach ($path in $searchPaths) {
+        if (Test-Path $path) {
+            try {
+                Start-Process $path -ErrorAction Stop
+                $launched = $true
+                Write-Output "[OK] Relaunched $appBase from: $path"
+                break
+            } catch {}
+        }
+    }
+}
+
+# 3. Fallback: try shell verb (opens via file association/Windows Store)
+if (-not $launched) {
+    try {
+        Start-Process "shell:appsFolder\$appBase" -ErrorAction Stop
+        $launched = $true
+        Write-Output "[OK] Relaunched $appBase via shell:appsFolder"
+    } catch {}
+}
+
+if (-not $launched) {
+    Write-Output "[WARN] Could not automatically relaunch $appBase. Please reopen it manually."
+}
+```
+
+---
+
+## FIX 3: Add both horizontal AND vertical scrollbars to the History table
+
+### Root Cause
+`frontend/lib/screens/history_screen.dart` lines 470–525, inside `_HistoryTableState.build()`:
+The DataTable is wrapped in two nested `SingleChildScrollView` widgets (horizontal then vertical),
+but NEITHER has a `Scrollbar` widget. Users cannot see or grab the scrollbars.
+
+### Fix — Modify `_HistoryTableState` in `history_screen.dart`
+
+1. Add a `_verticalController` alongside the existing `_horizontalController`:
+```dart
+final _horizontalController = ScrollController();
+final _verticalController = ScrollController();
+```
+
+2. Update `dispose()` to also dispose the vertical controller:
+```dart
+@override
+void dispose() {
+  _horizontalController.dispose();
+  _verticalController.dispose();
+  super.dispose();
+}
+```
+
+3. Replace the entire `build()` method of `_HistoryTableState` (lines 470–525) with this version
+   that wraps both scroll views in visible Scrollbar widgets:
+```dart
+@override
+Widget build(BuildContext context) => Scrollbar(
+  controller: _verticalController,
+  thumbVisibility: true,
+  trackVisibility: true,
+  child: SingleChildScrollView(
+    controller: _verticalController,
+    scrollDirection: Axis.vertical,
+    child: Scrollbar(
+      controller: _horizontalController,
+      thumbVisibility: true,
+      trackVisibility: true,
+      notificationPredicate: (n) => n.depth == 1,
+      child: SingleChildScrollView(
+        controller: _horizontalController,
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columnSpacing: 16,
+          headingTextStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
+          headingRowHeight: 52,
+          dataRowMinHeight: 52,
+          dataRowMaxHeight: 64,
+          horizontalMargin: 18,
+          columns: [
+            _sortCol('id',        'ID'),
+            _sortCol('event_id',  'Event ID'),
+            const DataColumn(label: Text('Name')),
+            const DataColumn(label: Text('Rule')),
+            _sortCol('status',    'Status'),
+            const DataColumn(label: Text('Output')),
+            _sortCol('timestamp', 'Remediation Time'),
+            const DataColumn(label: Text('Event Time')),
+          ],
+          rows: history.map((h) => DataRow(
+            onSelectChanged: (_) => onRowTap(h),
+            cells: [
+              DataCell(Text('#${h.id}', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12))),
+              DataCell(Text('${h.eventId ?? '—'}',
+                  style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.w600))),
+              DataCell((h.appContext != null && h.appContext!.isNotEmpty)
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accentYellow.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(h.appContext!,
+                          style: const TextStyle(
+                              color: AppTheme.accentYellow, fontWeight: FontWeight.w600, fontSize: 11.5)),
+                    )
+                  : const Text('—', style: TextStyle(color: AppTheme.textDimmed, fontSize: 12))),
+              DataCell(SizedBox(width: 180, child: Text(h.ruleName ?? 'Rule #${h.ruleId}',
+                  style: const TextStyle(color: AppTheme.textPrimary, fontSize: 11),
+                  maxLines: 2, overflow: TextOverflow.ellipsis))),
+              DataCell(StatusBadge(h.status)),
+              DataCell(SizedBox(width: 200, child: Tooltip(
+                message: h.output ?? '',
+                child: Text(h.output ?? '—',
+                    style: const TextStyle(color: AppTheme.textMuted, fontSize: 11, fontFamily: 'monospace'),
+                    maxLines: 2, overflow: TextOverflow.ellipsis),
+              ))),
+              DataCell(Text(_fmtTs(h.timestamp), style: const TextStyle(color: AppTheme.textMuted, fontSize: 11))),
+              DataCell(Text(_fmtTs(h.eventTimestamp), style: const TextStyle(color: AppTheme.textMuted, fontSize: 11))),
+            ],
+          )).toList(),
+        ),
+      ),
+    ),
+  ),
+);
+```
+
+---
+
+## FINAL STEPS (must be done after all code changes)
+
+1. Run `python -m py_compile backend/app.py backend/event_log_monitor.py` to verify no Python syntax errors.
+2. Run `flutter analyze frontend/ --no-pub` to verify no Dart errors.
+3. Restart the Flask backend (`python app.py` in backend/).
+4. Hot-reload the Flutter frontend (press `r` in the flutter run terminal).

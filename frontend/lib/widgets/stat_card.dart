@@ -23,7 +23,7 @@ class StatCard extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.025),
           borderRadius: BorderRadius.circular(18),

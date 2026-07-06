@@ -8,6 +8,7 @@ import '../services/remediation_service.dart';
 import '../models/event.dart';
 import '../models/history_entry.dart';
 import '../models/intelligence_summary.dart';
+import '../models/metrics_summary.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/badges.dart';
 
@@ -31,6 +32,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _manualReview = 0;
   int _totalHistory = 0;
   Map<String, dynamic> _dashboardStats = {};
+  MetricsSummary _metrics = MetricsSummary();
 
   @override
   void initState() {
@@ -60,6 +62,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _api.getIntelligenceSummary(),
         _api.getManualReviewEvents(),
         _api.getDashboardStats(),
+        _api.getMetrics(),
       ]);
       if (!mounted) return;
       final histData = results[1] as Map<String, dynamic>;
@@ -72,6 +75,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _intel            = results[4] as IntelligenceSummary;
         _manualReview     = (results[5] as List).length;
         _dashboardStats   = results[6] as Map<String, dynamic>;
+        _metrics          = results[7] as MetricsSummary;
         _loading = false;
       });
     } catch (e) {
@@ -180,6 +184,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               .withSeparator(const SizedBox(width: 16)))
                           : Column(children: charts.withSeparator(const SizedBox(height: 16)));
                     }),
+                    const SizedBox(height: 20),
+                    _MetricsCard(metrics: _metrics),
                     const SizedBox(height: 20),
                     _IntelligenceCard(intel: _intel),
                     const SizedBox(height: 20),
@@ -376,12 +382,10 @@ class _IntelligenceCard extends StatelessWidget {
   Widget build(BuildContext context) => ClipRRect(
     borderRadius: BorderRadius.circular(14),
     child: Container(
-      decoration: const BoxDecoration(
-        color: AppTheme.bgCard,
-        border: Border(left: BorderSide(color: AppTheme.accentPurple, width: 4),
-            top: BorderSide(color: AppTheme.border), right: BorderSide(color: AppTheme.border),
-            bottom: BorderSide(color: AppTheme.border)),
-      ),
+      decoration: const BoxDecoration(color: AppTheme.bgCard,
+          border: Border(left: BorderSide(color: AppTheme.accentPurple, width: 4),
+              top: BorderSide(color: AppTheme.border), right: BorderSide(color: AppTheme.border),
+              bottom: BorderSide(color: AppTheme.border))),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
@@ -416,7 +420,7 @@ class _IntelligenceCard extends StatelessWidget {
         }),
       ),
     ]),
-  );
+  ));
 }
 
 class _IntelMetric extends StatelessWidget {
@@ -434,6 +438,134 @@ class _IntelMetric extends StatelessWidget {
       Text(label, style: const TextStyle(color: AppTheme.textMuted, fontSize: 10), textAlign: TextAlign.center),
     ]),
   );
+}
+
+// ── Metrics (Task 4 — success rate / MTTR / auto vs manual) ─────────────────
+class _MetricsCard extends StatelessWidget {
+  final MetricsSummary metrics;
+  const _MetricsCard({required this.metrics});
+
+  @override
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(14),
+    child: Container(
+      decoration: const BoxDecoration(color: AppTheme.bgCard,
+          border: Border(left: BorderSide(color: Color(0xFF17a2b8), width: 4),
+              top: BorderSide(color: AppTheme.border), right: BorderSide(color: AppTheme.border),
+              bottom: BorderSide(color: AppTheme.border))),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: [const Color(0xFF17a2b8).withValues(alpha: 0.2), const Color(0xFF17a2b8).withValues(alpha: 0.05)]),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+        ),
+        child: const Row(children: [
+          Icon(Icons.insights_rounded, color: Color(0xFF17a2b8), size: 18),
+          SizedBox(width: 8),
+          Text('Remediation Metrics', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+        ]),
+      ),
+      Padding(
+        padding: const EdgeInsets.all(20),
+        child: LayoutBuilder(builder: (ctx, constraints) {
+          final cols = constraints.maxWidth > 500 ? 3 : 1;
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            GridView.count(
+              crossAxisCount: cols, shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisSpacing: 12, mainAxisSpacing: 12,
+              childAspectRatio: 2.6,
+              children: [
+                _IntelMetric(value: '${metrics.successRatePct.toStringAsFixed(1)}%',
+                    label: 'Success Rate (${metrics.totalSuccessful}/${metrics.totalAttempts})',
+                    color: AppTheme.accentGreen),
+                _IntelMetric(value: metrics.mttrHuman, label: 'Mean Time to Remediation',
+                    color: const Color(0xFF17a2b8)),
+                _IntelMetric(value: '${metrics.autoCount} / ${metrics.manualApprovalCount}',
+                    label: 'Auto vs. Manual-Approval', color: AppTheme.accentPurple),
+              ],
+            ),
+            const SizedBox(height: 20),
+            const Text('MTTR — last 14 days', style: TextStyle(color: AppTheme.textMuted, fontSize: 11, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 10),
+            _MttrLineChart(points: metrics.mttrTimeseries),
+          ]);
+        }),
+      ),
+    ]),
+  ));
+}
+
+class _MttrLineChart extends StatelessWidget {
+  final List<MttrPoint> points;
+  const _MttrLineChart({required this.points});
+
+  @override
+  Widget build(BuildContext context) {
+    if (points.isEmpty) {
+      return const SizedBox(height: 160, child: Center(
+          child: Text('No verified remediations yet', style: TextStyle(color: AppTheme.textMuted))));
+    }
+    final spots = points.asMap().entries
+        .map((e) => FlSpot(e.key.toDouble(), e.value.mttrSeconds))
+        .toList();
+    final maxY = points.map((p) => p.mttrSeconds).reduce((a, b) => a > b ? a : b);
+
+    return SizedBox(
+      height: 180,
+      child: LineChart(LineChartData(
+        minY: 0,
+        maxY: maxY <= 0 ? 10 : maxY * 1.2,
+        gridData: const FlGridData(drawVerticalLine: false),
+        borderData: FlBorderData(show: false),
+        titlesData: FlTitlesData(
+          leftTitles: AxisTitles(sideTitles: SideTitles(
+            showTitles: true, reservedSize: 40,
+            getTitlesWidget: (v, _) => Text(_humanizeAxisSeconds(v),
+                style: const TextStyle(color: AppTheme.textMuted, fontSize: 9)),
+          )),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(sideTitles: SideTitles(
+            showTitles: true, reservedSize: 28,
+            getTitlesWidget: (v, _) {
+              final idx = v.toInt();
+              if (idx < 0 || idx >= points.length) return const SizedBox.shrink();
+              final label = points[idx].date.length >= 10 ? points[idx].date.substring(5) : points[idx].date;
+              return Padding(padding: const EdgeInsets.only(top: 6),
+                  child: Text(label, style: const TextStyle(color: AppTheme.textMuted, fontSize: 9)));
+            },
+          )),
+        ),
+        lineTouchData: LineTouchData(touchTooltipData: LineTouchTooltipData(
+          getTooltipColor: (_) => AppTheme.bgCardAlt,
+          getTooltipItems: (touchedSpots) => touchedSpots.map((s) {
+            final p = points[s.x.toInt()];
+            return LineTooltipItem('${p.date}\n${_humanizeAxisSeconds(p.mttrSeconds)} (${p.count} fix${p.count == 1 ? '' : 'es'})',
+                const TextStyle(color: AppTheme.textPrimary, fontSize: 11));
+          }).toList(),
+        )),
+        lineBarsData: [
+          LineChartBarData(
+            spots: spots,
+            isCurved: true,
+            color: const Color(0xFF17a2b8),
+            barWidth: 3,
+            dotData: const FlDotData(show: true),
+            belowBarData: BarAreaData(show: true, color: const Color(0xFF17a2b8).withValues(alpha: 0.12)),
+          ),
+        ],
+      )),
+    );
+  }
+
+  String _humanizeAxisSeconds(double seconds) {
+    final s = seconds.toInt();
+    if (s < 60) return '${s}s';
+    if (s < 3600) return '${(s / 60).round()}m';
+    return '${(s / 3600).toStringAsFixed(1)}h';
+  }
 }
 
 // ── Recent Events ───────────────────────────────────────────────────────────

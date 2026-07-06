@@ -14,6 +14,7 @@ from db_init import init_db
 import models
 import event_log_monitor
 import task_scheduler
+import analytics
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Input Validation & Security Configuration
@@ -322,6 +323,21 @@ def monitor_status():
         }), 200  # Return 200 with error details instead of 404
 
 
+@app.route('/api/metrics', methods=['GET'])
+def metrics():
+    """
+    Task 4 — success rate, MTTR (+ historical time series), and auto vs.
+    manual-approval ratio. Grouping endpoint for the dashboard's metrics
+    panel and Phase 2 ML training data collection.
+    """
+    try:
+        days = request.args.get('days', default=14, type=int)
+        return jsonify(analytics.get_metrics_summary(mttr_timeseries_days=days))
+    except Exception as e:
+        _log.error(f'Error computing metrics: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """
@@ -424,6 +440,8 @@ def _rule_to_dict(r):
         cooldown_minutes=r[13] if len(r) > 13 else 0,
         stop_processing=bool(r[14] if len(r) > 14 else 0),
         active=int(r[15] if len(r) > 15 else 1),  # 1=enabled, 0=disabled
+        rollback_script=r[16] if len(r) > 16 else None,
+        verification_timeout_sec=r[17] if len(r) > 17 else 60,
     )
 
 
@@ -447,16 +465,17 @@ def rules():
             'category': {'type': str, 'max_length': 256},
             'severity': {'type': str, 'max_length': 128},
             'description': {'type': str, 'max_length': 2048},
+            'rollback_script': {'type': str, 'max_length': 1024},
         }
         validate_input(data, rule_schema)
-        
+
         # Validate regex if provided (ReDoS prevention)
         if data.get('message_regex'):
             try:
                 re.compile(data['message_regex'])
             except re.error as e:
                 return jsonify({'error': f'Invalid regex pattern: {str(e)}'}), 400
-        
+
         rid = models.add_rule(
             data.get('name'),
             data.get('event_id'),
@@ -472,6 +491,8 @@ def rules():
             data.get('recommended_action'),
             data.get('priority', 100),
             data.get('cooldown_minutes', 0),
+            data.get('rollback_script'),
+            data.get('verification_timeout_sec', 60),
         )
         return jsonify({'status': 'created', 'rule_id': rid}), 201
     except ValueError as e:
@@ -504,16 +525,17 @@ def rule_detail(rule_id):
                 'category': {'type': str, 'max_length': 256},
                 'severity': {'type': str, 'max_length': 128},
                 'description': {'type': str, 'max_length': 2048},
+                'rollback_script': {'type': str, 'max_length': 1024},
             }
             validate_input(data, rule_schema)
-            
+
             # Validate regex if provided (ReDoS prevention)
             if data.get('message_regex'):
                 try:
                     re.compile(data['message_regex'])
                 except re.error as e:
                     return jsonify({'error': f'Invalid regex pattern: {str(e)}'}), 400
-            
+
             ok = models.update_rule(
                 rule_id,
                 data.get('name'),
@@ -530,6 +552,8 @@ def rule_detail(rule_id):
                 data.get('recommended_action'),
                 data.get('priority'),
                 data.get('cooldown_minutes'),
+                data.get('rollback_script'),
+                data.get('verification_timeout_sec'),
             )
             return jsonify({'status': 'updated' if ok else 'nochange'})
         except ValueError as e:
@@ -651,13 +675,30 @@ def history():
                                    search=search, sort_col=sort_col, sort_dir=sort_dir)
         total = models.get_history_count(status=status, search=search)
 
+        import re
         hist = []
         for h in rows:
+            name_context = ''
+            event_id = str(h[6])
+            msg = h[10] or ''
+            if event_id in ('1000', '1001') and msg:
+                m = re.search(
+                    r'faulting application name:\s*(?:faulting app(?:lication)? name:\s*)?([^\s,:\n]+)',
+                    msg, re.IGNORECASE
+                )
+                if m:
+                    name_context = m.group(1).strip().lower()
+            elif event_id in ('7034', '7031', '7032') and msg:
+                m = re.search(r'The\s+(.+?)\s+service\s+', msg, re.IGNORECASE)
+                if m:
+                    name_context = m.group(1).strip()
+                    
             hist.append(dict(
                 id=h[0], event_row_id=h[1], rule_id=h[2],
                 status=h[3], output=h[4], timestamp=h[5],
                 event_id=h[6], event_source=h[7],
                 rule_name=h[8], event_timestamp=h[9],
+                app_context=name_context,
             ))
         return jsonify({'items': hist, 'total': total, 'has_more': offset + limit < total})
     except Exception as e:
@@ -762,7 +803,7 @@ def approve_request(req_id):
         return jsonify({'error': 'not found'}), 404
     if req[3] != 'pending':
         return jsonify({'error': 'not pending'}), 400
-    result = models.run_remediation(req[1], req[2])
+    result = models.run_remediation(req[1], req[2], approved=True)
     note = result.get('status', '')
     if result.get('output'):
         note += ': ' + (result.get('output')[:1000])
@@ -778,6 +819,61 @@ def deny_request(req_id):
     note = data.get('note', 'denied by admin')
     models.update_request_status(req_id, 'denied', processed_by, note)
     return jsonify({'status': 'denied'})
+
+
+@app.route('/api/approvals', methods=['GET'])
+def approvals_list():
+    """New-event-type approval gate queue (distinct from /api/requests)."""
+    status = request.args.get('status')
+    rows = models.get_approval_requests(status)
+    out = []
+    for r in rows:
+        out.append(dict(
+            id=r[0], event_row_id=r[1], event_id=r[2], source=r[3],
+            rule_id=r[4], rule_name=r[5], status=r[6],
+            created_at=r[7], resolved_at=r[8], resolved_by=r[9],
+            severity=r[10] if len(r) > 10 else None,
+            app_context=r[11] if len(r) > 11 else '',
+        ))
+    return jsonify(out)
+
+
+@app.route('/api/approvals/<int:req_id>/approve', methods=['POST'])
+def approve_approval_request(req_id):
+    req = models.get_approval_request(req_id)
+    if not req:
+        return jsonify({'error': 'not found'}), 404
+    if req[6] != 'pending':
+        return jsonify({'error': 'not pending'}), 400
+
+    event_row_id, event_id, source, rule_id = req[1], req[2], req[3], req[4]
+    # req[10] = app_context (added in v6 — may be absent on older rows)
+    app_context = req[10] if len(req) > 10 else ''
+    data = request.get_json(silent=True) or {}
+    resolved_by = data.get('resolved_by', 'operator')
+
+    models.resolve_approval_request(req_id, 'approved', resolved_by)
+    if not models.is_event_type_approved(event_id, source, app_context=app_context):
+        models.mark_event_type_approved(event_id, source, app_context=app_context, approved_by=resolved_by)
+
+    result = models.run_remediation(event_row_id, rule_id, approved=True)
+    return jsonify({'status': 'approved', 'result': result})
+
+
+@app.route('/api/approvals/<int:req_id>/reject', methods=['POST'])
+def reject_approval_request(req_id):
+    req = models.get_approval_request(req_id)
+    if not req:
+        return jsonify({'error': 'not found'}), 404
+    if req[6] != 'pending':
+        return jsonify({'error': 'not pending'}), 400
+
+    data = request.get_json(silent=True) or {}
+    resolved_by = data.get('resolved_by', 'operator')
+
+    models.resolve_approval_request(req_id, 'rejected', resolved_by)
+    models.record_remediation(req[1], req[4], 'rejected', f'Approval request {req_id} rejected by {resolved_by}')
+    return jsonify({'status': 'rejected'})
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1044,7 +1140,7 @@ def simulate_error1000_auto_fix():
 
     if not demo_rule:
         rid = models.add_rule(
-            name='AutoFix Demo - Event ID 1000 Application Crash',
+            name='Application Crash Auto-Restart - Event 1000 (Simulated)',
             event_id=1000,
             source='Application Error',
             message_regex=None,

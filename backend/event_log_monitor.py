@@ -71,8 +71,15 @@ WATERMARK_PATH  = os.path.join(DATA_DIR, 'eventlog_watermark.json')
 
 # Windows event levels we care about (1=Critical, 2=Error, 3=Warning)
 WATCH_LEVELS   = [1, 2, 3]
-# Logs to poll
-WATCH_LOGS     = ['System', 'Application']
+# Logs to poll. 'Security' added alongside the rules_manifest.json expansion
+# (Task 1) — several onboarded rules (logon failures, WFP-blocked
+# connections, etc.) only ever appear there. Note this requires the backend
+# process to have rights to read the Security log (elevated/admin session).
+# AppLocker events live in a separate operational log
+# ('Microsoft-Windows-AppLocker/EXE and DLL') that is disabled by default on
+# most systems (`wevtutil el` to enable) — intentionally not added here since
+# that's a system configuration change, not just a polling scope change.
+WATCH_LOGS     = ['System', 'Application', 'Security']
 
 # Map Windows numeric Level → severity string used inside the app
 LEVEL_MAP = {1: 'Critical', 2: 'Error', 3: 'Warning'}
@@ -148,10 +155,19 @@ try {
         LogName   = $logList
         Level     = $levelList
     }
+    # BUGFIX: .Message fails to render (comes back empty) for events written via
+    # Write-EventLog to a real/protected source (e.g. "Service Control Manager")
+    # whose message-table template expects a different insertion-string layout
+    # than a single free-text string provides. Fall back to the raw .Properties
+    # values (which always contain what was actually written) when that happens.
     $events = Get-WinEvent -FilterHashtable $filter -MaxEvents 5000 -ErrorAction Stop |
               Where-Object { $_.TimeCreated -ge $parsedDate } |
               Select-Object -First $MaxEvents |
-              Select-Object Id, LogName, ProviderName, Message, TimeCreated, Level, LevelDisplayName
+              Select-Object Id, LogName, ProviderName, TimeCreated, Level, LevelDisplayName, `
+                  @{Name='Message'; Expression={
+                      if ($_.Message) { $_.Message }
+                      else { ($_.Properties | ForEach-Object { $_.Value }) -join ' ' }
+                  }}
     if ($events) { $events | ConvertTo-Json -Depth 3 -Compress } else { '[]' }
 } catch [System.Exception] {
     if ($_.Exception.Message -match 'No events were found') { '[]' }
@@ -230,6 +246,35 @@ def _parse_timestamp(ts_raw) -> str:
             pass
     return str(ts_raw)
 
+
+def _extract_app_context(event_id: str, message: str, regex_captures: dict) -> str:
+    """
+    Extract the faulting application name to use as the approval gate key.
+
+    Priority order:
+      1. Named capture group 'AppName' or 'app_name' from message_regex match
+      2. Faulting application name field in the raw event message (event 1000/1001)
+      3. Empty string (no app context — gate falls back to 2-way key)
+
+    Returns a lowercase, whitespace-stripped string.
+    """
+    # 1. Regex capture groups (highest priority — rule author explicitly named it)
+    app_ctx = (regex_captures.get('AppName') or regex_captures.get('app_name') or '').strip()
+    if app_ctx:
+        return app_ctx.lower()
+
+    # 2. Parse from raw message for application crash events
+    if event_id in ('1000', '1001') and message:
+        # Anchored on the field label, tolerant of the OS template doubling the
+        # prefix ("Faulting application name: Faulting application name: excel").
+        m = re.search(
+            r'faulting application name:\s*(?:faulting app(?:lication)? name:\s*)?([^\s,:\n]+)',
+            message, re.IGNORECASE
+        )
+        if m:
+            return m.group(1).strip().lower()
+
+    return ''
 
 def _process_event(raw: dict) -> int:
     """
@@ -403,14 +448,38 @@ def _process_event(raw: dict) -> int:
         )
         logger.info(f'[REVIEW] Event {event_id} ({source}) — manual review required')
     else:
+        _approval_created = False
         for rule_tuple in matched:
-            cooldown_active = rule_tuple[16] if len(rule_tuple) > 16 else False
-            regex_captures  = {**(rule_tuple[17] if len(rule_tuple) > 17 else {}), **extra_env}
+            cooldown_active = rule_tuple[-2]
+            regex_captures  = {**(rule_tuple[-1] if isinstance(rule_tuple[-1], dict) else {}), **extra_env}
             rid             = rule_tuple[0]
             auto_remediate  = rule_tuple[6]
             rule_name       = rule_tuple[1]
 
-            if auto_remediate and not cooldown_active:
+            _app_ctx = _extract_app_context(event_id, message, regex_captures)
+
+            if auto_remediate and not cooldown_active and not models.is_event_type_approved(event_id, source, app_context=_app_ctx):
+                # First time this (event_id, source, app_name) combo has ever matched —
+                # hold for operator sign-off instead of auto-remediating blind.
+                # Only ONE approval request per event: if this event already spawned
+                # one this pass, or an identical request is still pending, skip.
+                if _approval_created or models.has_pending_approval(event_id, source, _app_ctx):
+                    logger.info(
+                        f'[APPROVAL] Event {event_id} ({source}) app="{_app_ctx or "N/A"}" — '
+                        f'approval already pending, skipping duplicate for rule "{rule_name}"'
+                    )
+                    continue
+                req_id = models.create_approval_request(row_id, event_id, source, rid, rule_name, app_context=_app_ctx)
+                _approval_created = True
+                models.record_remediation(
+                    row_id, rid, 'pending_approval',
+                    f'Awaiting operator approval (request_id={req_id}, app={_app_ctx or "N/A"})'
+                )
+                logger.info(
+                    f'[APPROVAL] Event {event_id} ({source}) app="{_app_ctx or "N/A"}" is new — '
+                    f'created approval request {req_id} for rule "{rule_name}"'
+                )
+            elif auto_remediate and not cooldown_active:
                 result = models.run_remediation(row_id, rid, regex_captures=regex_captures)
                 extra_info = ''
                 if correlation['has_correlation']:
@@ -538,39 +607,10 @@ def get_status() -> dict:
 def trigger_poll() -> int:
     """
     Manually force an immediate poll cycle and return the number of ingested events.
-    Useful for 'Refresh' buttons in the UI and demo scripts.
-
-    GRACE PERIOD FIX: uses a 5-minute look-back window so that an event written
-    to the Windows Event Log just before this call is always captured, regardless
-    of when the background auto-poll cycle last ran.  The watermark is restored to
-    max(prior_watermark, new_high) after the poll, so the next automatic cycle
-    never re-processes these events.
+    Useful for 'Refresh' buttons in the UI.
     """
     try:
-        GRACE_MINUTES = 5
-
-        # Save the current watermark so we can restore it if needed
-        prior_watermark = _load_watermark()
-
-        # Temporarily roll back the watermark by GRACE_MINUTES so recently
-        # written events are always within the query window
-        grace_since = datetime.now(timezone.utc) - timedelta(minutes=GRACE_MINUTES)
-        # Only roll back if the grace window is earlier than the saved watermark
-        if grace_since < prior_watermark:
-            _save_watermark(grace_since)
-            logger.info(
-                f'[TRIGGER] Manual trigger: rolling watermark back {GRACE_MINUTES} min '
-                f'({grace_since.isoformat()}) to catch recently written events.'
-            )
-
         count = _poll()
-
-        # Restore watermark to at least the prior value so the next auto-cycle
-        # doesn't re-process old events
-        after_watermark = _load_watermark()
-        if prior_watermark > after_watermark:
-            _save_watermark(prior_watermark)
-
         now = datetime.now(timezone.utc).isoformat()
         with _state_lock:
             _monitor_state['last_poll'] = now

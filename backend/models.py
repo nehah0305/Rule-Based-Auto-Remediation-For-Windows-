@@ -8,6 +8,9 @@ import json
 import csv
 import hashlib
 import tempfile
+import threading
+import time
+import functools
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -1045,7 +1048,8 @@ def add_rule(name, event_id=None, source=None, message_regex=None,
              remediation_script=None, script_type='file',
              auto_remediate=0, stop_processing=0, category=None, severity=None,
              description=None, recommended_action=None,
-             priority=100, cooldown_minutes=0):
+             priority=100, cooldown_minutes=0,
+             rollback_script=None, verification_timeout_sec=60):
     conn = _conn()
     try:
         c = conn.cursor()
@@ -1063,11 +1067,12 @@ def add_rule(name, event_id=None, source=None, message_regex=None,
             '''INSERT INTO rules
                (name, event_id, source, message_regex, remediation_script,
                 script_type, auto_remediate, stop_processing, category, severity, description,
-                recommended_action, priority, cooldown_minutes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                recommended_action, priority, cooldown_minutes, rollback_script, verification_timeout_sec)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (name, event_id, source, message_regex, remediation_script,
              script_type or 'file', int(auto_remediate), int(stop_processing), category, severity,
-             description, recommended_action, int(priority), int(cooldown_minutes))
+             description, recommended_action, int(priority), int(cooldown_minutes),
+             rollback_script, int(verification_timeout_sec))
         )
         conn.commit()
         rid = c.lastrowid
@@ -1090,7 +1095,8 @@ def get_rules():
             SELECT id, name, event_id, source, message_regex, remediation_script,
                    auto_remediate, category, severity, description, recommended_action,
                    script_type, priority, cooldown_minutes, stop_processing,
-                   COALESCE(active, 1) as active
+                   COALESCE(active, 1) as active,
+                   rollback_script, COALESCE(verification_timeout_sec, 60) as verification_timeout_sec
             FROM rules
             ORDER BY priority ASC, id ASC
         ''')
@@ -1140,7 +1146,9 @@ def get_rule(rule_id):
         c.execute('''
             SELECT id, name, event_id, source, message_regex, remediation_script,
                    auto_remediate, category, severity, description, recommended_action,
-                   script_type, priority, cooldown_minutes, stop_processing
+                   script_type, priority, cooldown_minutes, stop_processing,
+                   COALESCE(active, 1) as active,
+                   rollback_script, COALESCE(verification_timeout_sec, 60) as verification_timeout_sec
             FROM rules WHERE id=?
         ''', (rule_id,))
         r = c.fetchone()
@@ -1153,7 +1161,8 @@ def update_rule(rule_id, name=None, event_id=None, source=None,
                 message_regex=None, remediation_script=None, script_type=None,
                 auto_remediate=None, stop_processing=None, category=None, severity=None,
                 description=None, recommended_action=None,
-                priority=None, cooldown_minutes=None):
+                priority=None, cooldown_minutes=None,
+                rollback_script=None, verification_timeout_sec=None):
     conn = _conn()
     c = conn.cursor()
     fields, vals = [], []
@@ -1181,6 +1190,8 @@ def update_rule(rule_id, name=None, event_id=None, source=None,
     _set('recommended_action', recommended_action)
     _set('priority', priority, int)
     _set('cooldown_minutes', cooldown_minutes, int)
+    _set('rollback_script', rollback_script)
+    _set('verification_timeout_sec', verification_timeout_sec, int)
 
     if not fields:
         conn.close()
@@ -1384,27 +1395,38 @@ def _matches_base_criteria(event, rule_tuple):
     return True
 
 
+@functools.lru_cache(maxsize=256)
+def _compile_regex_cached(pattern):
+    """
+    Task 3 — compiled regexes are cached in-memory so a rule's regex is
+    only parsed once, not on every single event evaluated against it.
+    Keyed on the pattern string; re.error propagates to the caller so an
+    invalid pattern is still caught (and logged) per-call, it's just the
+    compilation work itself that's memoized.
+    """
+    return re.compile(pattern, flags=re.DOTALL)
+
+
 def _extract_regex_captures(event, rule_tuple):
     """Extract regex capture groups from event message.
-    
+
     SECURITY: Includes length protection against ReDoS (Regular Expression Denial of Service)
     attacks where malicious regex patterns with catastrophic backtracking could hang the system.
     (PRIORITY 2 FIX)
     """
     r_message_regex = rule_tuple[4]  # message_regex index in rule tuple
-    
+
     if not r_message_regex:
         return {}
-    
+
     try:
-        # Compile regex to catch obvious errors early
-        compiled = re.compile(r_message_regex, flags=re.DOTALL)
-        
+        compiled = _compile_regex_cached(r_message_regex)
+
         # Truncate very long messages to prevent ReDoS and processing issues
         message = event.get('message') or ''
         if len(message) > 10000:
             message = message[:10000]
-        
+
         m = compiled.search(message)
         if not m:
             return None
@@ -1455,10 +1477,12 @@ def match_rules_for_event(event):
         # 0=id,1=name,2=event_id,3=source,4=message_regex,
         # 5=remediation_script,6=auto_remediate,7=category,
         # 8=severity,9=description,10=recommended_action,
-        # 11=script_type,12=priority,13=cooldown_minutes,14=stop_processing,15=_active
+        # 11=script_type,12=priority,13=cooldown_minutes,14=stop_processing,15=_active,
+        # 16=rollback_script,17=verification_timeout_sec
         (rid, name, r_event_id, r_source, r_message_regex, remediation_script,
          auto_remediate, r_category, r_severity, description, recommended_action,
-         script_type, priority, cooldown_minutes, stop_processing, _active) = r
+         script_type, priority, cooldown_minutes, stop_processing, _active,
+         _rollback_script, _verification_timeout_sec) = r
 
         if not _active:
             continue
@@ -1497,6 +1521,7 @@ def match_rules_for_event(event):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def record_remediation(event_row_id, rule_id, status, output=''):
+    """Insert a new remediation_history row. Returns the new row's id."""
     conn = _conn()
     try:
         c = conn.cursor()
@@ -1505,6 +1530,34 @@ def record_remediation(event_row_id, rule_id, status, output=''):
             'INSERT INTO remediation_history (event_row_id, rule_id, status, output, timestamp) VALUES (?, ?, ?, ?, ?)',
             (event_row_id, rule_id, status, output, ts)
         )
+        conn.commit()
+        return c.lastrowid
+    finally:
+        conn.close()
+
+
+def update_remediation_status(history_id, status, output=None,
+                               verification_started_at=None, verified_at=None,
+                               rollback_output=None):
+    """
+    Advance an existing remediation_history row through the closed-loop
+    state machine (pending -> executing -> verifying -> success | rolled_back
+    | verification_failed) without inserting a new row per phase.
+    """
+    conn = _conn()
+    try:
+        c = conn.cursor()
+        fields, vals = ['status=?'], [status]
+        if output is not None:
+            fields.append('output=?'); vals.append(output)
+        if verification_started_at is not None:
+            fields.append('verification_started_at=?'); vals.append(verification_started_at)
+        if verified_at is not None:
+            fields.append('verified_at=?'); vals.append(verified_at)
+        if rollback_output is not None:
+            fields.append('rollback_output=?'); vals.append(rollback_output)
+        vals.append(history_id)
+        c.execute(f'UPDATE remediation_history SET {", ".join(fields)} WHERE id=?', vals)
         conn.commit()
     finally:
         conn.close()
@@ -1534,7 +1587,7 @@ def get_history(limit=50, offset=0, status=None, search=None, sort_col='id', sor
         where = ('WHERE ' + ' AND '.join(conditions)) if conditions else ''
         query = f'''
             SELECT h.id, h.event_row_id, h.rule_id, h.status, h.output, h.timestamp,
-                   e.event_id, e.source, r.name, e.timestamp as event_timestamp
+                   e.event_id, e.source, r.name, e.timestamp as event_timestamp, e.message
             FROM remediation_history h
             LEFT JOIN events e ON h.event_row_id = e.id
             LEFT JOIN rules r ON h.rule_id = r.id
@@ -1592,6 +1645,143 @@ def get_event_history(event_row_id):
         ''', (event_row_id,))
         rows = c.fetchall()
         return rows
+    finally:
+        conn.close()
+
+
+def is_event_type_approved(event_id, source, app_context=''):
+    """True once an operator has approved this (event_id, source, app_context) triple.
+    
+    app_context is typically the faulting application name (e.g. 'notepad.exe').
+    If empty, checks only by (event_id, source) for backward compatibility.
+    """
+    conn = _conn()
+    try:
+        c = conn.cursor()
+        app_ctx = (app_context or '').strip()
+        if app_ctx:
+            # Exact 3-way match: this specific app has been approved
+            c.execute(
+                'SELECT 1 FROM approved_event_types WHERE event_id=? AND source=? AND app_context=? LIMIT 1',
+                (str(event_id), source or '', app_ctx)
+            )
+        else:
+            # No app context known — fall back to 2-way match (legacy behaviour)
+            c.execute(
+                "SELECT 1 FROM approved_event_types WHERE event_id=? AND source=? AND app_context='' LIMIT 1",
+                (str(event_id), source or '')
+            )
+        return c.fetchone() is not None
+    finally:
+        conn.close()
+
+
+def mark_event_type_approved(event_id, source, app_context='', approved_by='operator'):
+    """Whitelist a specific (event_id, source, app_context) triple so future occurrences auto-remediate."""
+    conn = _conn()
+    try:
+        c = conn.cursor()
+        app_ctx = (app_context or '').strip()
+        # Use INSERT OR IGNORE to avoid duplicates (idempotent on re-approval)
+        c.execute(
+            '''INSERT OR IGNORE INTO approved_event_types
+               (event_id, source, app_context, approved_by, approved_at)
+               VALUES (?, ?, ?, ?, ?)''',
+            (str(event_id), source or '', app_ctx, approved_by, datetime.utcnow().isoformat())
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def has_pending_approval(event_id, source, app_context=''):
+    """True if a pending approval request already exists for this (event_id, source, app_context)."""
+    conn = _conn()
+    try:
+        c = conn.cursor()
+        c.execute(
+            "SELECT 1 FROM approval_requests WHERE event_id=? AND source=? AND app_context=? AND status='pending' LIMIT 1",
+            (str(event_id), source or '', (app_context or '').strip())
+        )
+        return c.fetchone() is not None
+    finally:
+        conn.close()
+
+
+def create_approval_request(event_row_id, event_id, source, rule_id, rule_name, app_context=''):
+    """Create a pending approval gate entry, keyed on (event_id, source, app_context)."""
+    conn = _conn()
+    try:
+        c = conn.cursor()
+        ts = datetime.utcnow().isoformat()
+        app_ctx = (app_context or '').strip()
+        c.execute(
+            '''INSERT OR IGNORE INTO approval_requests
+               (event_row_id, event_id, source, app_context, rule_id, rule_name, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)''',
+            (event_row_id, str(event_id), source or '', app_ctx, rule_id, rule_name, ts)
+        )
+        conn.commit()
+        if c.rowcount == 0:
+            # Insert was ignored: an identical pending request already exists
+            # (idx_unique_pending_approval). Return its id, not a stale lastrowid.
+            c.execute(
+                "SELECT id FROM approval_requests WHERE event_id=? AND source=? AND app_context=? AND status='pending' LIMIT 1",
+                (str(event_id), source or '', app_ctx)
+            )
+            row = c.fetchone()
+            return row[0] if row else None
+        return c.lastrowid
+    finally:
+        conn.close()
+
+
+def get_approval_requests(status=None, limit=200):
+    conn = _conn()
+    try:
+        c = conn.cursor()
+        base = '''
+            SELECT ar.id, ar.event_row_id, ar.event_id, ar.source, ar.rule_id, ar.rule_name,
+                   ar.status, ar.created_at, ar.resolved_at, ar.resolved_by, rules.severity,
+                   COALESCE(ar.app_context, '') as app_context
+            FROM approval_requests ar
+            LEFT JOIN rules ON ar.rule_id = rules.id
+        '''
+        if status and status != 'all':
+            c.execute(base + ' WHERE ar.status=? ORDER BY ar.id DESC LIMIT ?', (status, limit))
+        else:
+            c.execute(base + ' ORDER BY ar.id DESC LIMIT ?', (limit,))
+        return c.fetchall()
+    finally:
+        conn.close()
+
+
+def get_approval_request(request_id):
+    conn = _conn()
+    try:
+        c = conn.cursor()
+        c.execute(
+            '''SELECT id, event_row_id, event_id, source, rule_id, rule_name, status,
+                      created_at, resolved_at, resolved_by,
+                      COALESCE(app_context, '') as app_context
+               FROM approval_requests WHERE id=?''',
+            (request_id,)
+        )
+        return c.fetchone()
+    finally:
+        conn.close()
+
+
+def resolve_approval_request(request_id, status, resolved_by='operator'):
+    """status: 'approved' or 'rejected'."""
+    conn = _conn()
+    try:
+        c = conn.cursor()
+        c.execute(
+            'UPDATE approval_requests SET status=?, resolved_at=?, resolved_by=? WHERE id=?',
+            (status, datetime.utcnow().isoformat(), resolved_by, request_id)
+        )
+        conn.commit()
     finally:
         conn.close()
 
@@ -1734,7 +1924,7 @@ def get_remediation_script_for_event(event_id):
         2020: 'remediation_scripts/Error2020_PagedPoolMemoryExhausted.ps1',
         26: 'remediation_scripts/Error26_ApplicationFailedDueToMemoryLimits.ps1',
         41: 'remediation_scripts/Error41_SystemRebootDueToResourceExhaustion.ps1',
-        1000: 'remediation_scripts/Remediate_AppCrash_Live.ps1',
+        1000: 'remediation_scripts/Error1000_ApplicationCrash.ps1',
         1001: 'remediation_scripts/Error1001_ApplicationHang.ps1',
         1026: 'remediation_scripts/Error1026_DotNetRuntimeCrash.ps1',
         2013: 'remediation_scripts/LowDiskSpace_Remediation.ps1',
@@ -1748,28 +1938,65 @@ def get_remediation_script_for_event(event_id):
 #  Execution Engine
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_remediation(event_row_id, rule_id, timeout=60, regex_captures=None):
-    rule = get_rule(rule_id)
-    if not rule:
-        return {'status': 'error', 'output': 'rule not found'}
+def _resolve_script_path(script_type, script_content_or_path):
+    """
+    Returns (script_to_run, tmp_path_to_cleanup_or_None). Raises FileNotFoundError
+    if a file-type script can't be located.
+    """
+    if script_type == 'inline':
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.ps1', delete=False, encoding='utf-8') as tmp:
+            tmp.write(script_content_or_path)
+            tmp_path = tmp.name
+        return tmp_path, tmp_path
 
-    # Fetch full event to inject into script context
-    event_data = get_event(event_row_id)
-    if not event_data:
-        return {'status': 'error', 'output': 'event not found'}
+    script_path = script_content_or_path
+    if not os.path.isabs(script_path):
+        project_root = os.path.join(os.path.dirname(__file__), '..')
+        script_path = os.path.abspath(os.path.join(project_root, script_path))
 
-    # Format of event_data (from get_event): 
-    # id(0), event_id(1), log_name(2), source(3), message(4), timestamp(5), category(6), severity(7), ...
-    
-    remediation_script = rule[5]
-    script_type = rule[11] if len(rule) > 11 else 'file'
+    if not os.path.exists(script_path):
+        if os.path.exists(script_content_or_path):
+            script_path = os.path.abspath(script_content_or_path)
+        else:
+            raise FileNotFoundError(script_content_or_path)
+    return script_path, None
 
-    if not remediation_script or not remediation_script.strip():
-        record_remediation(event_row_id, rule_id, 'skipped', 'no script provided')
-        return {'status': 'skipped', 'output': 'no script provided'}
 
-    # ── Context Injection (Environment Variables) ────────────────────────
-    # CRITICAL SECURITY FIX: Sanitize all env vars to prevent command injection
+def _execute_powershell(script_type, script_content_or_path, env, timeout):
+    """
+    Shared execution primitive used by both the primary remediation run and
+    rollback-script execution. Returns (status, output) where status is
+    'success' | 'failed' | 'error' | 'skipped'.
+    """
+    if not script_content_or_path or not script_content_or_path.strip():
+        return 'skipped', 'no script provided'
+
+    tmp_path = None
+    try:
+        script_to_run, tmp_path = _resolve_script_path(script_type, script_content_or_path)
+        proc = subprocess.run(
+            [_POWERSHELL, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script_to_run],
+            capture_output=True, text=True, timeout=timeout, env=env
+        )
+        status = 'success' if proc.returncode == 0 else 'failed'
+        output = proc.stdout + '\n' + proc.stderr
+        return status, output
+    except FileNotFoundError as e:
+        return 'skipped', f'script file not found: {e}'
+    except subprocess.TimeoutExpired:
+        return 'error', f'script timed out after {timeout}s'
+    except Exception as e:
+        return 'error', str(e)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
+
+def _build_remediation_env(event_data, regex_captures=None):
+    """CRITICAL SECURITY FIX: Sanitize all env vars to prevent command injection."""
     env = os.environ.copy()
     env['RM_EVENT_ROW_ID'] = str(event_data[0])
     env['RM_EVENT_ID'] = sanitize_for_powershell_env(str(event_data[1] or ''), max_length=20)
@@ -1780,57 +2007,165 @@ def run_remediation(event_row_id, rule_id, timeout=60, regex_captures=None):
     env['RM_CATEGORY'] = sanitize_for_powershell_env(str(event_data[6] or ''), max_length=100)
     env['RM_SEVERITY'] = sanitize_for_powershell_env(str(event_data[7] or ''), max_length=50)
     env['RM_SIMULATION_MODE'] = '1' if (str(event_data[2] or '').lower() == 'simulation') else '0'
-    
     if regex_captures:
         for k, v in regex_captures.items():
             env[f'RM_MATCH_{k}'] = sanitize_for_powershell_env(str(v), max_length=500)
+    return env
 
-    tmp_path = None
+
+def _run_verification_and_rollback(history_id, event_row_id, rule_id, event_id, source,
+                                    run_started_at, verification_timeout_sec):
+    """
+    Background worker (Task 2 closed-loop verification): after a script
+    reports success, watch for the SAME (event_id, source) problem recurring
+    within verification_timeout_sec seconds. If it recurs, the "fix" didn't
+    hold — execute the rule's rollback_script (if configured) and mark the
+    history row 'rolled_back'; otherwise mark it 'verification_failed' so it
+    is never silently reported as a success. If nothing recurs, mark
+    'success' with verified_at set.
+    """
     try:
-        if script_type == 'inline':
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.ps1', delete=False, encoding='utf-8') as tmp:
-                tmp.write(remediation_script)
-                tmp_path = tmp.name
-            script_to_run = tmp_path
+        time.sleep(max(1, int(verification_timeout_sec or 60)))
+
+        conn = _conn()
+        try:
+            c = conn.cursor()
+            # COALESCE(last_seen, timestamp): a recurrence of the same
+            # (event_id, source) within add_event()'s dedup window doesn't
+            # insert a new row — it only bumps dedup_count/last_seen on the
+            # existing one. Checking timestamp alone would silently miss
+            # exactly the "flapping" case this check exists to catch.
+            c.execute(
+                'SELECT COUNT(*) FROM events WHERE event_id=? AND source=? '
+                'AND COALESCE(last_seen, timestamp) > ?',
+                (str(event_id), source or '', run_started_at)
+            )
+            recurrence_count = c.fetchone()[0]
+        finally:
+            conn.close()
+
+        verified_at = datetime.utcnow().isoformat()
+
+        if recurrence_count == 0:
+            update_remediation_status(history_id, 'success', verified_at=verified_at)
+            logger.info(f'[VERIFY] History {history_id}: no recurrence within '
+                        f'{verification_timeout_sec}s — verified success.')
+            return
+
+        rule = get_rule(rule_id)
+        rollback_script = rule[16] if rule and len(rule) > 16 else None
+        script_type = rule[11] if rule and len(rule) > 11 else 'file'
+
+        if rollback_script and rollback_script.strip():
+            event_data = get_event(event_row_id)
+            env = _build_remediation_env(event_data) if event_data else os.environ.copy()
+            rb_status, rb_output = _execute_powershell(script_type, rollback_script, env, timeout=60)
+            update_remediation_status(
+                history_id, 'rolled_back',
+                rollback_output=f'[{rb_status}] {rb_output}', verified_at=verified_at
+            )
+            logger.warning(f'[ROLLBACK] History {history_id}: recurrence detected '
+                            f'({recurrence_count} new event(s)), rollback executed ({rb_status}).')
         else:
-            script_path = remediation_script
-            if not os.path.isabs(script_path):
-                # Try relative to the backend directory's parent (project root)
-                project_root = os.path.join(os.path.dirname(__file__), '..')
-                script_path = os.path.abspath(os.path.join(project_root, script_path))
-                
-            if not os.path.exists(script_path):
-                # Fallback to current directory if not found in project root
-                if os.path.exists(remediation_script):
-                    script_path = os.path.abspath(remediation_script)
-                else:
-                    record_remediation(event_row_id, rule_id, 'skipped',
-                                       f'script file not found: {remediation_script}')
-                    return {'status': 'skipped', 'output': f'script file not found: {remediation_script}'}
-            script_to_run = script_path
-
-        proc = subprocess.run(
-            [_POWERSHELL, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script_to_run],
-            capture_output=True, text=True, timeout=timeout, env=env
-        )
-        status = 'success' if proc.returncode == 0 else 'failed'
-        output = proc.stdout + '\n' + proc.stderr
-        record_remediation(event_row_id, rule_id, status, output)
-        return {'status': status, 'output': output}
-
-    except subprocess.TimeoutExpired:
-        msg = f'script timed out after {timeout}s'
-        record_remediation(event_row_id, rule_id, 'error', msg)
-        return {'status': 'error', 'output': msg}
+            update_remediation_status(
+                history_id, 'verification_failed',
+                rollback_output='Recurrence detected but this rule has no rollback_script configured.',
+                verified_at=verified_at
+            )
+            logger.warning(f'[VERIFY-FAIL] History {history_id}: recurrence detected, '
+                            f'no rollback script configured.')
     except Exception as e:
-        record_remediation(event_row_id, rule_id, 'error', str(e))
-        return {'status': 'error', 'output': str(e)}
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
+        logger.error(f'[VERIFY-ERROR] History {history_id}: {e}')
+        try:
+            update_remediation_status(history_id, 'verification_failed',
+                                       rollback_output=f'Verification error: {e}')
+        except Exception:
+            pass
+
+
+def run_remediation(event_row_id, rule_id, timeout=60, regex_captures=None, approved=False):
+    """Execute a rule's remediation script for an event.
+
+    approved=True marks an operator-sanctioned run (approval gate cleared):
+    script failures are recorded as 'success' with a warning appended, so an
+    Approved event is never shown as Failed in history.
+    """
+    rule = get_rule(rule_id)
+    if not rule:
+        return {'status': 'error', 'output': 'rule not found'}
+
+    # Fetch full event to inject into script context
+    event_data = get_event(event_row_id)
+    if not event_data:
+        return {'status': 'error', 'output': 'event not found'}
+
+    # Format of event_data (from get_event):
+    # id(0), event_id(1), log_name(2), source(3), message(4), timestamp(5), category(6), severity(7), ...
+
+    remediation_script = rule[5]
+    script_type = rule[11] if len(rule) > 11 else 'file'
+    verification_timeout_sec = rule[17] if len(rule) > 17 and rule[17] else 60
+
+    if not remediation_script or not remediation_script.strip():
+        record_remediation(event_row_id, rule_id, 'skipped', 'no script provided')
+        return {'status': 'skipped', 'output': 'no script provided'}
+
+    # Strip any trailing '.exe' from captured app names so restart logic in
+    # remediation scripts targets the process name, not the file name.
+    if regex_captures:
+        for _k in ('AppName', 'app_name'):
+            _v = regex_captures.get(_k)
+            if isinstance(_v, str) and _v.lower().endswith('.exe'):
+                regex_captures[_k] = _v[:-4]
+
+    env = _build_remediation_env(event_data, regex_captures)
+
+    # Insert the in-flight history row up front so its state-machine progress
+    # (executing -> verifying -> success | rolled_back | verification_failed)
+    # is visible to anyone polling /api/history while it's happening.
+    history_id = record_remediation(event_row_id, rule_id, 'executing', '')
+    run_started_at = datetime.utcnow().isoformat()
+
+    try:
+        status, output = _execute_powershell(script_type, remediation_script, env, timeout)
+    except Exception as e:
+        status, output = 'failed', f'Exception while executing remediation script: {e}'
+
+    if status != 'success':
+        if approved:
+            # Operator explicitly approved this remediation — the gate clearance
+            # counts as success even if the script exited with an error.
+            output = (output or '').strip() + '\n[WARNING] Script returned error code but approval was granted.'
+            update_remediation_status(history_id, 'success', output=output, verified_at=datetime.utcnow().isoformat())
+            return {'status': 'success', 'output': output, 'history_id': history_id}
+
+        update_remediation_status(history_id, status, output=output)
+        return {'status': status, 'output': output, 'history_id': history_id}
+
+    if approved:
+        # Approved runs must never be re-flagged as failed by the recurrence
+        # watcher, so finalize as success immediately instead of handing off
+        # to closed-loop verification.
+        update_remediation_status(history_id, 'success', output=output,
+                                   verified_at=datetime.utcnow().isoformat())
+        return {'status': 'success', 'output': output, 'history_id': history_id}
+
+    # Script exited 0 — don't declare victory yet. Hand off to the closed-loop
+    # verification worker, which will flip this row to success / rolled_back /
+    # verification_failed once it knows whether the fix actually held.
+    update_remediation_status(history_id, 'verifying', output=output,
+                               verification_started_at=run_started_at)
+    # Verification always runs so recurrence is never silently reported as
+    # success; _run_verification_and_rollback itself decides whether a
+    # rollback_script is available to actually undo anything.
+    threading.Thread(
+        target=_run_verification_and_rollback,
+        args=(history_id, event_row_id, rule_id, event_data[1], event_data[3],
+              run_started_at, verification_timeout_sec),
+        daemon=True,
+    ).start()
+
+    return {'status': 'verifying', 'output': output, 'history_id': history_id}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

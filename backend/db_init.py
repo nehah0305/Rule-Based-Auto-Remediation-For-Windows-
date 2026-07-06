@@ -1,9 +1,11 @@
 import os
+import json
 import sqlite3
 from datetime import datetime
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'rules.db')
 _DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
+_MANIFEST_PATH = os.path.join(os.path.dirname(__file__), 'rules_manifest.json')
 
 # Ensure data directory exists
 os.makedirs(_DATA_DIR, exist_ok=True)
@@ -58,10 +60,96 @@ def init_db():
             (3, datetime.utcnow().isoformat(), 'Added root cause variant tracking columns')
         )
         print(f'Applied schema migration v3')
-    
+
+    # NOTE: v4 was already consumed by the approval-workflow tables
+    # (approved_event_types, approval_requests) added outside this file's
+    # migration sequence. Rollback/verification support starts at v5.
+    if current_version < 5:
+        _apply_schema_v5_migrations(c)
+        c.execute(
+            'INSERT INTO schema_version (version, applied_at, description) VALUES (?, ?, ?)',
+            (5, datetime.utcnow().isoformat(), 'Added rollback/verification columns and history status tracking')
+        )
+        print(f'Applied schema migration v5')
+
+    if current_version < 6:
+        _apply_schema_v6_migrations(c)
+        c.execute(
+            'INSERT INTO schema_version (version, applied_at, description) VALUES (?, ?, ?)',
+            (6, datetime.utcnow().isoformat(), 'Added app_context to approval tables for per-app-name gating')
+        )
+        print(f'Applied schema migration v6')
+
+    conn.commit()
+    _ensure_approval_tables(c)
     conn.commit()
     _add_performance_indexes(c)
     conn.commit()
+    _load_rules_manifest(c)
+    conn.commit()
+
+    # Remove legacy wildcard approvals that bypass per-app gateway
+    try:
+        c = conn.cursor()
+        c.execute("DELETE FROM approved_event_types WHERE event_id='1000' AND app_context=''")
+        c.execute("DELETE FROM approved_event_types WHERE event_id='1001' AND app_context=''")
+        conn.commit()
+    except Exception:
+        pass
+
+    try:
+        # Prevent identical pending requests at the schema level
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_pending_approval ON approval_requests(event_id, source, app_context, status) WHERE status='pending'")
+        conn.commit()
+    except Exception as e:
+        print(f'[WARN] Could not create unique index: {e}')
+
+    # v7: the legacy approved_event_types table carried UNIQUE(event_id, source),
+    # which silently discarded every whitelist entry after the first app for a
+    # given event type (mark_event_type_approved uses INSERT OR IGNORE). Rebuild
+    # with per-app uniqueness so "approve once, auto-remediate forever" holds
+    # for each distinct application.
+    try:
+        rebuild = False
+        c.execute("PRAGMA index_list('approved_event_types')")
+        for idx in c.fetchall():
+            if idx[2]:  # unique index
+                c.execute(f"PRAGMA index_info('{idx[1]}')")
+                cols = [r[2] for r in c.fetchall()]
+                if cols == ['event_id', 'source']:
+                    rebuild = True
+                    break
+        if rebuild:
+            c.execute('''CREATE TABLE approved_event_types_v7 (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id TEXT NOT NULL,
+                source TEXT NOT NULL,
+                app_context TEXT DEFAULT '',
+                approved_by TEXT DEFAULT 'operator',
+                approved_at TEXT NOT NULL,
+                UNIQUE(event_id, source, app_context)
+            )''')
+            c.execute('''INSERT OR IGNORE INTO approved_event_types_v7
+                         (id, event_id, source, app_context, approved_by, approved_at)
+                         SELECT id, event_id, source, COALESCE(app_context, ''), approved_by, approved_at
+                         FROM approved_event_types''')
+            c.execute('DROP TABLE approved_event_types')
+            c.execute('ALTER TABLE approved_event_types_v7 RENAME TO approved_event_types')
+            print('[MIGRATE] approved_event_types rebuilt: per-app approvals now persist')
+        # Honor every past operator approval: backfill whitelist rows that the
+        # legacy constraint discarded. Idempotent (INSERT OR IGNORE), runs on
+        # every startup, never re-creates wildcard ('') entries.
+        c.execute('''INSERT OR IGNORE INTO approved_event_types
+                     (event_id, source, app_context, approved_by, approved_at)
+                     SELECT event_id, source, COALESCE(app_context, ''),
+                            COALESCE(resolved_by, 'operator'), COALESCE(resolved_at, created_at)
+                     FROM approval_requests
+                     WHERE status='approved' AND COALESCE(app_context, '') != ''
+                     GROUP BY event_id, source, app_context''')
+        conn.commit()
+    except Exception as e:
+        print(f'[WARN] approved_event_types v7 migration: {e}')
+
     conn.close()
 
 
@@ -267,6 +355,168 @@ def _apply_schema_v3_migrations(c):
                 print(f'  Added column {col_name} to rules table')
             except sqlite3.OperationalError:
                 pass
+
+
+def _apply_schema_v5_migrations(c):
+    """
+    Rollback / verification closed-loop (Task 2):
+      - rules gains rollback_script + verification_timeout_sec so each rule
+        can declare its own "undo" script and how long to watch for recurrence
+        before declaring success.
+      - remediation_history gains columns to track the verification window
+        and any rollback that was executed, without disturbing the existing
+        `status` column's values (it now also accepts 'pending', 'executing',
+        'verifying', 'rolled_back' alongside the pre-existing ones).
+    """
+    c.execute("PRAGMA table_info(rules)")
+    rules_columns = {col[1] for col in c.fetchall()}
+    rules_v5_columns = [
+        ('rollback_script', 'TEXT'),
+        ('verification_timeout_sec', 'INTEGER DEFAULT 60'),
+        # Was previously added lazily/ad-hoc by models.py on first use; ensured
+        # here too so _load_rules_manifest() can rely on it existing at init time.
+        ('active', 'INTEGER DEFAULT 1'),
+    ]
+    for col_name, col_type in rules_v5_columns:
+        if col_name not in rules_columns:
+            try:
+                c.execute(f'ALTER TABLE rules ADD COLUMN {col_name} {col_type}')
+                print(f'  Added column {col_name} to rules table')
+            except sqlite3.OperationalError:
+                pass
+
+    c.execute("PRAGMA table_info(remediation_history)")
+    history_columns = {col[1] for col in c.fetchall()}
+    history_v5_columns = [
+        ('verification_started_at', 'TEXT'),
+        ('verified_at', 'TEXT'),
+        ('rollback_output', 'TEXT'),
+    ]
+    for col_name, col_type in history_v5_columns:
+        if col_name not in history_columns:
+            try:
+                c.execute(f'ALTER TABLE remediation_history ADD COLUMN {col_name} {col_type}')
+                print(f'  Added column {col_name} to remediation_history table')
+            except sqlite3.OperationalError:
+                pass
+
+
+def _apply_schema_v6_migrations(c):
+    """
+    Per-App Approval Gateway: add app_context column to approval tables.
+    This changes the approval key from (event_id, source) to
+    (event_id, source, app_context) so each unique app name requires
+    its own one-time operator approval.
+    """
+    for table in ('approval_requests', 'approved_event_types'):
+        try:
+            c.execute(f"PRAGMA table_info({table})")
+            cols = {row[1] for row in c.fetchall()}
+            if 'app_context' not in cols:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN app_context TEXT DEFAULT ''")
+                print(f'  Added app_context column to {table}')
+        except Exception as e:
+            print(f'  [WARN] v6 migration for {table}: {e}')
+
+
+def _ensure_approval_tables(c):
+    """
+    approval_requests / approved_event_types back the new-event-type
+    sign-off workflow. Idempotent (CREATE TABLE IF NOT EXISTS) and run
+    unconditionally on every startup so it self-heals any existing
+    deployment as well as brand new ones.
+    """
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS approval_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_row_id INTEGER NOT NULL,
+        event_id TEXT NOT NULL,
+        source TEXT NOT NULL,
+        app_context TEXT DEFAULT '',
+        rule_id INTEGER,
+        rule_name TEXT,
+        status TEXT DEFAULT 'pending',
+        created_at TEXT NOT NULL,
+        resolved_at TEXT,
+        resolved_by TEXT
+    )
+    ''')
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS approved_event_types (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id TEXT NOT NULL,
+        source TEXT NOT NULL,
+        app_context TEXT DEFAULT '',
+        approved_by TEXT DEFAULT 'operator',
+        approved_at TEXT NOT NULL,
+        UNIQUE(event_id, source, app_context)
+    )
+    ''')
+    # Add app_context to any pre-existing tables that lack it (idempotent)
+    for table in ('approval_requests', 'approved_event_types'):
+        try:
+            c.execute(f"PRAGMA table_info({table})")
+            cols = {row[1] for row in c.fetchall()}
+            if 'app_context' not in cols:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN app_context TEXT DEFAULT ''")
+        except Exception:
+            pass
+
+
+def _load_rules_manifest(c):
+    """
+    Task 1 — declarative rule onboarding. Reads rules_manifest.json (produced
+    by generate_rules_manifest.py) and inserts a rule for every
+    (event_id, source) combination not already present in the rules table.
+
+    This is intentionally an upsert-by-insert-only: it NEVER modifies or
+    overwrites a rule that already exists, so the 16 rules already tuned and
+    verified in production (auto_remediate flags, priorities, cooldowns)
+    are left completely untouched. It only fills in the coverage gap.
+    Runs on every startup so newly-added manifest entries are picked up
+    without requiring a schema version bump.
+    """
+    if not os.path.exists(_MANIFEST_PATH):
+        return
+
+    try:
+        with open(_MANIFEST_PATH, encoding='utf-8') as f:
+            manifest = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f'[WARN] Could not read rules_manifest.json: {e}')
+        return
+
+    c.execute('SELECT event_id, source FROM rules')
+    existing = {(row[0], (row[1] or '').lower()) for row in c.fetchall()}
+
+    inserted = 0
+    for entry in manifest:
+        event_id = entry.get('event_id')
+        source = entry.get('source')
+        key = (event_id, (source or '').lower())
+        if key in existing:
+            continue
+
+        c.execute(
+            '''INSERT INTO rules
+               (name, event_id, source, message_regex, remediation_script,
+                script_type, auto_remediate, stop_processing, category, severity,
+                description, recommended_action, priority, cooldown_minutes, active)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (
+                entry.get('rule_name'), event_id, source, entry.get('message_regex'),
+                entry.get('script'), 'file', int(bool(entry.get('auto_remediate', False))), 0,
+                entry.get('category'), entry.get('severity'), entry.get('description'),
+                entry.get('recommended_action'), entry.get('priority', 100),
+                entry.get('cooldown_minutes', 0), 1,
+            )
+        )
+        existing.add(key)
+        inserted += 1
+
+    if inserted:
+        print(f'[MANIFEST] Onboarded {inserted} new rule(s) from rules_manifest.json '
+              f'({len(manifest) - inserted} already present, left untouched)')
 
 
 def _cleanup_oversized_csv_files():

@@ -11,7 +11,6 @@
       3. Confirms that a remediation history record was created.
 
     Run this any time you want to test the auto-remediation pipeline end-to-end.
-    The script will automatically request elevation (UAC) if not already running as Admin.
 
 .PARAMETER AppName
     Name of the simulated faulting application (default: "MyTestApp.exe").
@@ -23,7 +22,7 @@
 
 .EXAMPLE
     .\simulate_crash.ps1
-    .\simulate_crash.ps1 -AppName "notepad"
+    .\simulate_crash.ps1 -AppName "ServiceHost.exe"
 #>
 
 param(
@@ -32,24 +31,6 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
-
-# ─────────────────────────────────────────────────────────────────────────────
-# UAC Self-Elevation — re-launch as Administrator if not already elevated
-# ─────────────────────────────────────────────────────────────────────────────
-$currentPrincipal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
-$isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-
-if (-not $isAdmin) {
-    Write-Host "  [UAC] Not running as Administrator. Requesting elevation..." -ForegroundColor Yellow
-    $scriptPath = $MyInvocation.MyCommand.Path
-    $argString  = "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -AppName `"$AppName`" -BackendUrl `"$BackendUrl`""
-    try {
-        Start-Process powershell.exe -ArgumentList $argString -Verb RunAs -Wait
-    } catch {
-        Write-Host "  [ERROR] Could not elevate. Please right-click and run as Administrator." -ForegroundColor Red
-    }
-    exit
-}
 
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Cyan

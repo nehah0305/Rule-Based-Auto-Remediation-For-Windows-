@@ -170,8 +170,8 @@ class _EventsTable extends StatelessWidget {
     }
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-        child: SingleChildScrollView(
-          child: DataTable(
+      child: SingleChildScrollView(
+        child: DataTable(
             columnSpacing: 16,
             headingTextStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
             headingRowHeight: 52,
@@ -221,8 +221,7 @@ class _EventsTable extends StatelessWidget {
             ])).toList(),
           ),
         ),
-      ),
-    );
+      );
   }
 
   String _fmtTs(String? ts) {

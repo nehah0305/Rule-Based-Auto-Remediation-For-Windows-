@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'config/theme.dart';
@@ -11,13 +12,60 @@ import 'widgets/live_alert_popup.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/events_screen.dart';
 import 'screens/rules_screen.dart';
+import 'screens/approvals_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/simulation_screen.dart';
 import 'screens/event_viewer_screen.dart';
 import 'screens/task_scheduler_screen.dart';
 
 void main() {
+  // Task 6 — global error boundary: a widget that fails to build anywhere
+  // in the tree renders this small inline card instead of taking down the
+  // whole app with Flutter's default red screen of death.
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    // ignore: avoid_print
+    print('[UI ERROR] ${details.exceptionAsString()}');
+  };
+  ErrorWidget.builder = (FlutterErrorDetails details) => _ErrorBoundaryWidget(details: details);
+
   runApp(const RemediationApp());
+}
+
+class _ErrorBoundaryWidget extends StatelessWidget {
+  final FlutterErrorDetails details;
+  const _ErrorBoundaryWidget({required this.details});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(12),
+      color: const Color(0xFF1A0000),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: Color(0xFFE74856), size: 20),
+          const SizedBox(height: 6),
+          const Text(
+            'This section failed to render.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Color(0xFFE74856), fontSize: 11, fontWeight: FontWeight.w600),
+          ),
+          if (details.exception.toString().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              details.exception.toString(),
+              textAlign: TextAlign.center,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Color(0xFFB4B4B4), fontSize: 9.5),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 class RemediationApp extends StatelessWidget {
@@ -56,6 +104,76 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   AppTab _tab = AppTab.dashboard;
+  Timer? _approvalTimer;
+  int _lastSeenApprovalId = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _startApprovalPolling();
+  }
+
+  @override
+  void dispose() {
+    _approvalTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkApprovals() async {
+    try {
+      if (!mounted) return;
+      final api = context.read<ApiService>();
+      final res = await api.getApprovals(status: 'pending');
+      int maxId = 0;
+      for (final req in res) {
+        if (req.id > maxId) maxId = req.id;
+      }
+      
+      if (_lastSeenApprovalId == 0) {
+        _lastSeenApprovalId = maxId;
+      } else if (maxId > _lastSeenApprovalId) {
+        _lastSeenApprovalId = maxId;
+        final newest = res.reduce((a, b) => a.id > b.id ? a : b);
+        final appName = newest.appContext.isNotEmpty ? newest.appContext : 'an application';
+        final eventLabel = newest.eventId.isNotEmpty ? 'Event ${newest.eventId}' : 'an event';
+        final msg = '🔔 Approval Required — $appName crashed ($eventLabel, ${newest.source}). Operator sign-off needed.';
+        if (mounted) {
+          final messenger = ScaffoldMessenger.of(context);
+          messenger.showSnackBar(
+            SnackBar(
+              content: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Small close "x" on the top-left of the message box
+                  InkWell(
+                    onTap: () => messenger.hideCurrentSnackBar(),
+                    borderRadius: BorderRadius.circular(10),
+                    child: const Padding(
+                      padding: EdgeInsets.only(right: 10, top: 2),
+                      child: Icon(Icons.close, size: 16, color: Colors.black87),
+                    ),
+                  ),
+                  Expanded(child: Text(msg)),
+                ],
+              ),
+              backgroundColor: AppTheme.accentYellow.withValues(alpha: 0.9),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 10),
+              action: SnackBarAction(
+                label: 'View', backgroundColor: Colors.black26, textColor: Colors.white,
+                onPressed: () => setState(() => _tab = AppTab.approvals),
+              ),
+            ),
+          );
+        }
+      }
+    } catch (_) {}
+  }
+
+  void _startApprovalPolling() {
+    _checkApprovals();
+    _approvalTimer = Timer.periodic(const Duration(seconds: 10), (_) => _checkApprovals());
+  }
 
   static const _titles = {
     AppTab.dashboard: 'Dashboard',
@@ -72,7 +190,7 @@ class _AppShellState extends State<AppShell> {
     AppTab.dashboard   => const DashboardScreen(),
     AppTab.events      => const EventsScreen(),
     AppTab.rules       => const RulesScreen(),
-    AppTab.approvals   => const Center(child: Text('Approvals coming soon', style: TextStyle(color: Colors.white))),
+    AppTab.approvals   => const ApprovalsScreen(),
     AppTab.history     => const HistoryScreen(),
     AppTab.viewer      => const EventViewerScreen(),
     AppTab.simulation  => const SimulationScreen(),

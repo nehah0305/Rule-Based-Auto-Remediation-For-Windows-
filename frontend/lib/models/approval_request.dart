@@ -42,3 +42,52 @@ class ApprovalRequest {
     ruleName:     j['rule_name'] as String?,
   );
 }
+
+/// A new-event-type approval gate entry (`/api/approvals`).
+/// Distinct from [ApprovalRequest], which backs the older generic
+/// `/api/requests` request/approve/deny flow.
+class ApprovalGateRequest {
+  final int id;
+  final int eventRowId;
+  final String eventId;
+  final String source;
+  final int ruleId;
+  final String ruleName;
+  final String status;
+  final String createdAt;
+  final String? resolvedAt;
+  final String? resolvedBy;
+  final String? severity;
+  /// Faulting application name (e.g. 'notepad.exe'). Empty for non-app events.
+  final String appContext;
+
+  ApprovalGateRequest({
+    required this.id,
+    required this.eventRowId,
+    required this.eventId,
+    required this.source,
+    required this.ruleId,
+    required this.ruleName,
+    required this.status,
+    required this.createdAt,
+    this.resolvedAt,
+    this.resolvedBy,
+    this.severity,
+    this.appContext = '',
+  });
+
+  factory ApprovalGateRequest.fromJson(Map<String, dynamic> j) => ApprovalGateRequest(
+    id:          j['id'] as int,
+    eventRowId:  j['event_row_id'] as int,
+    eventId:     j['event_id']?.toString() ?? '',
+    source:      j['source'] as String? ?? '',
+    ruleId:      j['rule_id'] as int,
+    ruleName:    j['rule_name'] as String? ?? '',
+    status:      j['status'] as String? ?? 'pending',
+    createdAt:   j['created_at'] as String? ?? '',
+    resolvedAt:  j['resolved_at'] as String?,
+    resolvedBy:  j['resolved_by'] as String?,
+    severity:    j['severity'] as String?,
+    appContext:  j['app_context'] as String? ?? '',
+  );
+}

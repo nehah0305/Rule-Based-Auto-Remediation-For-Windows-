@@ -12,12 +12,51 @@ class RulesScreen extends StatefulWidget {
 
 class _RulesScreenState extends State<RulesScreen> {
   final _api = ApiService();
+  final _searchCtrl = TextEditingController();
   bool _loading = true;
   List<Rule> _rules = [];
   Map<String, dynamic> _hitCounts = {};  // rule_id -> {hits, last_hit}
+  String _search = '';
+  String _sortBy = 'name_asc'; // name_asc | name_desc | priority_asc | priority_desc
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+    _searchCtrl.addListener(() => setState(() => _search = _searchCtrl.text.trim().toLowerCase()));
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  // Task 1 — 56+ rules populate this screen, so client-side filter + sort keeps it usable.
+  List<Rule> get _filteredRules {
+    if (_search.isEmpty) return _rules;
+    return _rules.where((r) {
+      return r.name.toLowerCase().contains(_search) ||
+          (r.source ?? '').toLowerCase().contains(_search) ||
+          (r.category ?? '').toLowerCase().contains(_search) ||
+          (r.eventId?.toString() ?? '').contains(_search);
+    }).toList();
+  }
+
+  List<Rule> get _sortedFilteredRules {
+    final list = List<Rule>.from(_filteredRules);
+    switch (_sortBy) {
+      case 'name_asc':
+        list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      case 'name_desc':
+        list.sort((a, b) => b.name.toLowerCase().compareTo(a.name.toLowerCase()));
+      case 'priority_asc':
+        list.sort((a, b) => a.priority.compareTo(b.priority));
+      case 'priority_desc':
+        list.sort((a, b) => b.priority.compareTo(a.priority));
+    }
+    return list;
+  }
 
   Future<void> _load() async {
     setState(() => _loading = true);
@@ -134,8 +173,53 @@ class _RulesScreenState extends State<RulesScreen> {
           child: Row(children: [
             const Icon(Icons.rule_rounded, color: Colors.white, size: 18),
             const SizedBox(width: 10),
-            Expanded(child: Text('Rules — ${_rules.length} total',
+            Expanded(child: Text(
+                _search.isEmpty
+                    ? 'Rules — ${_rules.length} total'
+                    : 'Rules — ${_filteredRules.length} of ${_rules.length}',
                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14.5))),
+            SizedBox(
+              width: 220,
+              child: TextField(
+                controller: _searchCtrl,
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: 'Search rules…',
+                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12),
+                  prefixIcon: const Icon(Icons.search, color: Colors.white, size: 16),
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.12),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(999), borderSide: BorderSide.none),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Sort dropdown
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _sortBy,
+                  dropdownColor: const Color(0xFF1A1A2E),
+                  icon: const Icon(Icons.sort_rounded, color: Colors.white, size: 15),
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                  onChanged: (v) => setState(() => _sortBy = v!),
+                  items: const [
+                    DropdownMenuItem(value: 'name_asc', child: Text('Name A→Z')),
+                    DropdownMenuItem(value: 'name_desc', child: Text('Name Z→A')),
+                    DropdownMenuItem(value: 'priority_asc', child: Text('Priority ↑')),
+                    DropdownMenuItem(value: 'priority_desc', child: Text('Priority ↓')),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
             _HeaderBtn(icon: Icons.add, label: 'New Rule', onTap: () => _openRuleDialog()),
             const SizedBox(width: 8),
             _HeaderBtn(icon: Icons.download_rounded, label: 'Import from JSON', onTap: _importFromJson),
@@ -150,7 +234,7 @@ class _RulesScreenState extends State<RulesScreen> {
                 boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.24), blurRadius: 24, offset: const Offset(0, 10))]),
             child: _loading
                 ? const Center(child: CircularProgressIndicator(color: AppTheme.accent))
-                : Theme(data: tableTheme, child: _RulesTable(rules: _rules, hitCounts: _hitCounts,
+                : Theme(data: tableTheme, child: _RulesTable(rules: _sortedFilteredRules, hitCounts: _hitCounts,
                     onEdit: _openRuleDialog, onDelete: _deleteRule, onTest: _testRule, onToggle: _toggleRule),
                   ),
           ),
@@ -160,7 +244,7 @@ class _RulesScreenState extends State<RulesScreen> {
   }
 }
 
-class _RulesTable extends StatelessWidget {
+class _RulesTable extends StatefulWidget {
   final List<Rule> rules;
   final Map<String, dynamic> hitCounts;
   final void Function(Rule) onEdit;
@@ -171,12 +255,38 @@ class _RulesTable extends StatelessWidget {
       required this.onDelete, required this.onTest, required this.onToggle});
 
   @override
+  State<_RulesTable> createState() => _RulesTableState();
+}
+
+class _RulesTableState extends State<_RulesTable> {
+  final _horizontalController = ScrollController();
+
+  @override
+  void dispose() {
+    _horizontalController.dispose();
+    super.dispose();
+  }
+
+  List<Rule> get rules => widget.rules;
+  Map<String, dynamic> get hitCounts => widget.hitCounts;
+  void Function(Rule) get onEdit => widget.onEdit;
+  Future<void> Function(int) get onDelete => widget.onDelete;
+  Future<void> Function(int) get onTest => widget.onTest;
+  Future<void> Function(Rule) get onToggle => widget.onToggle;
+
+  @override
   Widget build(BuildContext context) {
     if (rules.isEmpty) return const Center(child: Text('No rules yet — create one!', style: TextStyle(color: AppTheme.textMuted)));
-    return SingleChildScrollView(
+    // Stretch the table to the full panel width when its intrinsic width is
+    // narrower than the panel (it still scrolls horizontally when wider).
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+      controller: _horizontalController,
       scrollDirection: Axis.horizontal,
-        child: SingleChildScrollView(
-          child: DataTable(
+      child: SingleChildScrollView(
+        child: ConstrainedBox(
+        constraints: BoxConstraints(minWidth: constraints.maxWidth),
+        child: DataTable(
             columnSpacing: 16,
             headingTextStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
             headingRowHeight: 52,
@@ -230,8 +340,9 @@ class _RulesTable extends StatelessWidget {
             }).toList(),
           ),
         ),
+        ),
       ),
-    );
+      );
   }
 }
 
@@ -341,6 +452,8 @@ class _RuleDialogState extends State<RuleDialog> {
   final _severity   = TextEditingController();
   final _desc       = TextEditingController();
   final _action     = TextEditingController();
+  final _rollback   = TextEditingController();
+  final _verifyTimeout = TextEditingController();
   bool _auto = false, _stop = false;
   String _scriptType = 'file';
   bool _saving = false;
@@ -364,15 +477,18 @@ class _RuleDialogState extends State<RuleDialog> {
       _auto           = r.autoRemediate;
       _stop           = r.stopProcessing;
       _scriptType     = r.scriptType;
+      _rollback.text  = r.rollbackScript ?? '';
+      _verifyTimeout.text = r.verificationTimeoutSec.toString();
     } else {
       _priority.text = '100';
       _cooldown.text = '0';
+      _verifyTimeout.text = '60';
     }
   }
 
   @override
   void dispose() {
-    for (final c in [_name,_eventId,_source,_regex,_script,_priority,_cooldown,_category,_severity,_desc,_action]) {
+    for (final c in [_name,_eventId,_source,_regex,_script,_priority,_cooldown,_category,_severity,_desc,_action,_rollback,_verifyTimeout]) {
       c.dispose();
     }
     super.dispose();
@@ -396,6 +512,8 @@ class _RuleDialogState extends State<RuleDialog> {
       'recommended_action': _action.text.isEmpty ? null : _action.text.trim(),
       'priority': int.tryParse(_priority.text) ?? 100,
       'cooldown_minutes': int.tryParse(_cooldown.text) ?? 0,
+      'rollback_script': _rollback.text.isEmpty ? null : _rollback.text.trim(),
+      'verification_timeout_sec': int.tryParse(_verifyTimeout.text) ?? 60,
     };
     try {
       if (widget.rule != null) {
@@ -450,6 +568,13 @@ class _RuleDialogState extends State<RuleDialog> {
           ]),
           const SizedBox(height: 8),
           _Field('Remediation Script', _script, hint: _scriptType == 'file' ? 'C:\\scripts\\fix.ps1' : 'PowerShell inline code', maxLines: 4),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(flex: 2, child: _Field('Rollback Script', _rollback,
+                hint: 'Optional — run if verification detects the fix didn\'t hold')),
+            const SizedBox(width: 12),
+            Expanded(child: _Field('Verify Timeout (sec)', _verifyTimeout, hint: '60')),
+          ]),
           const SizedBox(height: 12),
           Row(children: [
             Expanded(child: _Field('Category', _category)),

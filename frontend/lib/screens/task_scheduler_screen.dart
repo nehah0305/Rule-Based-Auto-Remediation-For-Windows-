@@ -585,12 +585,11 @@ class _ManualControlsCardState extends State<_ManualControlsCard> {
             child: SingleChildScrollView(
               child: SelectableText(
                 widget.logContent,
-                  style: const TextStyle(
-                    color: AppTheme.accentGreen,
-                    fontSize: 10,
-                    fontFamily: 'monospace',
-                    height: 1.5,
-                  ),
+                style: const TextStyle(
+                  color: AppTheme.accentGreen,
+                  fontSize: 10,
+                  fontFamily: 'monospace',
+                  height: 1.5,
                 ),
               ),
             ),

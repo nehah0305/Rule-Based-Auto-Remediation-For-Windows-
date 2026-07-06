@@ -45,11 +45,17 @@ class StatusBadge extends StatelessWidget {
       case 'pending':    bg = AppTheme.accentYellow; icon = Icons.schedule;     label = 'Pending'; break;
       case 'approved':   bg = AppTheme.accentGreen;  icon = Icons.thumb_up;     label = 'Approved'; break;
       case 'denied':     bg = AppTheme.textMuted;    icon = Icons.block;        label = 'Denied'; break;
+      case 'rejected':   bg = AppTheme.accentRed;    icon = Icons.block;        label = 'Rejected'; break;
       case 'skipped':    bg = AppTheme.accent;       icon = Icons.skip_next;    label = 'Skipped'; break;
       case 'suppressed': bg = AppTheme.accentPurple; icon = Icons.pause_circle; label = 'Suppressed'; break;
       case 'simulated':  bg = const Color(0xFF17a2b8); icon = Icons.science;   label = 'Simulated'; break;
       case 'completed':  bg = AppTheme.accentGreen;  icon = Icons.done_all;    label = 'Completed'; break;
       case 'warning':    bg = const Color(0xFFfd7e14); icon = Icons.warning;   label = 'Warning'; break;
+      case 'executing':  bg = const Color(0xFF17a2b8); icon = Icons.play_circle_outline; label = 'Executing'; break;
+      case 'verifying':  bg = AppTheme.accentYellow; icon = Icons.hourglass_top; label = 'Verifying'; break;
+      case 'rolled_back': bg = const Color(0xFFfd7e14); icon = Icons.undo;     label = 'Rolled Back'; break;
+      case 'verification_failed': bg = AppTheme.accentRed; icon = Icons.report_problem; label = 'Verify Failed'; break;
+      case 'pending_approval': bg = AppTheme.accentYellow; icon = Icons.schedule; label = 'Pending Approval'; break;
       default:           bg = AppTheme.textDimmed;   icon = Icons.circle;      label = s.isEmpty ? '—' : s;
     }
     return Container(

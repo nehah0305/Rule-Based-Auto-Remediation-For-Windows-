@@ -43,80 +43,106 @@ class _AppSidebarState extends State<AppSidebar> {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
           child: Column(children: [
-        Container(
-          height: 80,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.white.withValues(alpha: 0.06), Colors.white.withValues(alpha: 0.02)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            border: const Border(bottom: BorderSide(color: AppTheme.border)),
-          ),
-          child: Row(children: [
+            // ── Header: adapts to the ACTUAL width so it never overflows,
+            //    even mid-animation between collapsed and expanded states. ──
             Container(
-              width: 36,
-              height: 36,
+              height: 80,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
-                gradient: AppTheme.gradientPrimary,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [BoxShadow(color: AppTheme.accent.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 4))],
-              ),
-              child: const Icon(Icons.shield_rounded, color: Colors.white, size: 20),
-            ),
-            if (!_collapsed) ...[
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text('Remediation\nCenter',
-                    style: TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w800, height: 1.15)),
-              ),
-            ],
-            GestureDetector(
-              onTap: () => setState(() => _collapsed = !_collapsed),
-              child: Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.border),
+                gradient: LinearGradient(
+                  colors: [Colors.white.withValues(alpha: 0.06), Colors.white.withValues(alpha: 0.02)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-                child: Icon(_collapsed ? Icons.chevron_right : Icons.chevron_left,
-                    color: AppTheme.textMuted, size: 18),
+                border: const Border(bottom: BorderSide(color: AppTheme.border)),
               ),
+              child: LayoutBuilder(builder: (context, cons) {
+                final tight = cons.maxWidth < 150;
+                final toggle = GestureDetector(
+                  onTap: () => setState(() => _collapsed = !_collapsed),
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: Icon(_collapsed ? Icons.chevron_right : Icons.chevron_left,
+                        color: AppTheme.textMuted, size: 18),
+                  ),
+                );
+                final logo = Container(
+                  width: tight ? 30 : 36,
+                  height: tight ? 30 : 36,
+                  decoration: BoxDecoration(
+                    gradient: AppTheme.gradientPrimary,
+                    borderRadius: BorderRadius.circular(tight ? 10 : 12),
+                    boxShadow: [BoxShadow(color: AppTheme.accent.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 4))],
+                  ),
+                  child: Icon(Icons.shield_rounded, color: Colors.white, size: tight ? 17 : 20),
+                );
+                if (tight) {
+                  // Icon-rail layout: logo stacked above the expand toggle.
+                  return Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    logo,
+                    const SizedBox(height: 6),
+                    toggle,
+                  ]);
+                }
+                return Row(children: [
+                  logo,
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text('Remediation\nCenter',
+                        maxLines: 2,
+                        overflow: TextOverflow.clip,
+                        softWrap: true,
+                        style: TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w800, height: 1.15)),
+                  ),
+                  toggle,
+                ]);
+              }),
+            ),
+            // Nav items
+            Expanded(
+              child: ListView(padding: const EdgeInsets.symmetric(vertical: 12), children: [
+                for (final item in _items)
+                  _NavItem(
+                    icon: item.$2, label: item.$3,
+                    selected: widget.selected == item.$1,
+                    collapsed: _collapsed,
+                    onTap: () => widget.onSelect(item.$1),
+                  ),
+              ]),
+            ),
+            // Footer
+            Container(
+              height: 56,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.02),
+                border: const Border(top: BorderSide(color: AppTheme.border)),
+              ),
+              child: LayoutBuilder(builder: (context, cons) {
+                final tight = cons.maxWidth < 150;
+                if (tight) {
+                  return const Center(child: Icon(Icons.security, color: AppTheme.textDimmed, size: 14));
+                }
+                return const Row(children: [
+                  Icon(Icons.security, color: AppTheme.textDimmed, size: 14),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Unisys AB',
+                        maxLines: 1,
+                        overflow: TextOverflow.clip,
+                        softWrap: false,
+                        style: TextStyle(color: AppTheme.textMuted, fontSize: 11, fontWeight: FontWeight.w600)),
+                  ),
+                ]);
+              }),
             ),
           ]),
-        ),
-        // Nav items
-        Expanded(
-          child: ListView(padding: const EdgeInsets.symmetric(vertical: 12), children: [
-            for (final item in _items)
-              _NavItem(
-                icon: item.$2, label: item.$3,
-                selected: widget.selected == item.$1,
-                collapsed: _collapsed,
-                onTap: () => widget.onSelect(item.$1),
-              ),
-          ]),
-        ),
-        // Footer
-        Container(
-          height: 56,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.02),
-            border: const Border(top: BorderSide(color: AppTheme.border)),
-          ),
-          child: Row(children: [
-            const Icon(Icons.security, color: AppTheme.textDimmed, size: 14),
-            if (!_collapsed) ...[
-              const SizedBox(width: 8),
-              const Text('Unisys AB', style: TextStyle(color: AppTheme.textMuted, fontSize: 11, fontWeight: FontWeight.w600)),
-            ],
-          ]),
-        ),
-      ]),
         ),
       ),
     );
@@ -142,45 +168,62 @@ class _NavItemState extends State<_NavItem> {
   @override
   Widget build(BuildContext context) {
     final active = widget.selected;
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit:  (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 12 : 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: active ? AppTheme.accent.withValues(alpha: 0.14) : Colors.transparent,
-            gradient: !active && _hovered
-                ? LinearGradient(colors: [Colors.white.withValues(alpha: 0.08), Colors.white.withValues(alpha: 0.03)])
-                : null,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: active ? AppTheme.accent.withValues(alpha: 0.45) : Colors.transparent),
-            boxShadow: active ? [BoxShadow(color: AppTheme.accent.withValues(alpha: 0.16), blurRadius: 18, offset: const Offset(0, 6))] : null,
-          ),
-          child: Row(children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: active ? AppTheme.accent.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.03),
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: Icon(widget.icon,
-                  size: 16,
-                  color: active ? AppTheme.accent : _hovered ? AppTheme.textPrimary : AppTheme.textMuted),
-            ),
-            if (!widget.collapsed) ...[
-              const SizedBox(width: 12),
-              Text(widget.label, style: TextStyle(
-                color: active ? AppTheme.textPrimary : _hovered ? AppTheme.textPrimary : AppTheme.textMuted,
-                fontSize: 13, fontWeight: active ? FontWeight.w700 : FontWeight.w500)),
-            ],
-          ]),
+    return LayoutBuilder(builder: (context, cons) {
+      // Adapt to the actual width (not just the collapsed flag) so the row
+      // never overflows while the sidebar width is animating.
+      final tight = cons.maxWidth < 120;
+      final iconBox = Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: active ? AppTheme.accent.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.03),
+          borderRadius: BorderRadius.circular(9),
         ),
-      ),
-    );
+        child: Icon(widget.icon,
+            size: 16,
+            color: active ? AppTheme.accent : _hovered ? AppTheme.textPrimary : AppTheme.textMuted),
+      );
+      final item = MouseRegion(
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit:  (_) => setState(() => _hovered = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding: EdgeInsets.symmetric(horizontal: tight ? 0 : 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: active ? AppTheme.accent.withValues(alpha: 0.14) : Colors.transparent,
+              gradient: !active && _hovered
+                  ? LinearGradient(colors: [Colors.white.withValues(alpha: 0.08), Colors.white.withValues(alpha: 0.03)])
+                  : null,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: active ? AppTheme.accent.withValues(alpha: 0.45) : Colors.transparent),
+              boxShadow: active ? [BoxShadow(color: AppTheme.accent.withValues(alpha: 0.16), blurRadius: 18, offset: const Offset(0, 6))] : null,
+            ),
+            child: Row(
+              mainAxisAlignment: tight ? MainAxisAlignment.center : MainAxisAlignment.start,
+              children: [
+                iconBox,
+                if (!tight) ...[
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: Text(widget.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.clip,
+                        softWrap: false,
+                        style: TextStyle(
+                          color: active ? AppTheme.textPrimary : _hovered ? AppTheme.textPrimary : AppTheme.textMuted,
+                          fontSize: 13, fontWeight: active ? FontWeight.w700 : FontWeight.w500)),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+      // Icon-only rail: show the label as a tooltip instead.
+      return tight ? Tooltip(message: widget.label, waitDuration: const Duration(milliseconds: 350), child: item) : item;
+    });
   }
 }
