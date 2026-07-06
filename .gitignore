@@ -20,10 +20,19 @@ rules.db
 *_backup_*.csv
 *_old.csv
 
-# Test and migration scripts
-test_*.py
+# One-off migration/scratch scripts (real tests live in backend/tests/)
+/test_*.py
 migrate_*.py
 fix_*.py
+
+# Local state, backups & one-off dumps — never commit these
+*.bak
+*.bak_*
+*.db.bak*
+*dump*.txt
+errors*.txt
+frontend/analyze.json
+backend/static/
 
 # Logs
 *.log

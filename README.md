@@ -2,16 +2,17 @@
 
 An intelligent system that watches your Windows Event Log in real time and automatically runs PowerShell scripts to fix common issues (app crashes, service failures, disk errors) the moment they happen — before you even notice.
 
-A web-based dashboard lets you monitor system health, view remediation history, and manage rules.
+A Flutter desktop app gives you a live dashboard: system health, pending operator approvals, remediation history, and full rule management.
 
 ---
 
 ## 🧠 How It Works
 
 1. **Monitor** — A background thread polls the Windows Event Log continuously.
-2. **Match** — Incoming events are matched against a library of rules (e.g. Event ID 1000 = App Crash).
-3. **Remediate** — If a rule is matched, the corresponding PowerShell script runs automatically.
-4. **Dashboard** — A Flutter web UI (served at `localhost:5000`) gives you full visibility and control.
+2. **Match** — Incoming events are matched against a library of 50+ rules (e.g. Event ID 1000 = App Crash).
+3. **Gate** — The first time a new (event, app) combination appears, it's held for **operator approval**. Approve once, and that exact combination auto-remediates forever after.
+4. **Remediate** — The matched PowerShell script runs (restart the app/service, clear resources, etc.), followed by closed-loop verification.
+5. **Dashboard** — The Flutter desktop UI gives full visibility and control.
 
 ---
 
@@ -19,75 +20,69 @@ A web-based dashboard lets you monitor system health, view remediation history, 
 
 | Requirement | Notes |
 |---|---|
-| **Python 3.9+** | Must be on your system PATH |
-| **Flutter SDK** | Only needed if you want to modify the UI |
-| **Git** | Only needed to install Flutter from source |
-
-> **You do NOT need Flutter to run the app.** The UI is pre-built and served by the Python backend.
+| **Windows 10 / 11** | The Event Log + PowerShell integration is Windows-only |
+| **Python 3.10+** | On PATH. Check with `python --version` |
+| **PowerShell** | Built into Windows (5.1 is fine) |
+| **Flutter SDK** | For the desktop UI. Needs Windows desktop support: Visual Studio with the **"Desktop development with C++"** workload |
+| **Administrator PowerShell** | Only for the crash/service **simulation scripts** (they write real Windows Event Log entries) |
 
 ---
 
-## 🚀 Running the App
+## 🚀 Quickstart (fresh clone → running app)
 
-### 1. Install Python dependencies
-
-```powershell
-cd backend
-pip install -r requirements.txt
-```
-
-### 2. Initialize the database
-
-Only needed on first run (or if `rules.db` is missing):
+From the project root, in PowerShell:
 
 ```powershell
-python db_init.py
+# 1. One-time setup: checks your environment, creates .venv, installs deps, creates .env
+powershell -ExecutionPolicy Bypass -File setup.ps1
+
+# 2. Start the backend (terminal 1) — keep it running
+powershell -ExecutionPolicy Bypass -File run_backend.ps1
+
+# 3. Start the desktop app (terminal 2)
+powershell -ExecutionPolicy Bypass -File run_frontend.ps1
 ```
 
-### 3. Start the backend
+That's it. The database is created and seeded with all rules automatically on first backend start — no manual DB step needed.
 
+**Port 5000 already taken?** Set `FLASK_PORT=5001` in `.env`, then start the UI with:
 ```powershell
-python app.py
+powershell -ExecutionPolicy Bypass -File run_frontend.ps1 -ApiUrl http://localhost:5001
 ```
-
-Wait until you see:
-```
-Starting Flask server on 0.0.0.0:5000
-```
-
-### 4. Open the dashboard
-
-Go to **http://localhost:5000** in your browser. Done!
 
 ---
 
 ## 💥 Simulate a Crash (Demo)
 
-Want to see auto-remediation in action without breaking anything real?
-
-1. Open the dashboard and go to the **Events** or **History** tab.
-2. In a PowerShell window (run as **Administrator**), from the project root:
+Run these from an **Administrator** PowerShell in the project root, with the backend running:
 
 ```powershell
-.\simulate_crash.ps1
+# Application crash (Event 1000) — kills the app, writes the event, remediation relaunches it
+.\simulate_crash.ps1 -AppName "notepad"
+.\simulate_crash.ps1 -AppName "winword"     # any of: excel, powerpnt, msedge, mspaint, ...
+
+# Service crash (Event 7034) — Print Spooler by default; remediation restarts the service
+.\remediation_scripts\Simulate_ServiceCrash.ps1
+
+# One injector for EVERY active rule (shows real action + risk level per rule)
+.\remediation_scripts\Test-RemediationRules.ps1 -List
+.\remediation_scripts\Test-RemediationRules.ps1 -EventId 7031 -Force -TriggerPoll
 ```
 
-3. Watch the dashboard — the system will detect the fake crash and log the remediation within seconds.
+The first crash of a given app shows up under **Approvals** — click Approve, and that app auto-remediates on every future crash.
 
 ---
 
 ## ⚙️ 24/7 Silent Protection (Optional)
 
-By default, monitoring only runs while `app.py` is active.
-
-To enable always-on protection via **Windows Task Scheduler** (zero CPU when idle, survives reboots):
+By default, monitoring only runs while the backend is active. For always-on protection via **Windows Task Scheduler** (zero CPU when idle, survives reboots):
 
 ```powershell
 # Run as Administrator
 powershell -ExecutionPolicy Bypass -File remediation_scripts\Setup_EventTriggers.ps1
 ```
 
-This registers Windows event triggers that wake the remediation engine the instant a bad event fires.
+Then set `USE_TASK_SCHEDULER=true` in `.env` and restart the backend.
 
 ---
 
@@ -95,53 +90,50 @@ This registers Windows event triggers that wake the remediation engine the insta
 
 ```
 .
+├── setup.ps1               # One-time environment setup (run first)
+├── run_backend.ps1         # Starts Flask backend with preflight checks
+├── run_frontend.ps1        # Starts the Flutter desktop app
+├── .env.example            # Configuration template (copied to .env by setup)
 ├── backend/
 │   ├── app.py              # Flask server + all API routes
-│   ├── db_init.py          # Database schema setup & migrations
-│   ├── models.py           # Rule matching, DB queries
+│   ├── db_init.py          # DB schema setup & migrations (runs automatically)
+│   ├── models.py           # Rule matching, remediation engine, DB queries
 │   ├── event_log_monitor.py# Background Windows Event Log poller
+│   ├── rules_manifest.json # Seed data: all rules (loaded on first start)
 │   ├── requirements.txt    # Python dependencies
-│   └── data/               # SQLite DB + logs (auto-created)
-├── frontend/               # Flutter source (only for UI development)
-├── remediation_scripts/    # 60+ PowerShell remediation scripts
+│   ├── tests/              # Backend test suite (pytest)
+│   └── data/               # Logs + CSV exports (auto-created, not in git)
+├── frontend/               # Flutter app (Windows desktop + web)
+├── remediation_scripts/    # 60+ PowerShell remediation & simulation scripts
 ├── simulate_crash.ps1      # Safe crash simulator for demos
 └── windows_error_events.json # Known Windows error metadata
 ```
 
+`backend/rules.db` (your local event history, approvals, and rule tweaks) is intentionally **not** in git — every clone starts with a clean, fully-seeded database.
+
 ---
 
-## 🛠️ Modifying the UI (Developers Only)
-
-Only needed if you want to change the Flutter frontend:
-
-### Install Flutter
-
-```powershell
-# One-time setup using Git
-mkdir C:\tools; cd C:\tools
-git clone https://github.com/flutter/flutter.git -b stable
-[System.Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\tools\flutter\bin", "User")
-# Restart your terminal, then:
-flutter doctor
-```
-
-### Run in development mode
+## 🖥️ UI Development
 
 ```powershell
 cd frontend
-flutter run -d chrome
+flutter run -d windows          # desktop app with hot reload
 ```
 
-The Flutter dev server proxies API calls to `localhost:5000` automatically (keep `app.py` running).
-
-### Deploy your changes
+Optional web build — the backend automatically serves `frontend/build/web/` at `http://localhost:5000` when it exists:
 
 ```powershell
 cd frontend
 flutter build web --release
 ```
 
-Then copy `frontend/build/web/` contents to `backend/static/` and restart `app.py`.
+---
+
+## ⚠️ Known Limitations
+
+- **English Windows only (for real events).** Rule matching keys on English provider names ("Application Error", "Service Control Manager") and message text ("Faulting application name: …"). On non-English Windows, *real* events won't match — the simulation scripts still work, since they write English text.
+- **Microsoft Store (UWP) apps** can be crash-simulated but usually can't be auto-relaunched (they require package-identity launch).
+- **Antivirus** may flag simulation scripts (they terminate processes by design). Add an exclusion for the project folder if needed.
 
 ---
 
@@ -149,10 +141,9 @@ Then copy `frontend/build/web/` contents to `backend/static/` and restart `app.p
 
 | Problem | Fix |
 |---|---|
-| `localhost:5000` not loading | Make sure `python app.py` is still running in the terminal |
-| Python errors on startup | Confirm Python 3.9+ is installed and on PATH |
-| PowerShell scripts blocked | Run `Set-ExecutionPolicy RemoteSigned` as Administrator |
-| `flutter` not recognized | Flutter is not installed or not on PATH — see the Flutter install steps above |
-
----
-
+| `run_backend.ps1` says port in use | Set `FLASK_PORT` in `.env`; start UI with `-ApiUrl http://localhost:<port>` |
+| Python errors on startup | Confirm Python 3.10+ on PATH, re-run `setup.ps1` |
+| PowerShell scripts blocked | Use `powershell -ExecutionPolicy Bypass -File <script>` as shown above |
+| `flutter` not recognized | Install the Flutter SDK and add it to PATH (`flutter doctor` must pass) |
+| Simulations don't create events | Run them from an **Administrator** PowerShell |
+| Desktop build fails | In Visual Studio Installer, add the "Desktop development with C++" workload |
