@@ -2,11 +2,16 @@
 Unit tests for models.py — Task 5.
 
 Focus areas called out by the task: the run_remediation() execution state
-machine (executing -> verifying -> success | rolled_back |
+machine (running -> verifying -> success | failed | rolled_back |
 verification_failed) and the new-event-type approval gating logic
 (is_event_type_approved / create_approval_request / resolve_approval_request).
 subprocess.run is mocked globally (see conftest.no_real_powershell) so no
 real PowerShell script ever executes.
+
+run_remediation() is asynchronous: it submits the job to a worker pool,
+records the history row as 'running', and returns immediately. Tests
+therefore assert on the immediate 'running' contract and then poll the
+history row (wait_until) for the terminal state the worker settles it to.
 """
 import sqlite3
 
@@ -18,8 +23,8 @@ def _raw_history_row(models_module, history_id):
     try:
         c = conn.cursor()
         c.execute(
-            'SELECT status, output, verification_started_at, verified_at, rollback_output '
-            'FROM remediation_history WHERE id=?', (history_id,)
+            'SELECT status, output, verification_started_at, verified_at, rollback_output, '
+            'error_output FROM remediation_history WHERE id=?', (history_id,)
         )
         return c.fetchone()
     finally:
@@ -117,6 +122,34 @@ def test_approval_gate_lifecycle(models_module):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  History date-range filtering
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_get_history_date_range_filter(models_module):
+    event_row_id = models_module.add_event(
+        event_id=3001, log_name='System', source='DateFilter', message='m'
+    )
+    rid = models_module.add_rule(name='Date Filter Rule', event_id=3001, source='DateFilter')
+    h_old = models_module.record_remediation(event_row_id, rid, 'success', 'old run')
+    h_new = models_module.record_remediation(event_row_id, rid, 'success', 'new run')
+
+    conn = sqlite3.connect(models_module.DB_PATH)
+    conn.execute('UPDATE remediation_history SET timestamp=? WHERE id=?', ('2020-01-01T10:00:00', h_old))
+    conn.execute('UPDATE remediation_history SET timestamp=? WHERE id=?', ('2020-02-01T10:00:00', h_new))
+    conn.commit()
+    conn.close()
+
+    window = dict(date_from='2020-01-15T00:00:00', date_to='2020-02-15T00:00:00')
+    ids = {r[0] for r in models_module.get_history(limit=100, **window)}
+    assert h_new in ids and h_old not in ids
+    assert models_module.get_history_count(**window) == 1
+
+    earlier = dict(date_from='2019-12-31T00:00:00', date_to='2020-01-15T00:00:00')
+    ids_old = {r[0] for r in models_module.get_history(limit=100, **earlier)}
+    assert h_old in ids_old and h_new not in ids_old
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  run_remediation() closed-loop state machine (Task 2)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -142,15 +175,13 @@ def test_run_remediation_success_verifies_with_no_recurrence(models_module, no_r
     )
 
     result = models_module.run_remediation(event_row_id, rid)
-    # Immediately after the (mocked) script exits 0, the caller sees 'verifying' —
-    # the closed-loop worker settles the real outcome asynchronously.
-    assert result['status'] == 'verifying'
+    # The call returns immediately — the job is submitted, the history row is
+    # 'running', and the worker + closed-loop verifier settle the real outcome
+    # asynchronously (running -> verifying -> success).
+    assert result['status'] == 'running'
     history_id = result['history_id']
 
-    row = _raw_history_row(models_module, history_id)
-    assert row[0] == 'verifying'
-
-    ok = wait_until(lambda: _raw_history_row(models_module, history_id)[0] == 'success', timeout=2)
+    ok = wait_until(lambda: _raw_history_row(models_module, history_id)[0] == 'success', timeout=3)
     assert ok, f'expected success, got {_raw_history_row(models_module, history_id)}'
     final = _raw_history_row(models_module, history_id)
     assert final[3] is not None  # verified_at set
@@ -168,10 +199,15 @@ def test_run_remediation_failed_script_is_terminal_immediately(models_module, no
     )
 
     result = models_module.run_remediation(event_row_id, rid)
-    # A non-zero exit is a known-bad outcome immediately — no point verifying.
-    assert result['status'] == 'failed'
-    row = _raw_history_row(models_module, result['history_id'])
-    assert row[0] == 'failed'
+    # Submission succeeds immediately; the worker settles the row to 'failed'
+    # (a non-zero exit is a known-bad outcome — no verification phase).
+    assert result['status'] == 'running'
+    history_id = result['history_id']
+
+    ok = wait_until(lambda: _raw_history_row(models_module, history_id)[0] == 'failed', timeout=3)
+    assert ok, f'expected failed, got {_raw_history_row(models_module, history_id)}'
+    final = _raw_history_row(models_module, history_id)
+    assert 'boom' in (final[5] or '')  # stderr captured into error_output
 
 
 def test_run_remediation_rolls_back_on_recurrence(models_module, monkeypatch, no_real_powershell):
@@ -195,10 +231,12 @@ def test_run_remediation_rolls_back_on_recurrence(models_module, monkeypatch, no
     )
 
     result = models_module.run_remediation(event_row_id, rid)
-    assert result['status'] == 'verifying'
+    assert result['status'] == 'running'
     history_id = result['history_id']
 
     # The same problem fires again almost immediately — the "fix" didn't hold.
+    # (run_started_at is captured at submission time, so this recurrence is
+    # inside the verification window even though the worker runs async.)
     models_module.add_event(event_id=2003, log_name='System', source='FlappyPath',
                              message='original failure recurring')
 

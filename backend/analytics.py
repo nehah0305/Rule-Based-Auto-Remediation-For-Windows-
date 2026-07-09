@@ -5,18 +5,15 @@ dashboard's metrics panel. Pure read-only aggregation over the existing
 `events` / `remediation_history` / `approval_requests` tables; no new
 tables, no writes.
 """
-import sqlite3
 from datetime import datetime, timedelta, timezone
-
-DB_PATH = None  # set lazily from models.DB_PATH to avoid import-order issues
 
 
 def _conn():
-    global DB_PATH
-    if DB_PATH is None:
-        import models
-        DB_PATH = models.DB_PATH
-    return sqlite3.connect(DB_PATH)
+    # Delegate to models' centralized factory so every connection — including
+    # analytics reads racing the event-monitor's writes — gets WAL mode,
+    # synchronous=NORMAL and a busy timeout instead of 'database is locked'.
+    import models
+    return models.get_connection()
 
 
 # Statuses that represent an actual execution attempt (script really ran).
@@ -104,7 +101,7 @@ def get_mttr_timeseries(days=14):
             d = _safe_delta_seconds(event_ts, resolved_ts)
             if d is None or d < 0:
                 continue
-            date_str = (event_ts or '')[:10]
+            date_str = _local_date_str(event_ts)
             if not date_str:
                 continue
             buckets.setdefault(date_str, []).append(d)
@@ -196,6 +193,19 @@ def _parse_iso(ts):
         return dt
     except ValueError:
         return None
+
+
+def _local_date_str(ts):
+    """
+    Bucket label for the MTTR chart: the LOCAL calendar date of a stored
+    (UTC) timestamp. Taking the raw string's [:10] prefix would bucket by UTC
+    day, shifting evening events onto the wrong chart day for any timezone
+    east of UTC.
+    """
+    dt = _parse_iso(ts)
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=timezone.utc).astimezone().date().isoformat()
 
 
 def _humanize_seconds(seconds):

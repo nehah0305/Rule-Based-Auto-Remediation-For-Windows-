@@ -11,6 +11,7 @@ import tempfile
 import threading
 import time
 import functools
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -54,6 +55,16 @@ CORRELATION_WINDOW_MINUTES_MAP = {
 
 # Ensure data dir exists
 Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
+
+# Background pool for remediation script execution. Bounded so an event storm
+# can't fork 50 concurrent PowerShell processes; excess jobs queue in order.
+# Their remediation_history rows stay 'running' while queued/executing, which
+# is exactly what /api/history should show.
+MAX_CONCURRENT_REMEDIATIONS = 4
+_REMEDIATION_EXECUTOR = ThreadPoolExecutor(
+    max_workers=MAX_CONCURRENT_REMEDIATIONS,
+    thread_name_prefix='remediation',
+)
 
 # Cache for event definitions
 _event_definitions_cache = None
@@ -99,7 +110,31 @@ def sanitize_for_powershell_env(value: str, max_length: int = 1000) -> str:
 
 
 def _conn():
-    return sqlite3.connect(DB_PATH)
+    """
+    Centralized connection factory — the ONLY way any thread should open the
+    database. Every connection gets:
+      - WAL journal mode, so the event-monitor thread's writes never block the
+        Flask API's dashboard reads (and vice versa) with 'database is locked'.
+      - synchronous=NORMAL, the recommended durability/speed pairing for WAL.
+      - a 30s busy timeout (both driver- and SQLite-level) so brief write
+        contention waits instead of raising sqlite3.OperationalError.
+    DB_PATH is read per-call (not captured) so tests can repoint it.
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    try:
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('PRAGMA synchronous=NORMAL')
+        conn.execute('PRAGMA busy_timeout=30000')
+    except sqlite3.Error as e:
+        # A connection without WAL is degraded but still usable — never fail
+        # the caller over a pragma.
+        logger.warning(f'Could not apply connection pragmas: {e}')
+    return conn
+
+
+# Public alias so other modules (task_scheduler, analytics, scripts) share the
+# exact same WAL-enabled factory instead of rolling their own sqlite3.connect.
+get_connection = _conn
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -664,7 +699,8 @@ def get_intelligence_summary():
 def add_event(event_id, log_name, source, message,
               timestamp=None, category=None, severity=None,
               description=None, recommended_action=None, level=None,
-              remediated_at=None, source_type='api', return_status=False):
+              remediated_at=None, source_type='api', return_status=False,
+              raw_context_json=None):
     """
     Smart event ingestion with deduplication, confidence scoring, and correlation.
 
@@ -672,6 +708,11 @@ def add_event(event_id, log_name, source, message,
     this call increments its dedup_count and updates last_seen instead of inserting
     a new row.  Returns the DB row id (new or existing) unless return_status is True,
     in which case it returns (row_id, is_new).
+
+    raw_context_json (Phase 2 readiness): the untouched, structured context the
+    OS emitted for this event — full Properties array / raw XML — serialized as
+    JSON by the caller. Stored verbatim in events.raw_context_json; never
+    parsed, flattened, or regex-stripped here.
     """
     if timestamp is None:
         timestamp = datetime.utcnow().isoformat()
@@ -716,12 +757,16 @@ def add_event(event_id, log_name, source, message,
             new_count = prev_count + 1
             new_score = calculate_confidence_score(event_dict, dedup_count=new_count)
             
-            # Atomic update: increment dedup_count in single operation
+            # Atomic update: increment dedup_count in single operation.
+            # A fresh occurrence carries fresh OS context — keep the latest
+            # raw_context_json (COALESCE preserves the old one if this
+            # occurrence arrived without context, e.g. via the REST API).
             c.execute('''
                 UPDATE events
-                SET dedup_count = ?, last_seen = ?, confidence_score = ?
+                SET dedup_count = ?, last_seen = ?, confidence_score = ?,
+                    raw_context_json = COALESCE(?, raw_context_json)
                 WHERE id = ?
-            ''', (new_count, timestamp, new_score, existing_id))
+            ''', (new_count, timestamp, new_score, raw_context_json, existing_id))
             conn.commit()
             return (existing_id, 'NEW_OCCURRENCE') if return_status else existing_id
     finally:
@@ -771,13 +816,13 @@ def add_event(event_id, log_name, source, message,
                 description, recommended_action, level, remediated_at,
                 dedup_count, last_seen, confidence_score, correlation_id, source_type,
                 root_cause_variant_id, root_cause_variant_label, root_cause_confidence,
-                detected_root_causes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                detected_root_causes, raw_context_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (event_id, log_name, source, message, timestamp, category, severity,
              description, recommended_action, level, remediated_at,
              1, timestamp, confidence_score, correlation_id, source_type or 'api',
              root_cause_variant_id, root_cause_variant_label, root_cause_confidence,
-             detected_root_causes_json)
+             detected_root_causes_json, raw_context_json)
         )
         rowid = c.lastrowid
         conn.commit()
@@ -831,7 +876,10 @@ def _rotate_csv_if_needed(csv_path, max_size_mb=500, max_age_days=90):
     
     try:
         file_size_mb = os.path.getsize(csv_path) / (1024 * 1024)
-        file_age_days = (datetime.utcnow() - datetime.fromtimestamp(
+        # Both operands local: fromtimestamp() yields local wall time, so the
+        # age must be measured against now() — mixing in utcnow() skews the
+        # age by the timezone offset.
+        file_age_days = (datetime.now() - datetime.fromtimestamp(
             os.path.getmtime(csv_path)
         )).days
         
@@ -1536,12 +1584,12 @@ def record_remediation(event_row_id, rule_id, status, output=''):
         conn.close()
 
 
-def update_remediation_status(history_id, status, output=None,
+def update_remediation_status(history_id, status, output=None, error_output=None,
                                verification_started_at=None, verified_at=None,
                                rollback_output=None):
     """
     Advance an existing remediation_history row through the closed-loop
-    state machine (pending -> executing -> verifying -> success | rolled_back
+    state machine (running -> verifying -> success | failed | rolled_back
     | verification_failed) without inserting a new row per phase.
     """
     conn = _conn()
@@ -1550,6 +1598,8 @@ def update_remediation_status(history_id, status, output=None,
         fields, vals = ['status=?'], [status]
         if output is not None:
             fields.append('output=?'); vals.append(output)
+        if error_output is not None:
+            fields.append('error_output=?'); vals.append(error_output)
         if verification_started_at is not None:
             fields.append('verification_started_at=?'); vals.append(verification_started_at)
         if verified_at is not None:
@@ -1563,8 +1613,13 @@ def update_remediation_status(history_id, status, output=None,
         conn.close()
 
 
-def get_history(limit=50, offset=0, status=None, search=None, sort_col='id', sort_dir='DESC'):
-    """Paginated, filterable, sortable remediation history."""
+def get_history(limit=50, offset=0, status=None, search=None, sort_col='id', sort_dir='DESC',
+                date_from=None, date_to=None):
+    """Paginated, filterable, sortable remediation history.
+
+    date_from / date_to are ISO timestamps on the same basis as h.timestamp
+    (naive UTC); date_from is inclusive, date_to exclusive.
+    """
     conn = _conn()
     try:
         c = conn.cursor()
@@ -1583,11 +1638,18 @@ def get_history(limit=50, offset=0, status=None, search=None, sort_col='id', sor
             conditions.append('(r.name LIKE ? OR CAST(e.event_id AS TEXT) LIKE ? OR e.source LIKE ?)')
             term = f'%{search}%'
             params.extend([term, term, term])
+        if date_from:
+            conditions.append('h.timestamp >= ?')
+            params.append(date_from)
+        if date_to:
+            conditions.append('h.timestamp < ?')
+            params.append(date_to)
 
         where = ('WHERE ' + ' AND '.join(conditions)) if conditions else ''
         query = f'''
             SELECT h.id, h.event_row_id, h.rule_id, h.status, h.output, h.timestamp,
-                   e.event_id, e.source, r.name, e.timestamp as event_timestamp, e.message
+                   e.event_id, e.source, r.name, e.timestamp as event_timestamp, e.message,
+                   h.error_output
             FROM remediation_history h
             LEFT JOIN events e ON h.event_row_id = e.id
             LEFT JOIN rules r ON h.rule_id = r.id
@@ -1602,7 +1664,7 @@ def get_history(limit=50, offset=0, status=None, search=None, sort_col='id', sor
         conn.close()
 
 
-def get_history_count(status=None, search=None):
+def get_history_count(status=None, search=None, date_from=None, date_to=None):
     """Return total count of history records for pagination."""
     conn = _conn()
     try:
@@ -1616,6 +1678,12 @@ def get_history_count(status=None, search=None):
             conditions.append('(r.name LIKE ? OR CAST(e.event_id AS TEXT) LIKE ? OR e.source LIKE ?)')
             term = f'%{search}%'
             params.extend([term, term, term])
+        if date_from:
+            conditions.append('h.timestamp >= ?')
+            params.append(date_from)
+        if date_to:
+            conditions.append('h.timestamp < ?')
+            params.append(date_to)
         where = ('WHERE ' + ' AND '.join(conditions)) if conditions else ''
         query = f'''
             SELECT COUNT(*)
@@ -1965,11 +2033,12 @@ def _resolve_script_path(script_type, script_content_or_path):
 def _execute_powershell(script_type, script_content_or_path, env, timeout):
     """
     Shared execution primitive used by both the primary remediation run and
-    rollback-script execution. Returns (status, output) where status is
-    'success' | 'failed' | 'error' | 'skipped'.
+    rollback-script execution. Returns (status, output, error_output) where
+    status is 'success' | 'failed' | 'error' | 'skipped', output is combined
+    stdout+stderr (what the dashboard shows) and error_output is stderr alone.
     """
     if not script_content_or_path or not script_content_or_path.strip():
-        return 'skipped', 'no script provided'
+        return 'skipped', 'no script provided', ''
 
     tmp_path = None
     try:
@@ -1979,14 +2048,15 @@ def _execute_powershell(script_type, script_content_or_path, env, timeout):
             capture_output=True, text=True, timeout=timeout, env=env
         )
         status = 'success' if proc.returncode == 0 else 'failed'
-        output = proc.stdout + '\n' + proc.stderr
-        return status, output
+        output = (proc.stdout or '') + '\n' + (proc.stderr or '')
+        return status, output, (proc.stderr or '').strip()
     except FileNotFoundError as e:
-        return 'skipped', f'script file not found: {e}'
+        return 'skipped', f'script file not found: {e}', ''
     except subprocess.TimeoutExpired:
-        return 'error', f'script timed out after {timeout}s'
+        msg = f'script timed out after {timeout}s'
+        return 'error', msg, msg
     except Exception as e:
-        return 'error', str(e)
+        return 'error', str(e), str(e)
     finally:
         if tmp_path and os.path.exists(tmp_path):
             try:
@@ -2013,8 +2083,31 @@ def _build_remediation_env(event_data, regex_captures=None):
     return env
 
 
+def _count_event_occurrences(event_id, source):
+    """
+    Total occurrences ever recorded for (event_id, source): SUM(dedup_count)
+    across matching rows. Every genuine occurrence adds exactly 1 — a brand
+    new row starts at dedup_count=1 and a dedup merge increments it — while a
+    DUPLICATE_POLL changes nothing. Used as the recurrence baseline for
+    closed-loop verification because it is immune to Windows' coarse
+    (~15 ms) wall-clock resolution, which makes strict timestamp comparisons
+    silently miss recurrences that land on the same clock tick.
+    """
+    conn = _conn()
+    try:
+        c = conn.cursor()
+        c.execute(
+            "SELECT COALESCE(SUM(dedup_count), 0) FROM events "
+            "WHERE event_id=? AND LOWER(COALESCE(source,'')) = LOWER(COALESCE(?,''))",
+            (str(event_id), source or '')
+        )
+        return c.fetchone()[0] or 0
+    finally:
+        conn.close()
+
+
 def _run_verification_and_rollback(history_id, event_row_id, rule_id, event_id, source,
-                                    run_started_at, verification_timeout_sec):
+                                    baseline_occurrences, verification_timeout_sec):
     """
     Background worker (Task 2 closed-loop verification): after a script
     reports success, watch for the SAME (event_id, source) problem recurring
@@ -2023,26 +2116,20 @@ def _run_verification_and_rollback(history_id, event_row_id, rule_id, event_id, 
     history row 'rolled_back'; otherwise mark it 'verification_failed' so it
     is never silently reported as a success. If nothing recurs, mark
     'success' with verified_at set.
+
+    Recurrence detection compares the occurrence counter against
+    baseline_occurrences (snapshotted at job submission) instead of
+    timestamps — see _count_event_occurrences for why.
     """
     try:
         time.sleep(max(1, int(verification_timeout_sec or 60)))
 
-        conn = _conn()
         try:
-            c = conn.cursor()
-            # COALESCE(last_seen, timestamp): a recurrence of the same
-            # (event_id, source) within add_event()'s dedup window doesn't
-            # insert a new row — it only bumps dedup_count/last_seen on the
-            # existing one. Checking timestamp alone would silently miss
-            # exactly the "flapping" case this check exists to catch.
-            c.execute(
-                'SELECT COUNT(*) FROM events WHERE event_id=? AND source=? '
-                'AND COALESCE(last_seen, timestamp) > ?',
-                (str(event_id), source or '', run_started_at)
-            )
-            recurrence_count = c.fetchone()[0]
-        finally:
-            conn.close()
+            current_occurrences = _count_event_occurrences(event_id, source)
+            recurrence_count = max(0, current_occurrences - baseline_occurrences)
+        except Exception as e:
+            logger.error(f'[VERIFY] History {history_id}: occurrence recount failed: {e}')
+            raise
 
         verified_at = datetime.utcnow().isoformat()
 
@@ -2059,7 +2146,7 @@ def _run_verification_and_rollback(history_id, event_row_id, rule_id, event_id, 
         if rollback_script and rollback_script.strip():
             event_data = get_event(event_row_id)
             env = _build_remediation_env(event_data) if event_data else os.environ.copy()
-            rb_status, rb_output = _execute_powershell(script_type, rollback_script, env, timeout=60)
+            rb_status, rb_output, _rb_err = _execute_powershell(script_type, rollback_script, env, timeout=60)
             update_remediation_status(
                 history_id, 'rolled_back',
                 rollback_output=f'[{rb_status}] {rb_output}', verified_at=verified_at
@@ -2083,12 +2170,95 @@ def _run_verification_and_rollback(history_id, event_row_id, rule_id, event_id, 
             pass
 
 
-def run_remediation(event_row_id, rule_id, timeout=60, regex_captures=None, approved=False):
-    """Execute a rule's remediation script for an event.
+def _remediation_worker(history_id, event_row_id, rule_id, event_data, script_type,
+                        remediation_script, env, timeout, approved,
+                        verification_timeout_sec, run_started_at, baseline_occurrences):
+    """
+    Background executor for one remediation job. Runs the PowerShell script,
+    then settles the pre-created 'running' history row to
+    success | failed | error | verifying (verification thread finishes the
+    rest). Must never raise — an escaped exception would leave the history
+    row stuck at 'running' forever.
+    """
+    try:
+        try:
+            status, output, error_output = _execute_powershell(
+                script_type, remediation_script, env, timeout)
+        except Exception as e:
+            status = 'failed'
+            output = f'Exception while executing remediation script: {e}'
+            error_output = str(e)
+
+        if status != 'success':
+            if approved:
+                # Operator explicitly approved this remediation — the gate clearance
+                # counts as success even if the script exited with an error.
+                output = (output or '').strip() + '\n[WARNING] Script returned error code but approval was granted.'
+                update_remediation_status(history_id, 'success', output=output,
+                                           error_output=error_output or None,
+                                           verified_at=datetime.utcnow().isoformat())
+                return {'status': 'success', 'output': output, 'history_id': history_id}
+
+            update_remediation_status(history_id, status, output=output,
+                                       error_output=error_output or None)
+            return {'status': status, 'output': output, 'history_id': history_id}
+
+        if approved:
+            # Approved runs must never be re-flagged as failed by the recurrence
+            # watcher, so finalize as success immediately instead of handing off
+            # to closed-loop verification.
+            update_remediation_status(history_id, 'success', output=output,
+                                       verified_at=datetime.utcnow().isoformat())
+            return {'status': 'success', 'output': output, 'history_id': history_id}
+
+        # Script exited 0 — don't declare victory yet. Hand off to the closed-loop
+        # verification worker, which will flip this row to success / rolled_back /
+        # verification_failed once it knows whether the fix actually held.
+        update_remediation_status(history_id, 'verifying', output=output,
+                                   verification_started_at=run_started_at)
+        # Verification always runs so recurrence is never silently reported as
+        # success; _run_verification_and_rollback itself decides whether a
+        # rollback_script is available to actually undo anything.
+        threading.Thread(
+            target=_run_verification_and_rollback,
+            args=(history_id, event_row_id, rule_id, event_data[1], event_data[3],
+                  baseline_occurrences, verification_timeout_sec),
+            daemon=True,
+        ).start()
+
+        return {'status': 'verifying', 'output': output, 'history_id': history_id}
+    except Exception as e:
+        # Last-ditch: even bookkeeping failures must settle the row.
+        logger.exception(f'[REMEDIATION-WORKER] History {history_id} crashed: {e}')
+        try:
+            update_remediation_status(history_id, 'error',
+                                       output=f'Internal error during remediation: {e}',
+                                       error_output=str(e))
+        except Exception:
+            pass
+        return {'status': 'error', 'output': str(e), 'history_id': history_id}
+
+
+def run_remediation(event_row_id, rule_id, timeout=60, regex_captures=None,
+                    approved=False, wait=False):
+    """Execute a rule's remediation script for an event — asynchronously.
+
+    Validates the rule/event, records a remediation_history row with status
+    'running', submits the actual PowerShell execution to a bounded background
+    pool, and returns immediately with {'status': 'running', 'history_id': …}.
+    A 45-second disk-repair script therefore never blocks a Flask request
+    thread or the event-monitor poll loop; callers watch /api/history for the
+    terminal status (success | failed | error | rolled_back |
+    verification_failed), where output/error_output are filled in by the
+    worker.
 
     approved=True marks an operator-sanctioned run (approval gate cleared):
     script failures are recorded as 'success' with a warning appended, so an
     Approved event is never shown as Failed in history.
+
+    wait=True runs the job inline and returns its settled result — for
+    callers that genuinely need the outcome in-request (rule test button,
+    simulation drivers with retry-on-failure orchestration).
     """
     rule = get_rule(rule_id)
     if not rule:
@@ -2121,51 +2291,32 @@ def run_remediation(event_row_id, rule_id, timeout=60, regex_captures=None, appr
     env = _build_remediation_env(event_data, regex_captures)
 
     # Insert the in-flight history row up front so its state-machine progress
-    # (executing -> verifying -> success | rolled_back | verification_failed)
-    # is visible to anyone polling /api/history while it's happening.
-    history_id = record_remediation(event_row_id, rule_id, 'executing', '')
+    # (running -> verifying -> success | failed | rolled_back |
+    # verification_failed) is visible to anyone polling /api/history.
+    # The occurrence baseline is snapshotted HERE (submission time) so any
+    # recurrence of the same event after this call — even within the same
+    # ~15 ms Windows clock tick — counts against closed-loop verification.
+    baseline_occurrences = _count_event_occurrences(event_data[1], event_data[3])
+    history_id = record_remediation(event_row_id, rule_id, 'running',
+                                    'Remediation job submitted — execution in progress.')
     run_started_at = datetime.utcnow().isoformat()
 
+    worker_args = (history_id, event_row_id, rule_id, event_data, script_type,
+                   remediation_script, env, timeout, approved,
+                   verification_timeout_sec, run_started_at, baseline_occurrences)
+
+    if wait:
+        return _remediation_worker(*worker_args)
+
     try:
-        status, output = _execute_powershell(script_type, remediation_script, env, timeout)
-    except Exception as e:
-        status, output = 'failed', f'Exception while executing remediation script: {e}'
+        _REMEDIATION_EXECUTOR.submit(_remediation_worker, *worker_args)
+    except RuntimeError as e:
+        # Executor rejected the job (interpreter shutting down). Run inline
+        # rather than stranding the history row at 'running'.
+        logger.warning(f'[REMEDIATION] Executor unavailable ({e}); running inline.')
+        return _remediation_worker(*worker_args)
 
-    if status != 'success':
-        if approved:
-            # Operator explicitly approved this remediation — the gate clearance
-            # counts as success even if the script exited with an error.
-            output = (output or '').strip() + '\n[WARNING] Script returned error code but approval was granted.'
-            update_remediation_status(history_id, 'success', output=output, verified_at=datetime.utcnow().isoformat())
-            return {'status': 'success', 'output': output, 'history_id': history_id}
-
-        update_remediation_status(history_id, status, output=output)
-        return {'status': status, 'output': output, 'history_id': history_id}
-
-    if approved:
-        # Approved runs must never be re-flagged as failed by the recurrence
-        # watcher, so finalize as success immediately instead of handing off
-        # to closed-loop verification.
-        update_remediation_status(history_id, 'success', output=output,
-                                   verified_at=datetime.utcnow().isoformat())
-        return {'status': 'success', 'output': output, 'history_id': history_id}
-
-    # Script exited 0 — don't declare victory yet. Hand off to the closed-loop
-    # verification worker, which will flip this row to success / rolled_back /
-    # verification_failed once it knows whether the fix actually held.
-    update_remediation_status(history_id, 'verifying', output=output,
-                               verification_started_at=run_started_at)
-    # Verification always runs so recurrence is never silently reported as
-    # success; _run_verification_and_rollback itself decides whether a
-    # rollback_script is available to actually undo anything.
-    threading.Thread(
-        target=_run_verification_and_rollback,
-        args=(history_id, event_row_id, rule_id, event_data[1], event_data[3],
-              run_started_at, verification_timeout_sec),
-        daemon=True,
-    ).start()
-
-    return {'status': 'verifying', 'output': output, 'history_id': history_id}
+    return {'status': 'running', 'output': '', 'history_id': history_id}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../config/theme.dart';
 import '../models/alert.dart';
+import '../utils/time_fmt.dart';
 
 class LiveAlertPopup extends StatefulWidget {
   final LiveAlert alert;
@@ -256,10 +257,5 @@ class _LiveAlertPopupState extends State<LiveAlertPopup> with SingleTickerProvid
     return msg;
   }
 
-  String _formatTs(String ts) {
-    try {
-      final dt = DateTime.parse(ts);
-      return '${dt.toLocal()}'.substring(0, 16);
-    } catch (_) { return ts; }
-  }
+  String _formatTs(String ts) => fmtServerTime(ts, fallback: ts);
 }

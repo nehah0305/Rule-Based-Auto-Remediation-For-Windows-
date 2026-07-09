@@ -167,8 +167,34 @@ try {
                   @{Name='Message'; Expression={
                       if ($_.Message) { $_.Message }
                       else { ($_.Properties | ForEach-Object { $_.Value }) -join ' ' }
+                  }}, `
+                  @{Name='RawContext'; Expression={
+                      # PHASE 2 DATA PRISTINENESS: dump the event's full structured
+                      # context generically — every Properties value (base64 for
+                      # binary payloads so nothing is lost) plus the complete raw
+                      # event XML — untouched by any message templating or regex.
+                      $props = @($_.Properties | ForEach-Object {
+                          if ($_.Value -is [byte[]]) { [Convert]::ToBase64String($_.Value) }
+                          elseif ($null -eq $_.Value) { $null }
+                          else { [string]$_.Value }
+                      })
+                      $xml = $null
+                      try { $xml = $_.ToXml() } catch { $xml = $null }
+                      @{
+                          Properties       = $props
+                          Xml              = $xml
+                          RecordId         = $_.RecordId
+                          MachineName      = $_.MachineName
+                          Task             = $_.Task
+                          Opcode           = $_.Opcode
+                          Keywords         = [string]$_.Keywords
+                          ProcessId        = $_.ProcessId
+                          ThreadId         = $_.ThreadId
+                          UserId           = if ($_.UserId) { $_.UserId.Value } else { $null }
+                          ActivityId       = if ($_.ActivityId) { [string]$_.ActivityId } else { $null }
+                      }
                   }}
-    if ($events) { $events | ConvertTo-Json -Depth 3 -Compress } else { '[]' }
+    if ($events) { $events | ConvertTo-Json -Depth 6 -Compress } else { '[]' }
 } catch [System.Exception] {
     if ($_.Exception.Message -match 'No events were found') { '[]' }
     else { Write-Error $_.Exception.Message; exit 1 }
@@ -176,10 +202,25 @@ try {
 """
 
 
-def _fetch_windows_events(since: datetime) -> list:
+# Retry policy for the PowerShell query: total attempts = 1 + FETCH_RETRIES,
+# with a short linear backoff between attempts. Transient failures (timeout,
+# temporary permission hiccup, malformed output) are absorbed here; a poll
+# that still fails after all attempts returns None so the caller knows NOT to
+# advance the watermark — the same events will be retried next tick.
+FETCH_RETRIES        = 2
+FETCH_RETRY_BACKOFF  = 2.0   # seconds; grows linearly per attempt
+FETCH_TIMEOUT        = 20    # seconds per PowerShell invocation
+
+
+def _fetch_windows_events(since: datetime):
     """
     Query Windows Event Log via PowerShell using EncodedCommand to safely
     handle multi-line scripts and parameters.
+
+    Returns a list of raw event dicts on success (possibly empty — genuinely
+    no new events), or None if every attempt failed. None is the caller's
+    signal to keep the watermark exactly where it is. This function never
+    raises — every subprocess/parsing failure mode is contained.
     """
     import base64
     since_str = since.isoformat()
@@ -198,35 +239,51 @@ def _fetch_windows_events(since: datetime) -> list:
     # PowerShell -EncodedCommand requires UTF-16LE base64
     encoded_cmd = base64.b64encode(script.encode('utf-16le')).decode('ascii')
 
-    try:
-        result = subprocess.run(
-            [
-                _POWERSHELL,
-                '-NoProfile', '-ExecutionPolicy', 'Bypass',
-                '-EncodedCommand', encoded_cmd
-            ],
-            capture_output=True, text=True, timeout=20
-        )
-        if result.returncode != 0:
-            logger.warning(f'PS query failed: {result.stderr.strip()[:200]}')
-            return []
-        raw = result.stdout.strip()
-        if not raw or raw == 'null':
-            return []
-        parsed = json.loads(raw)
-        # PowerShell returns a dict (not list) when there's only one event
-        if isinstance(parsed, dict):
-            parsed = [parsed]
-        return parsed if isinstance(parsed, list) else []
-    except subprocess.TimeoutExpired:
-        logger.warning('PowerShell event query timed out')
-        return []
-    except json.JSONDecodeError as e:
-        logger.warning(f'Could not parse PS JSON: {e}')
-        return []
-    except Exception as e:
-        logger.warning(f'Unexpected error fetching events: {e}')
-        return []
+    last_error = None
+    for attempt in range(1, FETCH_RETRIES + 2):
+        try:
+            result = subprocess.run(
+                [
+                    _POWERSHELL,
+                    '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                    '-EncodedCommand', encoded_cmd
+                ],
+                capture_output=True, text=True, timeout=FETCH_TIMEOUT
+            )
+            if result.returncode != 0:
+                last_error = f'PS query exited {result.returncode}: {(result.stderr or "").strip()[:200]}'
+                logger.warning(f'[FETCH attempt {attempt}] {last_error}')
+            else:
+                raw = (result.stdout or '').strip()
+                if not raw or raw == 'null':
+                    return []
+                parsed = json.loads(raw)
+                # PowerShell returns a dict (not list) when there's only one event
+                if isinstance(parsed, dict):
+                    parsed = [parsed]
+                return parsed if isinstance(parsed, list) else []
+        except subprocess.TimeoutExpired:
+            last_error = f'PowerShell event query timed out after {FETCH_TIMEOUT}s'
+            logger.warning(f'[FETCH attempt {attempt}] {last_error}')
+        except json.JSONDecodeError as e:
+            last_error = f'Could not parse PS JSON: {e}'
+            logger.warning(f'[FETCH attempt {attempt}] {last_error}')
+        except (OSError, subprocess.SubprocessError) as e:
+            last_error = f'Subprocess error launching PowerShell: {e}'
+            logger.warning(f'[FETCH attempt {attempt}] {last_error}')
+        except Exception as e:
+            last_error = f'Unexpected error fetching events: {e}'
+            logger.warning(f'[FETCH attempt {attempt}] {last_error}')
+
+        if attempt <= FETCH_RETRIES:
+            try:
+                time.sleep(FETCH_RETRY_BACKOFF * attempt)
+            except Exception:
+                pass
+
+    logger.warning(f'[FETCH] All {FETCH_RETRIES + 1} attempts failed; watermark will NOT advance. '
+                   f'Last error: {last_error}')
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -298,6 +355,20 @@ def _process_event(raw: dict) -> int:
     severity  = LEVEL_MAP.get(int(level_num), 'Warning')
     timestamp = _parse_timestamp(raw.get('TimeCreated'))
 
+    # ── [PHASE 2 DATA PRISTINENESS] Preserve the raw, structured OS context ──
+    # RawContext carries the full Properties value array + complete event XML
+    # exactly as Windows emitted it. Serialize it verbatim (no flattening, no
+    # regex) so the future SLM trains on unmodified ground truth. Never let a
+    # serialization hiccup break ingestion.
+    raw_context_json = None
+    try:
+        raw_context = raw.get('RawContext')
+        if raw_context is not None:
+            raw_context_json = json.dumps(raw_context, default=str, ensure_ascii=False)
+    except Exception as e:
+        logger.warning(f'Could not serialize raw context for event {event_id}: {e}')
+        raw_context_json = None
+
     # ── Enrich from catalog BEFORE inserting so category is available everywhere ──
     catalog_defn = models.get_event_definition(event_id, source)
     catalog_category    = catalog_defn.get('category')             if catalog_defn else None
@@ -330,7 +401,8 @@ def _process_event(raw: dict) -> int:
         recommended_action = catalog_action,
         level              = severity,
         source_type        = 'eventlog',
-        return_status      = True
+        return_status      = True,
+        raw_context_json   = raw_context_json,
     )
 
     # Prevent running remediation multiple times for identical duplicate events polled closely
@@ -505,15 +577,40 @@ def _process_event(raw: dict) -> int:
 #  Poll loop
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _record_monitor_error(msg: str):
+    """Append to the rolling error buffer (last 10 kept), thread-safe."""
+    with _state_lock:
+        _monitor_state['errors'].append(msg)
+        while len(_monitor_state['errors']) > 10:
+            _monitor_state['errors'].pop(0)
+
+
 def _poll():
-    """One poll cycle: fetch new events, process each one."""
+    """
+    One poll cycle: fetch new events, process each one.
+
+    Watermark contract (indestructible-polling guarantee): the watermark only
+    advances after events were actually fetched AND ingested. If the
+    PowerShell query fails outright (returns None after all retries), we log,
+    record the error for /api/monitor/status, leave the watermark untouched,
+    and gracefully wait for the next tick — no event is ever skipped because
+    of a transient Get-WinEvent failure.
+    """
     with _poll_lock:
         since    = _load_watermark()
         new_high = since   # will advance after each event
-    
+
         raw_events = _fetch_windows_events(since)
-        ingested   = 0
-    
+        if raw_events is None:
+            # Hard fetch failure — retried and gave up. Do NOT advance the
+            # watermark; these events will be picked up on the next tick.
+            _record_monitor_error(
+                f'Event fetch failed after retries at {datetime.now(timezone.utc).isoformat()} '
+                f'(watermark held at {since.isoformat()})'
+            )
+            return 0
+
+        ingested = 0
         for raw in raw_events:
             try:
                 _process_event(raw)
@@ -530,18 +627,31 @@ def _poll():
                         pass
             except Exception as e:
                 logger.exception(f'Failed processing event: {e}')
-    
+                _record_monitor_error(f'Event processing error: {e}')
+
         if ingested:
             logger.info(f'[MONITOR] Ingested {ingested} event(s) from Windows Event Log')
             # Move watermark forward by 1 millisecond past last event to avoid re-ingesting
             from datetime import timedelta
-            _save_watermark(new_high + timedelta(milliseconds=1))
-    
+            try:
+                _save_watermark(new_high + timedelta(milliseconds=1))
+            except Exception as e:
+                # _save_watermark already guards internally; this is belt-and-
+                # braces so a watermark write failure can never abort the poll.
+                logger.warning(f'Could not persist watermark: {e}')
+
         return ingested
 
 
 def _monitor_loop():
-    """Runs forever in a background daemon thread."""
+    """
+    Runs forever in a background daemon thread.
+
+    Hardened so the thread can NEVER crash out of its loop: every iteration —
+    including the state bookkeeping and the sleep itself — is fenced. Even a
+    KeyboardInterrupt/SystemExit delivered to this thread only ends the
+    iteration, not the monitor (daemon threads die with the process anyway).
+    """
     with _state_lock:
         _monitor_state['running'] = True
 
@@ -554,15 +664,22 @@ def _monitor_loop():
             with _state_lock:
                 _monitor_state['last_poll']       = now
                 _monitor_state['events_ingested'] += count
-                # Keep only last 10 errors
-                if len(_monitor_state['errors']) > 10:
-                    _monitor_state['errors'].pop(0)
         except Exception as e:
             logger.exception(f'[MONITOR] Poll error: {e}')
-            with _state_lock:
-                _monitor_state['errors'].append(str(e))
+            try:
+                _record_monitor_error(str(e))
+            except Exception:
+                pass
+        except BaseException as e:
+            # subprocess internals can surface odd BaseExceptions; a monitor
+            # thread has no legitimate reason to die before the process does.
+            logger.error(f'[MONITOR] Non-standard exception survived: {e!r}')
 
-        time.sleep(POLL_INTERVAL)
+        try:
+            time.sleep(POLL_INTERVAL)
+        except Exception:
+            # Sleep interrupted — just start the next poll cycle.
+            pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -618,6 +735,5 @@ def trigger_poll() -> int:
         return count
     except Exception as e:
         logger.error(f'[MONITOR] Manual trigger error: {e}')
-        with _state_lock:
-            _monitor_state['errors'].append(str(e))
+        _record_monitor_error(str(e))
         return 0

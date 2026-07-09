@@ -47,3 +47,6 @@ debug.log
 
 backend/data/
 *.db-journal
+# SQLite WAL-mode sidecar files (runtime state, never commit)
+*.db-wal
+*.db-shm

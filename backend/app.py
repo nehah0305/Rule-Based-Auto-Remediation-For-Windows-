@@ -590,7 +590,9 @@ def test_rule(rule_id):
         message=f'[Test Run] Manual test of rule: {rule[1]}',
         level='Test',
     )
-    result = models.run_remediation(event_row_id, rule_id)
+    # wait=True: a rule test is only useful if the response carries the
+    # script's actual output.
+    result = models.run_remediation(event_row_id, rule_id, wait=True)
     return jsonify({
         'status': result.get('status'),
         'output': result.get('output'),
@@ -670,10 +672,17 @@ def history():
         search = request.args.get('search', None)
         sort_col = request.args.get('sort', 'id')
         sort_dir = request.args.get('dir', 'DESC')
+        # ISO timestamps on the same basis as stored history rows (naive UTC);
+        # date_from inclusive, date_to exclusive. The Flutter client converts
+        # the operator's local calendar picks to UTC before sending.
+        date_from = request.args.get('date_from', None)
+        date_to   = request.args.get('date_to', None)
 
         rows  = models.get_history(limit=limit, offset=offset, status=status,
-                                   search=search, sort_col=sort_col, sort_dir=sort_dir)
-        total = models.get_history_count(status=status, search=search)
+                                   search=search, sort_col=sort_col, sort_dir=sort_dir,
+                                   date_from=date_from, date_to=date_to)
+        total = models.get_history_count(status=status, search=search,
+                                         date_from=date_from, date_to=date_to)
 
         import re
         hist = []
@@ -699,6 +708,7 @@ def history():
                 event_id=h[6], event_source=h[7],
                 rule_name=h[8], event_timestamp=h[9],
                 app_context=name_context,
+                error_output=h[11] if len(h) > 11 else None,
             ))
         return jsonify({'items': hist, 'total': total, 'has_more': offset + limit < total})
     except Exception as e:
@@ -712,7 +722,10 @@ def history_export():
         fmt    = request.args.get('format', 'csv')
         status = request.args.get('status', None)
         search = request.args.get('search', None)
-        rows   = models.get_history(limit=10000, offset=0, status=status, search=search)
+        date_from = request.args.get('date_from', None)
+        date_to   = request.args.get('date_to', None)
+        rows   = models.get_history(limit=10000, offset=0, status=status, search=search,
+                                    date_from=date_from, date_to=date_to)
         if fmt == 'csv':
             import io, csv as csv_mod
             buf = io.StringIO()
@@ -1257,7 +1270,9 @@ def simulate_error1000_auto_fix():
                 last_status = 'failed'
                 verification_ok = False
                 for attempt in range(1, max_attempts + 1):
-                    result = models.run_remediation(event_row_id, r[0], regex_captures=regex_captures)
+                    # wait=True: this simulation loop's retry/verification
+                    # orchestration needs the settled outcome in-request.
+                    result = models.run_remediation(event_row_id, r[0], regex_captures=regex_captures, wait=True)
                     totals['auto_remediations_run'] += 1
 
                     if result.get('status') == 'success':
@@ -1644,7 +1659,9 @@ def simulate_lowdiskspace_auto_fix():
                 last_status = 'failed'
                 verification_ok = False
                 for attempt in range(1, max_attempts + 1):
-                    result = models.run_remediation(event_row_id, r[0], regex_captures=regex_captures)
+                    # wait=True: this simulation loop's retry/verification
+                    # orchestration needs the settled outcome in-request.
+                    result = models.run_remediation(event_row_id, r[0], regex_captures=regex_captures, wait=True)
                     totals['auto_remediations_run'] += 1
 
                     if result.get('status') == 'success':
@@ -2025,7 +2042,9 @@ def simulate_eventlog_auto_fix():
                 last_status = 'failed'
                 verification_ok = False
                 for attempt in range(1, max_attempts + 1):
-                    result = models.run_remediation(event_row_id, r[0], regex_captures=regex_captures)
+                    # wait=True: this simulation loop's retry/verification
+                    # orchestration needs the settled outcome in-request.
+                    result = models.run_remediation(event_row_id, r[0], regex_captures=regex_captures, wait=True)
                     totals['auto_remediations_run'] += 1
 
                     if result.get('status') == 'success':
@@ -2405,7 +2424,9 @@ def simulate_auditevents_auto_fix():
                 last_status = 'failed'
                 verification_ok = False
                 for attempt in range(1, max_attempts + 1):
-                    result = models.run_remediation(event_row_id, r[0], regex_captures=regex_captures)
+                    # wait=True: this simulation loop's retry/verification
+                    # orchestration needs the settled outcome in-request.
+                    result = models.run_remediation(event_row_id, r[0], regex_captures=regex_captures, wait=True)
                     totals['auto_remediations_run'] += 1
 
                     if result.get('status') == 'success':
@@ -2655,7 +2676,8 @@ def highcpu_remediate():
         return jsonify({'error': 'Could not create/find remediation rule'}), 500
 
     rule_id = rule[0]
-    result = models.run_remediation(event_row_id, rule_id)
+    # wait=True: the live-demo pop-up displays the script output directly.
+    result = models.run_remediation(event_row_id, rule_id, wait=True)
 
     return jsonify({
         'status': result.get('status', 'unknown'),
@@ -2788,7 +2810,8 @@ def servicecrash_remediate():
         return jsonify({'error': 'Could not create/find remediation rule'}), 500
 
     rule_id = rule[0]
-    result = models.run_remediation(event_row_id, rule_id)
+    # wait=True: the live-demo pop-up displays the script output directly.
+    result = models.run_remediation(event_row_id, rule_id, wait=True)
 
     return jsonify({
         'status': result.get('status', 'unknown'),

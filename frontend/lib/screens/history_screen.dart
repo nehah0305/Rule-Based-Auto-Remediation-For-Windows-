@@ -6,6 +6,7 @@ import '../config/theme.dart';
 import '../services/api_service.dart';
 import '../services/remediation_service.dart';
 import '../models/history_entry.dart';
+import '../utils/time_fmt.dart';
 import '../widgets/badges.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -52,6 +53,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
     super.dispose();
   }
 
+  /// Convert a local calendar instant to the naive-UTC ISO format the backend
+  /// stores history timestamps in (UTC, no offset suffix).
+  String _toServerUtc(DateTime local) =>
+      local.toUtc().toIso8601String().replaceFirst('Z', '');
+
   Future<void> _load({bool resetPage = true}) async {
     if (!mounted) return;
     if (resetPage) _page = 0;
@@ -64,6 +70,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
         search: _search.isEmpty ? null : _search,
         sort: _sortCol,
         dir: _sortDir,
+        // Picker returns local midnights; the end day is included by sending
+        // an exclusive bound of the following local midnight, converted to UTC.
+        dateFrom: _dateRange == null ? null : _toServerUtc(_dateRange!.start),
+        dateTo: _dateRange == null
+            ? null
+            : _toServerUtc(DateTime(_dateRange!.end.year, _dateRange!.end.month,
+                _dateRange!.end.day).add(const Duration(days: 1))),
       );
       if (!mounted) return;
       setState(() {
@@ -123,6 +136,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final url = _api.getHistoryExportUrl(
       status: _filterStatus == 'all' ? null : _filterStatus,
       search: _search.isEmpty ? null : _search,
+      dateFrom: _dateRange == null ? null : _toServerUtc(_dateRange!.start),
+      dateTo: _dateRange == null
+          ? null
+          : _toServerUtc(DateTime(_dateRange!.end.year, _dateRange!.end.month,
+              _dateRange!.end.day).add(const Duration(days: 1))),
     );
     showDialog(
       context: context,
@@ -399,10 +417,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  String _fmtTs(String? ts) {
-    if (ts == null) return '—';
-    try { return '${DateTime.parse(ts).toLocal()}'.substring(0, 16); } catch (_) { return ts.length > 16 ? ts.substring(0, 16) : ts; }
-  }
+  String _fmtTs(String? ts) => fmtServerTime(ts);
 
   String _fmtDate(DateTime d) => '${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}';
 }
@@ -563,10 +578,7 @@ class _HistoryTableState extends State<_HistoryTable> {
     ),
   );
 
-  String _fmtTs(String? ts) {
-    if (ts == null) return '—';
-    try { return '${DateTime.parse(ts).toLocal()}'.substring(0, 16); } catch (_) { return ts.length > 16 ? ts.substring(0, 16) : ts; }
-  }
+  String _fmtTs(String? ts) => fmtServerTime(ts);
 }
 
 // ── Pagination bar ─────────────────────────────────────────────────────────────

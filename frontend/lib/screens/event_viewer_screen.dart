@@ -4,6 +4,7 @@ import '../config/theme.dart';
 import '../services/api_service.dart';
 import '../models/event.dart';
 import '../models/history_entry.dart';
+import '../utils/time_fmt.dart';
 import '../widgets/badges.dart';
 
 class EventViewerScreen extends StatefulWidget {
@@ -112,8 +113,10 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
       final start = _dateRange!.start;
       final end = _dateRange!.end.add(const Duration(days: 1));
       filtered = filtered.where((e) {
-        if (e.timestamp == null) return false;
-        final ts = DateTime.tryParse(e.timestamp!);
+        // parseServerTime interprets the backend's UTC timestamps and
+        // converts to local, so the range check matches the local dates
+        // the user picked in the calendar.
+        final ts = parseServerTime(e.timestamp);
         if (ts == null) return false;
         return ts.isAfter(start) && ts.isBefore(end);
       }).toList();
@@ -622,7 +625,7 @@ class _EventDetailsDialogState extends State<_EventDetailsDialog> {
             _DetailRow('Category', widget.event.category ?? 'N/A'),
             _DetailRow('Severity', widget.event.severity ?? 'N/A'),
             _DetailRow('Log Name', widget.event.logName ?? 'N/A'),
-            _DetailRow('Timestamp', widget.event.timestamp?.toString() ?? 'N/A'),
+            _DetailRow('Timestamp', fmtServerTime(widget.event.timestamp, length: 19, fallback: 'N/A')),
             _DetailRow('Remediated', widget.event.remediated ? 'Yes ✓' : 'No ○'),
             const SizedBox(height: 16),
             const Text(
@@ -664,7 +667,7 @@ class _EventDetailsDialogState extends State<_EventDetailsDialog> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text('Rule: ${h.ruleName ?? 'Unknown'}', style: const TextStyle(fontWeight: FontWeight.w600)),
-                        Text(h.timestamp?.substring(0, 16) ?? '', style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                        Text(fmtServerTime(h.timestamp, fallback: ''), style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -783,7 +786,7 @@ class _EventCard extends StatelessWidget {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                event.timestamp?.toString().substring(0, 16) ?? '-',
+                                fmtServerTime(event.timestamp, fallback: '-'),
                                 style: const TextStyle(
                                   fontSize: 12,
                                   color: AppTheme.textMuted,

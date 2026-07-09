@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
+import '../utils/time_fmt.dart';
 
 class TaskSchedulerScreen extends StatefulWidget {
   const TaskSchedulerScreen({super.key});
@@ -219,10 +220,7 @@ class _StatusBanner extends StatelessWidget {
     );
   }
 
-  String _fmt(String? ts) {
-    if (ts == null) return 'Never';
-    try { return '${DateTime.parse(ts).toLocal()}'.substring(0, 19); } catch (_) { return ts; }
-  }
+  String _fmt(String? ts) => fmtServerTime(ts, length: 19, fallback: 'Never');
 }
 
 // ─── Setup Card ──────────────────────────────────────────────────────────────

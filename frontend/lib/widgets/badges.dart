@@ -52,6 +52,7 @@ class StatusBadge extends StatelessWidget {
       case 'completed':  bg = AppTheme.accentGreen;  icon = Icons.done_all;    label = 'Completed'; break;
       case 'warning':    bg = const Color(0xFFfd7e14); icon = Icons.warning;   label = 'Warning'; break;
       case 'executing':  bg = const Color(0xFF17a2b8); icon = Icons.play_circle_outline; label = 'Executing'; break;
+      case 'running':    bg = const Color(0xFF17a2b8); icon = Icons.play_circle_outline; label = 'Running'; break;
       case 'verifying':  bg = AppTheme.accentYellow; icon = Icons.hourglass_top; label = 'Verifying'; break;
       case 'rolled_back': bg = const Color(0xFFfd7e14); icon = Icons.undo;     label = 'Rolled Back'; break;
       case 'verification_failed': bg = AppTheme.accentRed; icon = Icons.report_problem; label = 'Verify Failed'; break;

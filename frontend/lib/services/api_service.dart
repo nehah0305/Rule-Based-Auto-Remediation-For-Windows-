@@ -157,10 +157,14 @@ class ApiService {
     String? search,
     String sort = 'id',
     String dir = 'DESC',
+    String? dateFrom,   // naive-UTC ISO, inclusive — same basis as stored rows
+    String? dateTo,     // naive-UTC ISO, exclusive
   }) async {
     var path = '/api/history?limit=$limit&offset=$offset&sort=$sort&dir=$dir';
     if (status != null && status != 'all') path += '&status=$status';
     if (search != null && search.isNotEmpty) path += '&search=${Uri.encodeComponent(search)}';
+    if (dateFrom != null) path += '&date_from=${Uri.encodeComponent(dateFrom)}';
+    if (dateTo != null) path += '&date_to=${Uri.encodeComponent(dateTo)}';
     final data = await _get(path) as Map<String, dynamic>;
     return {
       'items': (data['items'] as List)
@@ -172,10 +176,12 @@ class ApiService {
   }
 
   /// Get raw CSV export URL (opened in browser or parsed)
-  String getHistoryExportUrl({String? status, String? search}) {
+  String getHistoryExportUrl({String? status, String? search, String? dateFrom, String? dateTo}) {
     var path = '/api/history/export?format=csv';
     if (status != null && status != 'all') path += '&status=$status';
     if (search != null && search.isNotEmpty) path += '&search=${Uri.encodeComponent(search)}';
+    if (dateFrom != null) path += '&date_from=${Uri.encodeComponent(dateFrom)}';
+    if (dateTo != null) path += '&date_to=${Uri.encodeComponent(dateTo)}';
     return ApiConfig.url(path);
   }
 

@@ -19,8 +19,19 @@ def init_db():
     _cleanup_oversized_csv_files()
     
     # PERFORMANCE FIX #4: Add database indexes for query optimization
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     c = conn.cursor()
+
+    # Concurrency hardening: WAL journal mode is persistent (stored in the DB
+    # file itself), so setting it once here guarantees every later connection
+    # — Flask request threads, the event-monitor thread, remediation workers —
+    # opens the database in WAL mode and readers never block on writers.
+    try:
+        c.execute('PRAGMA journal_mode=WAL')
+        c.execute('PRAGMA synchronous=NORMAL')
+        c.execute('PRAGMA busy_timeout=30000')
+    except sqlite3.Error as e:
+        print(f'[WARN] Could not enable WAL mode: {e}')
 
     # Create schema version table first (if not exists)
     c.execute('''
@@ -79,6 +90,16 @@ def init_db():
             (6, datetime.utcnow().isoformat(), 'Added app_context to approval tables for per-app-name gating')
         )
         print(f'Applied schema migration v6')
+
+    if current_version < 8:
+        _apply_schema_v8_migrations(c)
+        c.execute(
+            'INSERT INTO schema_version (version, applied_at, description) VALUES (?, ?, ?)',
+            (8, datetime.utcnow().isoformat(),
+             'Added events.raw_context_json (pristine OS context for Phase 2 SLM training) '
+             'and remediation_history.error_output (async execution stderr capture)')
+        )
+        print(f'Applied schema migration v8')
 
     conn.commit()
     _ensure_approval_tables(c)
@@ -417,6 +438,36 @@ def _apply_schema_v6_migrations(c):
                 print(f'  Added app_context column to {table}')
         except Exception as e:
             print(f'  [WARN] v6 migration for {table}: {e}')
+
+
+def _apply_schema_v8_migrations(c):
+    """
+    Phase 2 readiness (v7 is informally taken by the approved_event_types
+    rebuild that runs unconditionally below, so this is v8):
+      - events.raw_context_json stores the untouched, structured event context
+        (full Properties array + raw XML) exactly as Windows emitted it, so the
+        future SLM trains on pristine data instead of regex-flattened strings.
+      - remediation_history.error_output stores stderr separately from stdout
+        now that remediation runs asynchronously in a worker thread.
+    Both are graceful ALTER TABLEs: safe on existing databases.
+    """
+    c.execute("PRAGMA table_info(events)")
+    events_columns = {col[1] for col in c.fetchall()}
+    if 'raw_context_json' not in events_columns:
+        try:
+            c.execute('ALTER TABLE events ADD COLUMN raw_context_json TEXT')
+            print('  Added column raw_context_json to events table')
+        except sqlite3.OperationalError:
+            pass
+
+    c.execute("PRAGMA table_info(remediation_history)")
+    history_columns = {col[1] for col in c.fetchall()}
+    if 'error_output' not in history_columns:
+        try:
+            c.execute('ALTER TABLE remediation_history ADD COLUMN error_output TEXT')
+            print('  Added column error_output to remediation_history table')
+        except sqlite3.OperationalError:
+            pass
 
 
 def _ensure_approval_tables(c):

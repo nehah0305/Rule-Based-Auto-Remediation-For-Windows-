@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
 import '../models/approval_request.dart';
+import '../utils/time_fmt.dart';
 import '../widgets/badges.dart';
 
 class ApprovalsScreen extends StatefulWidget {
@@ -91,15 +92,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
     }
   }
 
-  String _fmtTs(String? ts) {
-    if (ts == null || ts.isEmpty) return '—';
-    try {
-      final dt = DateTime.parse(ts);
-      return '${dt.toLocal()}'.substring(0, 16);
-    } catch (_) {
-      return ts.length > 16 ? ts.substring(0, 16) : ts;
-    }
-  }
+  String _fmtTs(String? ts) => fmtServerTime(ts);
 
   @override
   Widget build(BuildContext context) {

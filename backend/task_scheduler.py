@@ -27,8 +27,10 @@ Path(TASKS_DIR).mkdir(parents=True, exist_ok=True)
 
 
 def _conn():
-    """Get database connection."""
-    return sqlite3.connect(DB_PATH)
+    """Get database connection via models' centralized WAL-enabled factory."""
+    # Imported lazily to avoid any import-order coupling at module load.
+    import models
+    return models.get_connection()
 
 
 def _run_powershell(script):
@@ -79,9 +81,11 @@ def create_task(task_name, display_name, description, task_type, script_path=Non
     """
     conn = _conn()
     c = conn.cursor()
-    
-    now = datetime.now().isoformat()
-    
+
+    # UTC like every other timestamp in the system — the frontend converts
+    # to local for display (utils/time_fmt.dart).
+    now = datetime.utcnow().isoformat()
+
     try:
         # Save script if provided
         if script_content:
@@ -289,7 +293,7 @@ def update_task(task_id, display_name=None, description=None, schedule_type=None
             return {'success': False, 'message': 'Task not found'}
         
         script_path = row[0]
-        now = datetime.now().isoformat()
+        now = datetime.utcnow().isoformat()
         
         # Update script if provided
         if script_content and script_path:
@@ -400,7 +404,7 @@ def _set_task_enabled(task_id, enabled):
     c = conn.cursor()
     
     try:
-        now = datetime.now().isoformat()
+        now = datetime.utcnow().isoformat()
         c.execute(
             'UPDATE scheduled_tasks SET enabled = ?, updated_at = ? WHERE id = ?',
             (1 if enabled else 0, now, task_id)
@@ -437,12 +441,12 @@ def run_task_now(task_id):
             return {'success': False, 'message': 'Script file not found'}
         
         # Execute the script
-        start_time = datetime.now()
+        start_time = datetime.utcnow()
         result = _run_powershell(f'& "{script_path}"')
-        end_time = datetime.now()
+        end_time = datetime.utcnow()
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
-        
-        now = datetime.now().isoformat()
+
+        now = datetime.utcnow().isoformat()
         status = 'success' if result['success'] else 'failed'
         
         # Log execution
