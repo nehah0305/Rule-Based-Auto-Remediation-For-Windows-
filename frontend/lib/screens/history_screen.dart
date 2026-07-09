@@ -8,6 +8,8 @@ import '../services/remediation_service.dart';
 import '../models/history_entry.dart';
 import '../utils/time_fmt.dart';
 import '../widgets/badges.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/scroll_hint.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -18,6 +20,7 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen> {
   final _api = ApiService();
   final _searchCtrl = TextEditingController();
+  final _filterBarCtrl = ScrollController();
   Timer? _debounce;
 
   bool _loading = true;
@@ -49,6 +52,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _filterBarCtrl.dispose();
     _debounce?.cancel();
     super.dispose();
   }
@@ -124,6 +128,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (range != null) {
       setState(() => _dateRange = range);
       _load();
+    } else if (mounted) {
+      // Barrier taps and near-miss clicks on the picker's Save button dismiss
+      // the overlay without applying anything. Say so explicitly — a silent
+      // no-op here reads as "the filter is broken".
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_dateRange == null
+            ? 'Date filter not applied — the picker was closed without pressing Save.'
+            : 'Date range unchanged — the picker was closed without pressing Save.'),
+        backgroundColor: AppTheme.bgCardAlt,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
+      ));
     }
   }
 
@@ -281,103 +298,121 @@ class _HistoryScreenState extends State<HistoryScreen> {
               color: Colors.white.withValues(alpha: 0.015),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(children: [
-                // Search
-                Expanded(
-                  child: SizedBox(
-                    height: 34,
-                    child: TextField(
-                      controller: _searchCtrl,
-                      onChanged: _onSearchChanged,
-                      style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary),
-                      decoration: InputDecoration(
-                        hintText: 'Search rule, event ID, source…',
-                        hintStyle: const TextStyle(fontSize: 11, color: AppTheme.textDimmed),
-                        prefixIcon: const Icon(Icons.search, size: 16, color: AppTheme.textDimmed),
-                        contentPadding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppTheme.border)),
-                        suffixIcon: _search.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear, size: 14),
-                                onPressed: () { _searchCtrl.clear(); _search = ''; _load(); },
-                              )
-                            : null,
-                      ),
+                // Search — fixed sensible width; the filter cluster gets the
+                // remaining space and scrolls when the window is too narrow,
+                // so no control can ever be clipped off-screen.
+                SizedBox(
+                  width: 240,
+                  height: 34,
+                  child: TextField(
+                    controller: _searchCtrl,
+                    onChanged: _onSearchChanged,
+                    style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary),
+                    decoration: InputDecoration(
+                      hintText: 'Search rule, event ID, source…',
+                      hintStyle: const TextStyle(fontSize: 11, color: AppTheme.textDimmed),
+                      prefixIcon: const Icon(Icons.search, size: 16, color: AppTheme.textDimmed),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppTheme.border)),
+                      suffixIcon: _search.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 14),
+                              onPressed: () { _searchCtrl.clear(); _search = ''; _load(); },
+                            )
+                          : null,
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
-                // Status chips
-                for (final s in ['all', 'success', 'failed', 'suppressed'])
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: _FilterChip(
-                      label: s, selected: _filterStatus == s,
-                      onTap: () { setState(() => _filterStatus = s); _load(); },
-                    ),
-                  ),
-                // Date range
-                const SizedBox(width: 6),
-                GestureDetector(
-                  onTap: _pickDateRange,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: _dateRange != null ? AppTheme.accent.withValues(alpha: 0.2) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: _dateRange != null ? AppTheme.accent : AppTheme.border),
-                    ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.date_range, size: 13,
-                          color: _dateRange != null ? AppTheme.accent : AppTheme.textMuted),
-                      const SizedBox(width: 4),
-                      Text(
-                        _dateRange != null
-                            ? '${_fmtDate(_dateRange!.start)} – ${_fmtDate(_dateRange!.end)}'
-                            : 'Date',
-                        style: TextStyle(fontSize: 11,
-                            color: _dateRange != null ? AppTheme.accent : AppTheme.textMuted),
+                Expanded(
+                  child: Stack(children: [
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: SingleChildScrollView(
+                        controller: _filterBarCtrl,
+                        scrollDirection: Axis.horizontal,
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          // Status chips
+                          for (final s in ['all', 'success', 'failed', 'suppressed'])
+                            Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: _FilterChip(
+                                label: s, selected: _filterStatus == s,
+                                onTap: () { setState(() => _filterStatus = s); _load(); },
+                              ),
+                            ),
+                          // Date range
+                          const SizedBox(width: 6),
+                          GestureDetector(
+                            onTap: _pickDateRange,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: _dateRange != null ? AppTheme.accent.withValues(alpha: 0.2) : Colors.transparent,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: _dateRange != null ? AppTheme.accent : AppTheme.border),
+                              ),
+                              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                Icon(Icons.date_range, size: 13,
+                                    color: _dateRange != null ? AppTheme.accent : AppTheme.textMuted),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _dateRange != null
+                                      ? '${_fmtDate(_dateRange!.start)} – ${_fmtDate(_dateRange!.end)}'
+                                      : 'Date',
+                                  style: TextStyle(fontSize: 11,
+                                      color: _dateRange != null ? AppTheme.accent : AppTheme.textMuted),
+                                ),
+                                if (_dateRange != null) ...[
+                                  const SizedBox(width: 4),
+                                  GestureDetector(onTap: _clearDateRange,
+                                      child: const Icon(Icons.close, size: 11, color: AppTheme.accent)),
+                                ],
+                              ]),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // Sort Dropdown
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: '$_sortCol:$_sortDir',
+                                dropdownColor: const Color(0xFF1A1A2E),
+                                icon: const Icon(Icons.sort_rounded, color: Colors.white, size: 15),
+                                style: const TextStyle(color: Colors.white, fontSize: 12),
+                                onChanged: (v) {
+                                  if (v == null) return;
+                                  final parts = v.split(':');
+                                  setState(() { _sortCol = parts[0]; _sortDir = parts[1]; });
+                                  _load();
+                                },
+                                items: const [
+                                  DropdownMenuItem(value: 'id:DESC', child: Text('Newest First')),
+                                  DropdownMenuItem(value: 'id:ASC', child: Text('Oldest First')),
+                                  DropdownMenuItem(value: 'status:DESC', child: Text('Status (Z→A)')),
+                                  DropdownMenuItem(value: 'status:ASC', child: Text('Status (A→Z)')),
+                                  DropdownMenuItem(value: 'event_id:DESC', child: Text('Event ID (Z→A)')),
+                                  DropdownMenuItem(value: 'event_id:ASC', child: Text('Event ID (A→Z)')),
+                                  DropdownMenuItem(value: 'timestamp:DESC', child: Text('Time (Newest)')),
+                                  DropdownMenuItem(value: 'timestamp:ASC', child: Text('Time (Oldest)')),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ]),
                       ),
-                      if (_dateRange != null) ...[ 
-                        const SizedBox(width: 4),
-                        GestureDetector(onTap: _clearDateRange,
-                            child: const Icon(Icons.close, size: 11, color: AppTheme.accent)),
-                      ],
-                    ]),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Sort Dropdown
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: '$_sortCol:$_sortDir',
-                      dropdownColor: const Color(0xFF1A1A2E),
-                      icon: const Icon(Icons.sort_rounded, color: Colors.white, size: 15),
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
-                      onChanged: (v) {
-                        if (v == null) return;
-                        final parts = v.split(':');
-                        setState(() { _sortCol = parts[0]; _sortDir = parts[1]; });
-                        _load();
-                      },
-                      items: const [
-                        DropdownMenuItem(value: 'id:DESC', child: Text('Newest First')),
-                        DropdownMenuItem(value: 'id:ASC', child: Text('Oldest First')),
-                        DropdownMenuItem(value: 'status:DESC', child: Text('Status (Z→A)')),
-                        DropdownMenuItem(value: 'status:ASC', child: Text('Status (A→Z)')),
-                        DropdownMenuItem(value: 'event_id:DESC', child: Text('Event ID (Z→A)')),
-                        DropdownMenuItem(value: 'event_id:ASC', child: Text('Event ID (A→Z)')),
-                        DropdownMenuItem(value: 'timestamp:DESC', child: Text('Time (Newest)')),
-                        DropdownMenuItem(value: 'timestamp:ASC', child: Text('Time (Oldest)')),
-                      ],
                     ),
-                  ),
+                    Positioned(
+                      right: 0, top: 0, bottom: 0,
+                      child: HorizontalScrollHint(controller: _filterBarCtrl),
+                    ),
+                  ]),
                 ),
               ]),
             ),
@@ -390,25 +425,49 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)),
                     border: Border.all(color: AppTheme.border),
                     boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.24), blurRadius: 24, offset: const Offset(0, 10))]),
-                child: _loading
-                    ? const Center(child: CircularProgressIndicator(color: AppTheme.accent))
-                    : _history.isEmpty
-                        ? const Center(child: Text('No history found', style: TextStyle(color: AppTheme.textMuted)))
-                        : Column(children: [
-                            Expanded(child: _HistoryTable(
-                              history: _history,
-                              sortCol: _sortCol,
-                              sortDir: _sortDir,
-                              onSort: _onSort,
-                              onRowTap: _showOutput,
-                            )),
-                            // Pagination footer
-                            _PaginationBar(
-                              page: _page, pageSize: _pageSize, total: _total, hasMore: _hasMore,
-                              onPrev: _page > 0 ? () { _page--; _load(resetPage: false); } : null,
-                              onNext: _hasMore ? () { _page++; _load(resetPage: false); } : null,
-                            ),
-                          ]),
+                // The current rows stay visible during refreshes, with a
+                // translucent progress overlay on top — so applying a filter
+                // gives immediate, unmistakable "request registered" feedback
+                // instead of the content silently swapping (or, when a picker
+                // was dismissed, nothing happening at all).
+                child: Stack(children: [
+                  if (_history.isEmpty)
+                    (_loading
+                        ? const SizedBox.expand()
+                        : EmptyState(
+                            icon: Icons.inbox_rounded,
+                            message: 'No history found',
+                            hint: (_filterStatus != 'all' || _search.isNotEmpty || _dateRange != null)
+                                ? 'No remediation runs match the current filters.'
+                                : 'Remediation runs will appear here as events are processed.',
+                          ))
+                  else
+                    Column(children: [
+                      Expanded(child: _HistoryTable(
+                        history: _history,
+                        sortCol: _sortCol,
+                        sortDir: _sortDir,
+                        onSort: _onSort,
+                        onRowTap: _showOutput,
+                      )),
+                      // Pagination footer
+                      _PaginationBar(
+                        page: _page, pageSize: _pageSize, total: _total, hasMore: _hasMore,
+                        onPrev: _page > 0 ? () { _page--; _load(resetPage: false); } : null,
+                        onNext: _hasMore ? () { _page++; _load(resetPage: false); } : null,
+                      ),
+                    ]),
+                  if (_loading)
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.45),
+                          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)),
+                        ),
+                        child: const Center(child: CircularProgressIndicator(color: AppTheme.accent)),
+                      ),
+                    ),
+                ]),
               ),
             ),
           ]),
@@ -489,7 +548,8 @@ class _HistoryTableState extends State<_HistoryTable> {
   // narrower than the panel.
   @override
   Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) => Scrollbar(
+    builder: (context, constraints) => Stack(children: [
+      Scrollbar(
       controller: _verticalController,
       thumbVisibility: true,
       trackVisibility: true,
@@ -541,9 +601,13 @@ class _HistoryTableState extends State<_HistoryTable> {
                               color: AppTheme.accentYellow, fontWeight: FontWeight.w600, fontSize: 11.5)),
                     )
                   : const Text('—', style: TextStyle(color: AppTheme.textDimmed, fontSize: 12))),
-              DataCell(SizedBox(width: 180, child: Text(h.ruleName ?? 'Rule #${h.ruleId}',
-                  style: const TextStyle(color: AppTheme.textPrimary, fontSize: 11),
-                  maxLines: 2, overflow: TextOverflow.ellipsis))),
+              DataCell(SizedBox(width: 180, child: Tooltip(
+                message: h.ruleName ?? 'Rule #${h.ruleId}',
+                waitDuration: const Duration(milliseconds: 400),
+                child: Text(h.ruleName ?? 'Rule #${h.ruleId}',
+                    style: const TextStyle(color: AppTheme.textPrimary, fontSize: 11),
+                    maxLines: 2, overflow: TextOverflow.ellipsis),
+              ))),
               DataCell(StatusBadge(h.status)),
               DataCell(SizedBox(width: 200, child: Tooltip(
                 message: h.output ?? '',
@@ -560,7 +624,15 @@ class _HistoryTableState extends State<_HistoryTable> {
           ),
         ),
       ),
-    ),
+      ),
+      // Fades in while more columns exist off-screen to the right — pairs
+      // with the persistent scrollbar so a cropped column can't be mistaken
+      // for the end of the table.
+      Positioned(
+        right: 0, top: 0, bottom: 0,
+        child: HorizontalScrollHint(controller: _horizontalController),
+      ),
+    ]),
   );
 
   DataColumn _sortCol(String col, String label) => DataColumn(

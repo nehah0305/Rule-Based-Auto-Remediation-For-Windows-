@@ -3,6 +3,15 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+# Warn if not running as Administrator
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    Write-Host "[WARNING] Backend is not running as Administrator!" -ForegroundColor Yellow
+    Write-Host "          Event monitoring (Security log) and process remediations may fail." -ForegroundColor Yellow
+    Write-Host "          Press Ctrl+C to cancel and run as Admin, or wait 3s to continue blindly..." -ForegroundColor Yellow
+    Start-Sleep -Seconds 3
+}
+
 # Resolve the port (FLASK_PORT in .env, default 5000)
 $port = 5000
 $envFile = Join-Path $root '.env'

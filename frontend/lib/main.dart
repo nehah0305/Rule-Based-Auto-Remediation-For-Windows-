@@ -73,17 +73,19 @@ class RemediationApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final api        = ApiService();
-    final alertSvc   = AlertPollingService(api);
-    final monitorSvc = MonitorService(api);
-    final remediationSvc = RemediationService();
-
+    // create: (not .value) so the providers OWN these services — they are
+    // built once, survive rebuilds of this widget, and get dispose() called
+    // when the tree unmounts, which cancels the polling timers. The previous
+    // .value wiring constructed new services on every build and never
+    // disposed the old ones, leaking their periodic timers.
     return MultiProvider(
       providers: [
-        Provider<ApiService>.value(value: api),
-        ChangeNotifierProvider<AlertPollingService>.value(value: alertSvc),
-        ChangeNotifierProvider<MonitorService>.value(value: monitorSvc),
-        ChangeNotifierProvider<RemediationService>.value(value: remediationSvc),
+        Provider<ApiService>(create: (_) => ApiService()),
+        ChangeNotifierProvider<AlertPollingService>(
+            create: (ctx) => AlertPollingService(ctx.read<ApiService>())),
+        ChangeNotifierProvider<MonitorService>(
+            create: (ctx) => MonitorService(ctx.read<ApiService>())),
+        ChangeNotifierProvider<RemediationService>(create: (_) => RemediationService()),
       ],
       child: MaterialApp(
         title: 'Auto-Remediation Control Center',

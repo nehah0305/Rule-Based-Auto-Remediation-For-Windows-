@@ -24,7 +24,7 @@ A Flutter desktop app gives you a live dashboard: system health, pending operato
 | **Python 3.10+** | On PATH. Check with `python --version` |
 | **PowerShell** | Built into Windows (5.1 is fine) |
 | **Flutter SDK** | For the desktop UI. Needs Windows desktop support: Visual Studio with the **"Desktop development with C++"** workload |
-| **Administrator PowerShell** | Only for the crash/service **simulation scripts** (they write real Windows Event Log entries) |
+| **Administrator PowerShell** | Required to run the **backend** (to read the Security log and apply fixes) and for **simulation scripts**. |
 
 ---
 
@@ -36,7 +36,7 @@ From the project root, in PowerShell:
 # 1. One-time setup: checks your environment, creates .venv, installs deps, creates .env
 powershell -ExecutionPolicy Bypass -File setup.ps1
 
-# 2. Start the backend (terminal 1) — keep it running
+# 2. Start the backend in an Administrator PowerShell (Terminal 1) — keep it running
 powershell -ExecutionPolicy Bypass -File run_backend.ps1
 
 # 3. Start the desktop app (terminal 2)
@@ -141,6 +141,7 @@ flutter build web --release
 
 | Problem | Fix |
 |---|---|
+| Backend misses expected events | Ensure `run_backend.ps1` is running in an **Administrator** PowerShell |
 | `run_backend.ps1` says port in use | Set `FLASK_PORT` in `.env`; start UI with `-ApiUrl http://localhost:<port>` |
 | Python errors on startup | Confirm Python 3.10+ on PATH, re-run `setup.ps1` |
 | PowerShell scripts blocked | Use `powershell -ExecutionPolicy Bypass -File <script>` as shown above |

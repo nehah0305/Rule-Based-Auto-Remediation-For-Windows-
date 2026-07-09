@@ -396,8 +396,12 @@ class _IntelligenceCard extends StatelessWidget {
         child: const Row(children: [
           Icon(Icons.psychology_rounded, color: Color(0xFFc77dff), size: 18),
           SizedBox(width: 8),
-          Text('Alert Intelligence Summary', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-          Spacer(),
+          // Expanded + ellipsis so a narrow card truncates the title instead
+          // of overflowing the row.
+          Expanded(child: Text('Alert Intelligence Summary',
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14))),
+          SizedBox(width: 8),
           Text('Refreshes every 30s', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
         ]),
       ),

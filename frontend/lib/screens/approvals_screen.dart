@@ -4,6 +4,8 @@ import '../services/api_service.dart';
 import '../models/approval_request.dart';
 import '../utils/time_fmt.dart';
 import '../widgets/badges.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/scroll_hint.dart';
 
 class ApprovalsScreen extends StatefulWidget {
   const ApprovalsScreen({super.key});
@@ -143,100 +145,162 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator(color: AppTheme.accent))
                 : rows.isEmpty
-                    ? const Center(
-                        child: Text('No approval requests in this view.', style: TextStyle(color: AppTheme.textMuted)))
-                    : Scrollbar(
-                        controller: _verticalScrollController,
-                        thumbVisibility: true,
-                        trackVisibility: true,
-                        child: SingleChildScrollView(
-                          controller: _verticalScrollController,
-                          scrollDirection: Axis.vertical,
-                          child: Scrollbar(
-                        controller: _scrollController,
-                        thumbVisibility: true,
-                        trackVisibility: true,
-                        child: SingleChildScrollView(
-                          controller: _scrollController,
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.only(bottom: 12), // space for scrollbar
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(minWidth: MediaQuery.of(context).size.width - 88),
-                          child: DataTable(
-                            columnSpacing: 20,
-                            headingTextStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
-                            headingRowHeight: 48,
-                            dataRowMinHeight: 52,
-                            dataRowMaxHeight: 64,
-                            horizontalMargin: 18,
-                            columns: const [
-                              DataColumn(label: Text('Event ID')),
-                              DataColumn(label: Text('Name')),
-                              DataColumn(label: Text('Source')),
-                              DataColumn(label: Text('Rule')),
-                              DataColumn(label: Text('Severity')),
-                              DataColumn(label: Text('Status')),
-                              DataColumn(label: Text('Received')),
-                              DataColumn(label: Text('Action')),
-                            ],
-                            rows: rows.map((r) => DataRow(cells: [
-                              DataCell(Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.accent.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(r.eventId,
-                                    style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.w700, fontSize: 12)),
-                              )),
-                              // Application column — the key new addition
-                              DataCell(r.appContext.isNotEmpty
-                                  ? Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.accentYellow.withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Text(r.appContext,
-                                          style: const TextStyle(
-                                              color: AppTheme.accentYellow, fontWeight: FontWeight.w600, fontSize: 11.5)),
-                                    )
-                                  : const Text('—', style: TextStyle(color: AppTheme.textDimmed, fontSize: 12))),
-                              DataCell(Text(r.source, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12))),
-                              DataCell(SizedBox(width: 150, child: Text(r.ruleName,
-                                  style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12),
-                                  overflow: TextOverflow.ellipsis))),
-                              DataCell(SeverityBadge(r.severity)),
-                              DataCell(StatusBadge(r.status)),
-                              DataCell(Text(_fmtTs(r.createdAt), style: const TextStyle(color: AppTheme.textMuted, fontSize: 11.5))),
-                              DataCell(r.status == 'pending'
-                                  ? Row(mainAxisSize: MainAxisSize.min, children: [
-                                      _ActionBtn(
-                                        label: 'Approve', color: AppTheme.accentGreen,
-                                        loading: _acting.contains(r.id),
-                                        onTap: () => _approve(r),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      _ActionBtn(
-                                        label: 'Reject', color: AppTheme.accentRed,
-                                        loading: _acting.contains(r.id),
-                                        onTap: () => _reject(r),
-                                      ),
-                                    ])
-                                  : Text(
-                                      'Resolved ${_fmtTs(r.resolvedAt)}',
-                                      style: const TextStyle(color: AppTheme.textDimmed, fontSize: 11.5),
-                                    )),
-                            ])).toList(),
-                          ),
-                        ),
-                      ),
-                    ), // Close horizontal Scrollbar
-                        ),
-                      ), // Close vertical Scrollbar
+                    ? EmptyState(
+                        icon: _filter == 'pending' || _filter == 'all'
+                            ? Icons.task_alt_rounded
+                            : Icons.inbox_rounded,
+                        message: 'No approval requests in this view.',
+                        hint: _filter == 'all'
+                            ? 'New event types will appear here for sign-off before auto-remediation activates.'
+                            : 'Try the "All" filter to see every request.',
+                      )
+                    : _buildTable(rows),
           ),
         ),
       ]),
+    );
+  }
+
+  // The Action column is pinned OUTSIDE the horizontal scroll region so
+  // Approve/Reject can never be pushed off-screen, no matter how narrow the
+  // window gets. Both DataTables share the one vertical scroll view and use
+  // identical fixed row heights, so their rows always stay aligned.
+  static const double _kActionPaneWidth = 196;
+  static const double _kHeadingHeight = 48;
+  static const double _kRowHeight = 56;
+
+  Widget _buildTable(List<ApprovalGateRequest> rows) {
+    return LayoutBuilder(
+      builder: (context, constraints) => Scrollbar(
+        controller: _verticalScrollController,
+        thumbVisibility: true,
+        trackVisibility: true,
+        child: Scrollbar(
+          controller: _scrollController,
+          thumbVisibility: true,
+          trackVisibility: true,
+          notificationPredicate: (n) => n.depth == 1,
+          child: SingleChildScrollView(
+            controller: _verticalScrollController,
+            scrollDirection: Axis.vertical,
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // ── Scrollable data pane ─────────────────────────────────────
+              Expanded(
+                child: Stack(children: [
+                  SingleChildScrollView(
+                    controller: _scrollController,
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.only(bottom: 12), // space for scrollbar
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                          minWidth: (constraints.maxWidth - _kActionPaneWidth)
+                              .clamp(320.0, double.infinity)),
+                      child: DataTable(
+                        columnSpacing: 20,
+                        headingTextStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
+                        headingRowHeight: _kHeadingHeight,
+                        dataRowMinHeight: _kRowHeight,
+                        dataRowMaxHeight: _kRowHeight,
+                        horizontalMargin: 18,
+                        columns: const [
+                          DataColumn(label: Text('Event ID')),
+                          DataColumn(label: Text('Name')),
+                          DataColumn(label: Text('Source')),
+                          DataColumn(label: Text('Rule')),
+                          DataColumn(label: Text('Severity')),
+                          DataColumn(label: Text('Status')),
+                          DataColumn(label: Text('Received')),
+                        ],
+                        rows: rows.map((r) => DataRow(cells: [
+                          DataCell(Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accent.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(r.eventId,
+                                style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.w700, fontSize: 12)),
+                          )),
+                          // Application column — the key new addition
+                          DataCell(r.appContext.isNotEmpty
+                              ? Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.accentYellow.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(r.appContext,
+                                      style: const TextStyle(
+                                          color: AppTheme.accentYellow, fontWeight: FontWeight.w600, fontSize: 11.5)),
+                                )
+                              : const Text('—', style: TextStyle(color: AppTheme.textDimmed, fontSize: 12))),
+                          DataCell(Text(r.source, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12))),
+                          DataCell(SizedBox(width: 150, child: Tooltip(
+                            message: r.ruleName,
+                            waitDuration: const Duration(milliseconds: 400),
+                            child: Text(r.ruleName,
+                                style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12),
+                                overflow: TextOverflow.ellipsis),
+                          ))),
+                          DataCell(SeverityBadge(r.severity)),
+                          DataCell(StatusBadge(r.status)),
+                          DataCell(Text(_fmtTs(r.createdAt), style: const TextStyle(color: AppTheme.textMuted, fontSize: 11.5))),
+                        ])).toList(),
+                      ),
+                    ),
+                  ),
+                  // Fades in while more columns exist off-screen to the right.
+                  Positioned(
+                    right: 0, top: 0, bottom: 12,
+                    child: HorizontalScrollHint(controller: _scrollController),
+                  ),
+                ]),
+              ),
+              // ── Pinned Action pane (always visible) ──────────────────────
+              Container(
+                width: _kActionPaneWidth,
+                decoration: BoxDecoration(
+                  border: const Border(left: BorderSide(color: AppTheme.border)),
+                  color: Colors.white.withValues(alpha: 0.02),
+                ),
+                child: DataTable(
+                  columnSpacing: 0,
+                  headingTextStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
+                  headingRowHeight: _kHeadingHeight,
+                  dataRowMinHeight: _kRowHeight,
+                  dataRowMaxHeight: _kRowHeight,
+                  horizontalMargin: 14,
+                  columns: const [DataColumn(label: Text('Action'))],
+                  rows: rows.map((r) => DataRow(cells: [
+                    DataCell(r.status == 'pending'
+                        ? Row(mainAxisSize: MainAxisSize.min, children: [
+                            _ActionBtn(
+                              label: 'Approve', color: AppTheme.accentGreen,
+                              loading: _acting.contains(r.id),
+                              onTap: () => _approve(r),
+                            ),
+                            const SizedBox(width: 8),
+                            _ActionBtn(
+                              label: 'Reject', color: AppTheme.accentRed,
+                              loading: _acting.contains(r.id),
+                              onTap: () => _reject(r),
+                            ),
+                          ])
+                        : SizedBox(
+                            width: _kActionPaneWidth - 28,
+                            child: Text(
+                              'Resolved ${_fmtTs(r.resolvedAt)}',
+                              style: const TextStyle(color: AppTheme.textDimmed, fontSize: 11.5),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          )),
+                  ])).toList(),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
     );
   }
 }

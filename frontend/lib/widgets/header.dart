@@ -29,30 +29,46 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Row(children: [
-        // Title
+        // Title — ellipsizes instead of pushing the action cluster off-screen
         Expanded(
           child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
+            Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
             const SizedBox(height: 2),
             const Text('Automated system remediation and management',
+                maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: AppTheme.textMuted, fontSize: 11.5, height: 1.2)),
           ]),
         ),
-        // Monitor status pill
-        Consumer<MonitorService>(
-          builder: (_, monitor, __) => _MonitorPill(monitor: monitor),
-        ),
         const SizedBox(width: 12),
-        // Refresh button
-        _HeaderBtn(
-          icon: Icons.refresh_rounded, label: 'Refresh All',
-          color: AppTheme.textPrimary,
-          onTap: onRefreshAll,
-        ),
-        const SizedBox(width: 8),
-        // Inject Error button
-        Consumer<AlertPollingService>(
-          builder: (_, alertSvc, __) => _InjectBtn(alertSvc: alertSvc),
+        // Action cluster — scales down as a unit on narrow windows instead of
+        // overflowing (the buttons stay fully visible and clickable).
+        Expanded(
+          flex: 2,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                // Monitor status pill
+                Consumer<MonitorService>(
+                  builder: (_, monitor, __) => _MonitorPill(monitor: monitor),
+                ),
+                const SizedBox(width: 12),
+                // Refresh button
+                _HeaderBtn(
+                  icon: Icons.refresh_rounded, label: 'Refresh All',
+                  color: AppTheme.textPrimary,
+                  onTap: onRefreshAll,
+                ),
+                const SizedBox(width: 8),
+                // Inject Error button
+                Consumer<AlertPollingService>(
+                  builder: (_, alertSvc, __) => _InjectBtn(alertSvc: alertSvc),
+                ),
+              ]),
+            ),
+          ),
         ),
       ]),
         ),
