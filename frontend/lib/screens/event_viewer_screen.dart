@@ -25,6 +25,8 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
   String _searchQuery = '';
   int _currentPage = 0;
   static const int _pageSize = 50;
+  _EventViewerSortField _sortField = _EventViewerSortField.timestamp;
+  bool _sortAscending = false;
   String? _selectedSeverity;
   String? _selectedSource;
   String? _selectedLogName;
@@ -121,6 +123,16 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
         return ts.isAfter(start) && ts.isBefore(end);
       }).toList();
     }
+
+    filtered.sort((a, b) {
+      final cmp = switch (_sortField) {
+        _EventViewerSortField.eventId => (a.eventId ?? -1).compareTo(b.eventId ?? -1),
+        _EventViewerSortField.timestamp => _compareTimestamp(a, b),
+        _EventViewerSortField.eventType => (a.category ?? '').compareTo(b.category ?? ''),
+        _EventViewerSortField.errorType => (a.severity ?? '').compareTo(b.severity ?? ''),
+      };
+      return _sortAscending ? cmp : -cmp;
+    });
 
     setState(() {
       _filteredEvents = filtered;
@@ -385,6 +397,47 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
                                   _applyFilters();
                                 },
                               ),
+                              const SizedBox(width: 10),
+                              DropdownButton<_EventViewerSortField>(
+                                value: _sortField,
+                                borderRadius: BorderRadius.circular(16),
+                                underline: const SizedBox.shrink(),
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: _EventViewerSortField.timestamp,
+                                    child: Text('Sort: Timestamp'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: _EventViewerSortField.eventId,
+                                    child: Text('Sort: Event ID'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: _EventViewerSortField.eventType,
+                                    child: Text('Sort: Event Type'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: _EventViewerSortField.errorType,
+                                    child: Text('Sort: Error Type'),
+                                  ),
+                                ],
+                                onChanged: (value) {
+                                  if (value == null) return;
+                                  setState(() => _sortField = value);
+                                  _applyFilters();
+                                },
+                              ),
+                              const SizedBox(width: 6),
+                              IconButton(
+                                tooltip: _sortAscending ? 'Ascending' : 'Descending',
+                                onPressed: () {
+                                  setState(() => _sortAscending = !_sortAscending);
+                                  _applyFilters();
+                                },
+                                icon: Icon(
+                                  _sortAscending ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+                                  size: 18,
+                                ),
+                              ),
                               if (hasActiveFilters) ...[
                                 const SizedBox(width: 10),
                                 OutlinedButton.icon(
@@ -507,7 +560,18 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
       ],
     );
   }
+
+  int _compareTimestamp(AppEvent a, AppEvent b) {
+    final left = parseServerTime(a.lastSeen ?? a.timestamp);
+    final right = parseServerTime(b.lastSeen ?? b.timestamp);
+    if (left == null && right == null) return 0;
+    if (left == null) return -1;
+    if (right == null) return 1;
+    return left.compareTo(right);
+  }
 }
+
+enum _EventViewerSortField { eventId, timestamp, eventType, errorType }
 
 class _FilterDropdown extends StatelessWidget {
   final String label;

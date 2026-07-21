@@ -17,6 +17,8 @@ class _EventsScreenState extends State<EventsScreen> {
   List<AppEvent> _events = [];
   String _lastUpdated = '';
   String _searchQuery = '';
+  _EventsSortField _sortField = _EventsSortField.timestamp;
+  bool _sortAscending = false;
   int _currentPage = 0;
   static const int _pageSize = 20;
 
@@ -37,14 +39,25 @@ class _EventsScreenState extends State<EventsScreen> {
 
   List<AppEvent> get _filtered {
     final q = _searchQuery.toLowerCase();
-    if (q.isEmpty) return _events;
-    return _events.where((e) =>
+    final filtered = q.isEmpty
+        ? List<AppEvent>.from(_events)
+        : _events.where((e) =>
       (e.source ?? '').toLowerCase().contains(q) ||
       (e.message ?? '').toLowerCase().contains(q) ||
       (e.severity ?? '').toLowerCase().contains(q) ||
       (e.category ?? '').toLowerCase().contains(q) ||
       '${e.eventId}'.contains(q)
     ).toList();
+    filtered.sort((a, b) {
+      final cmp = switch (_sortField) {
+        _EventsSortField.eventId => (a.eventId ?? -1).compareTo(b.eventId ?? -1),
+        _EventsSortField.timestamp => _compareTimestamp(a, b),
+        _EventsSortField.eventType => (a.category ?? '').compareTo(b.category ?? ''),
+        _EventsSortField.errorType => (a.severity ?? '').compareTo(b.severity ?? ''),
+      };
+      return _sortAscending ? cmp : -cmp;
+    });
+    return filtered;
   }
 
   List<AppEvent> get _paginatedFiltered {
@@ -111,16 +124,65 @@ class _EventsScreenState extends State<EventsScreen> {
             child: Column(children: [
               Padding(
                 padding: const EdgeInsets.all(12),
-                child: TextField(
-                  onChanged: (v) => setState(() {
-                    _searchQuery = v;
-                    _currentPage = 0;
-                  }),
-                  decoration: const InputDecoration(
-                    hintText: 'Search events…',
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        onChanged: (v) => setState(() {
+                          _searchQuery = v;
+                          _currentPage = 0;
+                        }),
+                        decoration: const InputDecoration(
+                          hintText: 'Search events…',
+                          prefixIcon: Icon(Icons.search, size: 18),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    DropdownButton<_EventsSortField>(
+                      value: _sortField,
+                      borderRadius: BorderRadius.circular(12),
+                      underline: const SizedBox.shrink(),
+                      items: const [
+                        DropdownMenuItem(
+                          value: _EventsSortField.timestamp,
+                          child: Text('Timestamp'),
+                        ),
+                        DropdownMenuItem(
+                          value: _EventsSortField.eventId,
+                          child: Text('Event ID'),
+                        ),
+                        DropdownMenuItem(
+                          value: _EventsSortField.eventType,
+                          child: Text('Event Type'),
+                        ),
+                        DropdownMenuItem(
+                          value: _EventsSortField.errorType,
+                          child: Text('Error Type'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() {
+                          _sortField = value;
+                          _currentPage = 0;
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 6),
+                    IconButton(
+                      tooltip: _sortAscending ? 'Ascending' : 'Descending',
+                      onPressed: () => setState(() {
+                        _sortAscending = !_sortAscending;
+                        _currentPage = 0;
+                      }),
+                      icon: Icon(
+                        _sortAscending ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+                        size: 18,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Expanded(
@@ -155,7 +217,18 @@ class _EventsScreenState extends State<EventsScreen> {
       ]),
     );
   }
+
+  int _compareTimestamp(AppEvent a, AppEvent b) {
+    final left = parseServerTime(a.lastSeen ?? a.timestamp);
+    final right = parseServerTime(b.lastSeen ?? b.timestamp);
+    if (left == null && right == null) return 0;
+    if (left == null) return -1;
+    if (right == null) return 1;
+    return left.compareTo(right);
+  }
 }
+
+enum _EventsSortField { eventId, timestamp, eventType, errorType }
 
 class _EventsTable extends StatelessWidget {
   final List<AppEvent> events;
