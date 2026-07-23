@@ -19,8 +19,8 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final _api = ApiService();
   bool _loading = true;
+  bool _isFetching = false;
   int _lastRemediationCount = 0;
   Timer? _refreshTimer;
 
@@ -37,8 +37,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
-    // Real 30-second independent auto-refresh
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    // Real 30-second independent auto-refresh (silent)
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) _load();
     });
@@ -50,19 +50,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    if (!mounted) return;
-    setState(() => _loading = true);
+  Future<void> _load({bool showSpinner = false}) async {
+    if (!mounted || _isFetching) return;
+    _isFetching = true;
+
+    final isInitial = _events.isEmpty && _history.isEmpty && _dashboardStats.isEmpty;
+    if (isInitial || showSpinner) {
+      setState(() => _loading = true);
+    }
+
     try {
+      final api = context.read<ApiService>();
       final results = await Future.wait([
-        _api.getFilteredEvents(),
-        _api.getHistory(limit: 8),
-        _api.getRules(),
-        _api.getRequests(status: 'pending'),
-        _api.getIntelligenceSummary(),
-        _api.getManualReviewEvents(),
-        _api.getDashboardStats(),
-        _api.getMetrics(),
+        api.getFilteredEvents(),
+        api.getHistory(limit: 8),
+        api.getRules(),
+        api.getRequests(status: 'pending'),
+        api.getIntelligenceSummary(),
+        api.getManualReviewEvents(),
+        api.getDashboardStats(),
+        api.getMetrics(),
       ]);
       if (!mounted) return;
       final histData = results[1] as Map<String, dynamic>;
@@ -76,10 +83,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _manualReview     = (results[5] as List).length;
         _dashboardStats   = results[6] as Map<String, dynamic>;
         _metrics          = results[7] as MetricsSummary;
-        _loading = false;
+        _loading          = false;
       });
     } catch (e) {
       if (mounted) setState(() => _loading = false);
+    } finally {
+      _isFetching = false;
     }
   }
 
@@ -101,14 +110,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         // Trigger reload ONLY when remediation count increases (new remediation)
         if (remediationSvc.remediationCount > _lastRemediationCount) {
           _lastRemediationCount = remediationSvc.remediationCount;
-          Future.microtask(_load);
+          Future.microtask(() => _load());
         }
         
-        if (_loading) {
+        if (_loading && _events.isEmpty && _history.isEmpty && _dashboardStats.isEmpty) {
           return const Center(child: CircularProgressIndicator(color: AppTheme.accent));
         }
         return RefreshIndicator(
-          onRefresh: _load,
+          onRefresh: () => _load(showSpinner: true),
           color: AppTheme.accent,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),

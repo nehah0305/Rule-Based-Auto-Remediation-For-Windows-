@@ -188,17 +188,6 @@ class _AppShellState extends State<AppShell> {
     AppTab.taskScheduler: 'Task Scheduler',
   };
 
-  Widget _screen(AppTab tab) => switch (tab) {
-    AppTab.dashboard   => const DashboardScreen(),
-    AppTab.events      => const EventsScreen(),
-    AppTab.rules       => const RulesScreen(),
-    AppTab.approvals   => const ApprovalsScreen(),
-    AppTab.history     => const HistoryScreen(),
-    AppTab.viewer      => const EventViewerScreen(),
-    AppTab.simulation  => const SimulationScreen(),
-    AppTab.taskScheduler => const TaskSchedulerScreen(),
-  };
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -222,24 +211,18 @@ class _AppShellState extends State<AppShell> {
                   onRefreshAll: () => setState(() {}),
                 ),
                 Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 220),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, anim) => FadeTransition(
-                      opacity: anim,
-                      child: SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0.02, 0.02),
-                          end: Offset.zero,
-                        ).animate(anim),
-                        child: child,
-                      ),
-                    ),
-                    child: KeyedSubtree(
-                      key: ValueKey(_tab),
-                      child: _screen(_tab),
-                    ),
+                  child: IndexedStack(
+                    index: _tab.index,
+                    children: const [
+                      DashboardScreen(),
+                      EventsScreen(),
+                      RulesScreen(),
+                      ApprovalsScreen(),
+                      HistoryScreen(),
+                      SimulationScreen(),
+                      EventViewerScreen(),
+                      TaskSchedulerScreen(),
+                    ],
                   ),
                 ),
               ]),
@@ -259,9 +242,9 @@ class _AmbientBackdrop extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: const [
-        Positioned(top: -80, right: -40, child: _GlowBlob(color: Color(0x224A9EFF), size: 260)),
-        Positioned(top: 140, left: -90, child: _GlowBlob(color: Color(0x1A24D0A3), size: 220)),
-        Positioned(bottom: -100, right: 120, child: _GlowBlob(color: Color(0x1AAA6CFF), size: 300)),
+        Positioned(top: -80, right: -40, child: _GlowBlob(color: Color(0x144A9EFF), size: 240)),
+        Positioned(top: 140, left: -90, child: _GlowBlob(color: Color(0x1024D0A3), size: 200)),
+        Positioned(bottom: -100, right: 120, child: _GlowBlob(color: Color(0x10AA6CFF), size: 260)),
       ],
     );
   }
@@ -281,7 +264,7 @@ class _GlowBlob extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: color,
-        boxShadow: [BoxShadow(color: color, blurRadius: 90, spreadRadius: 8)],
+        boxShadow: [BoxShadow(color: color, blurRadius: 40, spreadRadius: 4)],
       ),
     );
   }

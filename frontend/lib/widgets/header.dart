@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:ui';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
@@ -21,14 +20,11 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
       height: 72,
       padding: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.025),
+        color: const Color(0xFF141414),
         border: const Border(bottom: BorderSide(color: AppTheme.border)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.16), blurRadius: 20, offset: const Offset(0, 6))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.16), blurRadius: 12, offset: const Offset(0, 4))],
       ),
-      child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Row(children: [
+      child: Row(children: [
         // Title — ellipsizes instead of pushing the action cluster off-screen
         Expanded(
           child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -71,8 +67,6 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
           ),
         ),
       ]),
-        ),
-      ),
     );
   }
 }

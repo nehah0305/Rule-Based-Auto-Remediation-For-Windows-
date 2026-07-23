@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:ui';
 import '../config/theme.dart';
 
 enum AppTab { dashboard, events, rules, approvals, history, simulation, viewer, taskScheduler }
@@ -35,14 +34,11 @@ class _AppSidebarState extends State<AppSidebar> {
       curve: Curves.easeInOut,
       width: w,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.025),
+        color: const Color(0xFF141414),
         border: const Border(right: BorderSide(color: AppTheme.border)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.28), blurRadius: 24)],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.28), blurRadius: 16)],
       ),
-      child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Column(children: [
+      child: Column(children: [
             // ── Header: adapts to the ACTUAL width so it never overflows,
             //    even mid-animation between collapsed and expanded states. ──
             Container(
@@ -143,8 +139,6 @@ class _AppSidebarState extends State<AppSidebar> {
               }),
             ),
           ]),
-        ),
-      ),
     );
   }
 }
