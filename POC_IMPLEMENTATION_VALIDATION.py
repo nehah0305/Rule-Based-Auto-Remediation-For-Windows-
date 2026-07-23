@@ -8,6 +8,12 @@ This report verifies if all POC (Proof of Concept) functionalities from misc_not
 are implemented and working correctly in the current application.
 """
 
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
+
 # POC CHECKLIST
 
 POC_CHECKLIST = {

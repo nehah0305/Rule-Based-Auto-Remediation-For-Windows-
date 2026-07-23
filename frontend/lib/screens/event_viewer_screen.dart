@@ -184,7 +184,7 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
   void _showExportDialog(String filename, String content) {
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Export Ready'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -211,12 +211,12 @@ class _EventViewerScreenState extends State<EventViewerScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(_),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Close'),
           ),
           ElevatedButton(
             onPressed: () {
-              ScaffoldMessenger.of(_).showSnackBar(
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
                 const SnackBar(content: Text('Success: Export content ready to copy.')),
               );
             },

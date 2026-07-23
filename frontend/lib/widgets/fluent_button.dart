@@ -32,7 +32,6 @@ enum ButtonVariant { primary, secondary, danger, success }
 
 class _FluentButtonState extends State<FluentButton> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  bool _isPressed = false;
 
   @override
   void initState() {

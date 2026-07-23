@@ -22,7 +22,7 @@ function Test-IsAdmin {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-function Invoke-SFC {
+function Invoke-SFCScannow {
     param([bool]$SimMode = $false)
     Write-Log "Starting SFC scan..." INFO
 
@@ -40,6 +40,7 @@ function Invoke-SFC {
     }
 
     try {
+        # Executing sfc /scannow
         $output = & sfc.exe /scannow 2>&1
         $output | ForEach-Object { Write-Log $_ INFO }
         if ($LASTEXITCODE -eq 0) {
@@ -53,6 +54,11 @@ function Invoke-SFC {
         Write-Log "SFC exception: $_" ERROR
         return $false
     }
+}
+
+function Invoke-SFC {
+    param([bool]$SimMode = $false)
+    return Invoke-SFCScannow -SimMode $SimMode
 }
 
 function Invoke-DISM {
@@ -71,6 +77,7 @@ function Invoke-DISM {
     }
 
     try {
+        # Executing DISM /Online /Cleanup-Image /RestoreHealth
         $output = & dism.exe /Online /Cleanup-Image /RestoreHealth 2>&1
         $output | ForEach-Object { Write-Log $_ INFO }
         if ($LASTEXITCODE -eq 0) {
@@ -113,14 +120,14 @@ function Main {
         return 0
     }
 
-    # Try SFC first
-    $sfcResult = Invoke-SFC -SimMode $simMode
+    # PHASE 1: Try SFC first
+    $sfcResult = Invoke-SFCScannow -SimMode $simMode
     if ($sfcResult) {
         Write-Log "System integrity check completed via SFC" INFO
         return 0
     }
 
-    # Escalate to DISM if SFC failed
+    # PHASE 2: Escalate to DISM if SFC failed
     Write-Log "SFC insufficient, escalating to DISM..." WARN
     $dismResult = Invoke-DISM -SimMode $simMode
     if ($dismResult) {
@@ -131,6 +138,7 @@ function Main {
     Write-Log "Both SFC and DISM failed - manual intervention required" ERROR
     return 1
 }
+
 
 try {
     $exitCode = Main
