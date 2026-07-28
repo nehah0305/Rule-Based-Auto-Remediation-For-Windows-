@@ -18,7 +18,9 @@
 # -------------------------------------------------------------------------
 
 param(
-    [string]$ServiceName = 'Spooler'
+    [string]$ServiceName = 'Spooler',
+    [switch]$RequireApproval,
+    [string]$BackendUrl = 'http://localhost:5000'
 )
 
 $EVENT_SOURCE = 'Service Control Manager'
@@ -26,23 +28,25 @@ $EVENT_LOG    = 'System'
 $EVENT_ID     = 7034
 $SEVERITY     = 'High'
 
-# --- Resolve the requested service to its real Name/DisplayName -----------
-$resolved = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-if (-not $resolved) {
-    $resolved = Get-Service -DisplayName $ServiceName -ErrorAction SilentlyContinue
+if ($RequireApproval) {
+    $randomTag = Get-Random -Minimum 1000 -Maximum 9999
+    $SERVICE_NAME = "UnapprovedService_$randomTag"
+    $DISPLAY_NAME = "Unapproved Service $randomTag"
+} else {
+    # --- Resolve the requested service to its real Name/DisplayName -----------
+    $resolved = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+    if (-not $resolved) {
+        $resolved = Get-Service -DisplayName $ServiceName -ErrorAction SilentlyContinue
+    }
+    if (-not $resolved) {
+        Write-Host "[WARN] Service '$ServiceName' not found on this machine. Using simulated service name '$ServiceName'." -ForegroundColor Yellow
+        $SERVICE_NAME = $ServiceName
+        $DISPLAY_NAME = "$ServiceName Service"
+    } else {
+        $SERVICE_NAME = $resolved.Name
+        $DISPLAY_NAME = $resolved.DisplayName
+    }
 }
-if (-not $resolved) {
-    Write-Host "[WARN] Service '$ServiceName' not found on this machine. Falling back to Print Spooler." -ForegroundColor Yellow
-    $resolved = Get-Service -Name 'Spooler' -ErrorAction SilentlyContinue
-}
-
-if (-not $resolved) {
-    Write-Host "[ERROR] Could not resolve a target service (tried '$ServiceName' and 'Spooler')." -ForegroundColor Red
-    exit 1
-}
-
-$SERVICE_NAME = $resolved.Name
-$DISPLAY_NAME = $resolved.DisplayName
 
 # --- Register the source if it isn't already (it normally already is, as
 #     "Service Control Manager" is a built-in Windows System-log source) ---
@@ -75,8 +79,19 @@ try {
 
     Write-Host "[SUCCESS] Event ID $EVENT_ID written to $EVENT_LOG log (Source: $EVENT_SOURCE)."
     Write-Host "[INFO]    Service crash simulated: $DISPLAY_NAME ($SERVICE_NAME) crashed $crashCount time(s)."
-    Write-Host "[INFO]    This WILL trigger a real Restart-Service on $DISPLAY_NAME once the backend ingests it."
-    Write-Host "[INFO]    You can verify this in Windows Event Viewer > Windows Logs > System."
+
+    # --- Trigger backend monitor poll immediately ---------------------------
+    Write-Host ""
+    Write-Host "[INFO] Triggering immediate monitor poll at $BackendUrl/api/monitor/trigger ..." -ForegroundColor Yellow
+    try {
+        $res = Invoke-WebRequest -Uri "$BackendUrl/api/monitor/trigger" -Method POST -UseBasicParsing -TimeoutSec 10
+        $data = $res.Content | ConvertFrom-Json
+        Write-Host "[SUCCESS] Monitor poll complete - $($data.events_ingested) new event(s) ingested." -ForegroundColor Green
+    } catch {
+        Write-Host "[WARN] Could not trigger monitor poll: $_" -ForegroundColor Yellow
+    }
+
+    Write-Host "[INFO]    Check your frontend dashboard/approvals page for the pop-up notification!" -ForegroundColor Cyan
     exit 0
 } catch {
     Write-Host "[ERROR] Failed to write event log entry: $_" -ForegroundColor Red

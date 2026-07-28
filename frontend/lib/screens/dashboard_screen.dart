@@ -20,6 +20,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   bool _loading = true;
+  bool _loadingCharts = true;   // tracks heavy phase-2 data
   bool _isFetching = false;
   int _lastRemediationCount = 0;
   Timer? _refreshTimer;
@@ -38,7 +39,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-    // Real 30-second independent auto-refresh (silent)
+    // Auto-refresh every 30 seconds (silent, no spinner)
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) _load();
     });
@@ -56,37 +57,58 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final isInitial = _events.isEmpty && _history.isEmpty && _dashboardStats.isEmpty;
     if (isInitial || showSpinner) {
-      setState(() => _loading = true);
+      setState(() {
+        _loading = true;
+        _loadingCharts = true;
+      });
     }
 
+    final api = context.read<ApiService>();
+
+    // ── Phase 1: fast queries — stat cards + recent lists ──────────────────
+    // These hit indexed lookups and return quickly. We show the page as
+    // soon as these finish so the user sees content immediately.
     try {
-      final api = context.read<ApiService>();
-      final results = await Future.wait([
-        api.getFilteredEvents(),
-        api.getHistory(limit: 8),
-        api.getRules(),
-        api.getRequests(status: 'pending'),
-        api.getIntelligenceSummary(),
-        api.getManualReviewEvents(),
-        api.getDashboardStats(),
-        api.getMetrics(),
+      final fastResults = await Future.wait([
+        api.getHistory(limit: 8),               // [0] recent history (indexed)
+        api.getRules(),                          // [1] rule list (small table)
+        api.getRequests(status: 'pending'),      // [2] pending approvals (indexed)
+        api.getManualReviewEvents(),             // [3] manual review (indexed)
+        api.getFilteredEvents(),                 // [4] recent events (cached CSV)
       ]);
       if (!mounted) return;
-      final histData = results[1] as Map<String, dynamic>;
+      final histData = fastResults[0] as Map<String, dynamic>;
       setState(() {
-        _events           = results[0] as List<AppEvent>;
         _history          = histData['items'] as List<HistoryEntry>;
         _totalHistory     = histData['total'] as int;
-        _totalRules       = (results[2] as List).length;
-        _pendingApprovals = (results[3] as List).length;
-        _intel            = results[4] as IntelligenceSummary;
-        _manualReview     = (results[5] as List).length;
-        _dashboardStats   = results[6] as Map<String, dynamic>;
-        _metrics          = results[7] as MetricsSummary;
-        _loading          = false;
+        _totalRules       = (fastResults[1] as List).length;
+        _pendingApprovals = (fastResults[2] as List).length;
+        _manualReview     = (fastResults[3] as List).length;
+        _events           = fastResults[4] as List<AppEvent>;
+        _loading          = false;          // show the page now
       });
     } catch (e) {
       if (mounted) setState(() => _loading = false);
+    }
+
+    // ── Phase 2: heavy queries — charts, metrics, intelligence ─────────────
+    // Run after the UI has already painted. Results stream in and update
+    // only the chart/metrics widgets without blocking the stat cards.
+    try {
+      final heavyResults = await Future.wait([
+        api.getDashboardStats(),        // [0] GROUP BY on 54k rows (now cached)
+        api.getIntelligenceSummary(),   // [1] 4 aggregation queries (cached)
+        api.getMetrics(),               // [2] MTTR + success rate (now cached)
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _dashboardStats = heavyResults[0] as Map<String, dynamic>;
+        _intel          = heavyResults[1] as IntelligenceSummary;
+        _metrics        = heavyResults[2] as MetricsSummary;
+        _loadingCharts  = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _loadingCharts = false);
     } finally {
       _isFetching = false;
     }
@@ -113,7 +135,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Future.microtask(() => _load());
         }
         
-        if (_loading && _events.isEmpty && _history.isEmpty && _dashboardStats.isEmpty) {
+        if (_loading && _events.isEmpty && _history.isEmpty) {
           return const Center(child: CircularProgressIndicator(color: AppTheme.accent));
         }
         return RefreshIndicator(
@@ -148,6 +170,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Padding(
                   padding: const EdgeInsets.all(18),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    // ── Stat cards: available immediately after phase 1 ──────
                     LayoutBuilder(builder: (ctx, constraints) {
                       final cols = constraints.maxWidth > 700 ? 4 : 2;
                       return GridView.count(
@@ -156,7 +179,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         crossAxisSpacing: 16, mainAxisSpacing: 16,
                         childAspectRatio: constraints.maxWidth > 700 ? 2.4 : 2.0,
                         children: [
-                          StatCard(label: 'Errors & Warnings', value: '${_intel.totalEvents}',
+                          StatCard(label: 'Errors & Warnings', value: _loadingCharts ? '…' : '${_intel.totalEvents}',
                               icon: Icons.warning_amber_rounded, accentColor: AppTheme.accent),
                           StatCard(label: 'Active Rules', value: '$_totalRules',
                               icon: Icons.rule_rounded, accentColor: AppTheme.accentGreen),
@@ -180,24 +203,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ));
                         }),
                     if (_manualReview > 0) const SizedBox(height: 16),
-                    LayoutBuilder(builder: (ctx, constraints) {
-                      final wide = constraints.maxWidth > 700;
-                      final charts = [
-                        _ChartCard(title: 'Events by Severity', gradient: AppTheme.gradientPrimary,
-                            icon: Icons.pie_chart, child: _SeverityChart(data: _bySeverity)),
-                        _ChartCard(title: 'Events by Category', gradient: AppTheme.gradientSuccess,
-                            icon: Icons.bar_chart, child: _CategoryChart(data: _byCategory)),
-                      ];
-                      return wide
-                          ? Row(children: charts.map((c) => Expanded(child: c)).toList()
-                              .withSeparator(const SizedBox(width: 16)))
-                          : Column(children: charts.withSeparator(const SizedBox(height: 16)));
-                    }),
+                    // ── Charts: shown once phase-2 data arrives ──────────────
+                    if (_loadingCharts)
+                      const _ChartLoadingPlaceholder()
+                    else
+                      LayoutBuilder(builder: (ctx, constraints) {
+                        final wide = constraints.maxWidth > 700;
+                        final charts = [
+                          _ChartCard(title: 'Events by Severity', gradient: AppTheme.gradientPrimary,
+                              icon: Icons.pie_chart, child: _SeverityChart(data: _bySeverity)),
+                          _ChartCard(title: 'Events by Category', gradient: AppTheme.gradientSuccess,
+                              icon: Icons.bar_chart, child: _CategoryChart(data: _byCategory)),
+                        ];
+                        return wide
+                            ? Row(children: charts.map((c) => Expanded(child: c)).toList()
+                                .withSeparator(const SizedBox(width: 16)))
+                            : Column(children: charts.withSeparator(const SizedBox(height: 16)));
+                      }),
                     const SizedBox(height: 20),
-                    _MetricsCard(metrics: _metrics),
+                    // ── Metrics & Intelligence: phase-2 dependent ────────────
+                    if (_loadingCharts)
+                      const _MetricsLoadingPlaceholder()
+                    else ...[
+                      _MetricsCard(metrics: _metrics),
+                      const SizedBox(height: 20),
+                      _IntelligenceCard(intel: _intel),
+                    ],
                     const SizedBox(height: 20),
-                    _IntelligenceCard(intel: _intel),
-                    const SizedBox(height: 20),
+                    // ── Recent activity lists: available from phase 1 ────────
                     LayoutBuilder(builder: (ctx, constraints) {
                       final wide = constraints.maxWidth > 700;
                       final lists = [
@@ -219,6 +252,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }, // End Consumer builder
     );
   }
+}
+
+// ── Phase-2 loading placeholders ────────────────────────────────────────────
+class _ChartLoadingPlaceholder extends StatelessWidget {
+  const _ChartLoadingPlaceholder();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 220,
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.03),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: AppTheme.border),
+    ),
+    child: const Center(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        SizedBox(width: 24, height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent)),
+        SizedBox(height: 12),
+        Text('Loading charts…', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+      ]),
+    ),
+  );
+}
+
+class _MetricsLoadingPlaceholder extends StatelessWidget {
+  const _MetricsLoadingPlaceholder();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 120,
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.03),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: AppTheme.border),
+    ),
+    child: const Center(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        SizedBox(width: 24, height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accentPurple)),
+        SizedBox(height: 12),
+        Text('Loading metrics…', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+      ]),
+    ),
+  );
 }
 
 // ── Manual Review Banner ────────────────────────────────────────────────────
@@ -399,7 +477,7 @@ class _IntelligenceCard extends StatelessWidget {
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
         decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [AppTheme.accentPurple.withOpacity(0.2), AppTheme.accentPurple.withOpacity(0.05)]),
+          gradient: LinearGradient(colors: [AppTheme.accentPurple.withValues(alpha: 0.2), AppTheme.accentPurple.withValues(alpha: 0.05)]),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
         ),
         child: const Row(children: [
@@ -443,8 +521,8 @@ class _IntelMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.25))),
+    decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.25))),
     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Text(value, style: TextStyle(color: color, fontSize: 24, fontWeight: FontWeight.w800)),
       const SizedBox(height: 4),
@@ -602,7 +680,7 @@ class _EventTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-    decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppTheme.border.withOpacity(0.5)))),
+    decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppTheme.border.withValues(alpha: 0.5)))),
     child: Row(children: [
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Event ${event.eventId ?? '?'} — ${event.source ?? ''}',
@@ -638,7 +716,7 @@ class _RemediationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-    decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppTheme.border.withOpacity(0.5)))),
+    decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppTheme.border.withValues(alpha: 0.5)))),
     child: Row(children: [
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(entry.ruleName ?? 'Rule #${entry.ruleId}',

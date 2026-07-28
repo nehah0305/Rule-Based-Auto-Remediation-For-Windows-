@@ -122,7 +122,11 @@ def _load_watermark() -> datetime:
                 data = json.load(f)
                 ts = data.get('eventlog_since')
                 if ts:
-                    return datetime.fromisoformat(ts)
+                    dt = datetime.fromisoformat(ts)
+                    if dt.tzinfo is None:
+                        # Naive timestamp — interpret as local time and convert to UTC
+                        dt = dt.astimezone()
+                    return dt.astimezone(timezone.utc)
         except Exception:
             pass
     # Default: look back 1 hour on first run so we pick up recent events
@@ -134,7 +138,9 @@ def _save_watermark(dt: datetime):
     os.makedirs(DATA_DIR, exist_ok=True)
     try:
         with open(WATERMARK_PATH, 'w') as f:
-            json.dump({'eventlog_since': dt.isoformat()}, f)
+            if dt.tzinfo is None:
+                dt = dt.astimezone()
+            json.dump({'eventlog_since': dt.astimezone(timezone.utc).isoformat()}, f)
     except Exception as e:
         logger.warning(f'Could not save watermark: {e}')
 
@@ -320,16 +326,21 @@ def _extract_app_context(event_id: str, message: str, regex_captures: dict) -> s
     if app_ctx:
         return app_ctx.lower()
 
-    # 2. Parse from raw message for application crash events
-    if event_id in ('1000', '1001') and message:
-        # Anchored on the field label, tolerant of the OS template doubling the
-        # prefix ("Faulting application name: Faulting application name: excel").
-        m = re.search(
-            r'faulting application name:\s*(?:faulting app(?:lication)? name:\s*)?([^\s,:\n]+)',
-            message, re.IGNORECASE
-        )
-        if m:
-            return m.group(1).strip().lower()
+    # 2. Parse from raw message for application crash & service failure events
+    if message:
+        if event_id in ('1000', '1001'):
+            m = re.search(
+                r'faulting application name:\s*(?:faulting app(?:lication)? name:\s*)?([^\s,:\n]+)',
+                message, re.IGNORECASE
+            )
+            if m:
+                return m.group(1).strip().lower()
+        elif event_id in ('7000', '7001', '7022', '7031', '7034'):
+            m = re.search(r'The\s+([^\s,:\n]+(?:\s+[^\s,:\n]+)?)\s+service\s+(?:failed|terminated|hung)', message, re.IGNORECASE)
+            if not m:
+                m = re.search(r'service\s+["\']?([^"\'\s,:\n]+)["\']?\s+(?:failed|terminated|hung)', message, re.IGNORECASE)
+            if m:
+                return m.group(1).strip().lower()
 
     return ''
 
@@ -530,7 +541,7 @@ def _process_event(raw: dict) -> int:
 
             _app_ctx = _extract_app_context(event_id, message, regex_captures)
 
-            if auto_remediate and not cooldown_active and not models.is_event_type_approved(event_id, source, app_context=_app_ctx):
+            if not cooldown_active and not models.is_event_type_approved(event_id, source, app_context=_app_ctx):
                 # First time this (event_id, source, app_name) combo has ever matched —
                 # hold for operator sign-off instead of auto-remediating blind.
                 # Only ONE approval request per event: if this event already spawned
@@ -566,7 +577,7 @@ def _process_event(raw: dict) -> int:
                 )
                 logger.info(f'[COOLDOWN] Rule "{rule_name}" is in cooldown, skipping')
             else:
-                logger.info(f'[MATCH] Event {event_id} matched rule "{rule_name}" (auto_remediate=False)')
+                logger.info(f'[MATCH] Event {event_id} matched rule "{rule_name}"')
 
     return row_id
 

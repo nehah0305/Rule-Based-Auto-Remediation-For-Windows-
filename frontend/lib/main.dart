@@ -16,7 +16,6 @@ import 'screens/approvals_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/simulation_screen.dart';
 import 'screens/event_viewer_screen.dart';
-import 'screens/task_scheduler_screen.dart';
 
 void main() {
   // Task 6 — global error boundary: a widget that fails to build anywhere
@@ -126,43 +125,59 @@ class _AppShellState extends State<AppShell> {
       if (!mounted) return;
       final api = context.read<ApiService>();
       final res = await api.getApprovals(status: 'pending');
+      final requests = await api.getRequests(status: 'pending');
+
       int maxId = 0;
       for (final req in res) {
         if (req.id > maxId) maxId = req.id;
       }
-      
-      if (_lastSeenApprovalId == 0) {
+      for (final req in requests) {
+        if (req.id > maxId) maxId = req.id;
+      }
+
+      if (maxId > 0 && maxId > _lastSeenApprovalId) {
         _lastSeenApprovalId = maxId;
-      } else if (maxId > _lastSeenApprovalId) {
-        _lastSeenApprovalId = maxId;
-        final newest = res.reduce((a, b) => a.id > b.id ? a : b);
-        final appName = newest.appContext.isNotEmpty ? newest.appContext : 'an application';
-        final eventLabel = newest.eventId.isNotEmpty ? 'Event ${newest.eventId}' : 'an event';
-        final msg = '🔔 Approval Required — $appName crashed ($eventLabel, ${newest.source}). Operator sign-off needed.';
+        String appName = 'Simulated Error';
+        String eventLabel = 'Approval Required';
+        String source = 'System';
+
+        if (res.isNotEmpty) {
+          final newest = res.reduce((a, b) => a.id > b.id ? a : b);
+          appName = newest.appContext.isNotEmpty ? newest.appContext : 'Application';
+          eventLabel = newest.eventId.isNotEmpty ? 'Event ${newest.eventId}' : 'Approval Required';
+          source = newest.source.isNotEmpty ? newest.source : 'System';
+        } else if (requests.isNotEmpty) {
+          final newest = requests.reduce((a, b) => a.id > b.id ? a : b);
+          appName = (newest.ruleName ?? '').isNotEmpty ? newest.ruleName! : 'Remediation Request';
+          eventLabel = (newest.eventId ?? 0) > 0 ? 'Event ${newest.eventId}' : 'Approval Required';
+          source = (newest.eventSource ?? '').isNotEmpty ? newest.eventSource! : 'System';
+        }
+
+        final msg = '⚠️ Action Needed: $appName triggered ($eventLabel, $source). Operator approval is required to proceed.';
         if (mounted) {
           final messenger = ScaffoldMessenger.of(context);
+          messenger.hideCurrentSnackBar();
           messenger.showSnackBar(
             SnackBar(
               content: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Small close "x" on the top-left of the message box
-                  InkWell(
-                    onTap: () => messenger.hideCurrentSnackBar(),
-                    borderRadius: BorderRadius.circular(10),
-                    child: const Padding(
-                      padding: EdgeInsets.only(right: 10, top: 2),
-                      child: Icon(Icons.close, size: 16, color: Colors.black87),
+                  const Icon(Icons.warning_amber_rounded, color: Colors.black87, size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      msg,
+                      style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.black87, fontSize: 13),
                     ),
                   ),
-                  Expanded(child: Text(msg)),
                 ],
               ),
-              backgroundColor: AppTheme.accentYellow.withValues(alpha: 0.9),
+              backgroundColor: AppTheme.accentYellow,
               behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 10),
+              duration: const Duration(seconds: 15),
               action: SnackBarAction(
-                label: 'View', backgroundColor: Colors.black26, textColor: Colors.white,
+                label: 'GO TO APPROVALS PAGE',
+                backgroundColor: Colors.black,
+                textColor: Colors.white,
                 onPressed: () => setState(() => _tab = AppTab.approvals),
               ),
             ),
@@ -174,7 +189,7 @@ class _AppShellState extends State<AppShell> {
 
   void _startApprovalPolling() {
     _checkApprovals();
-    _approvalTimer = Timer.periodic(const Duration(seconds: 10), (_) => _checkApprovals());
+    _approvalTimer = Timer.periodic(const Duration(seconds: 2), (_) => _checkApprovals());
   }
 
   static const _titles = {
@@ -185,7 +200,6 @@ class _AppShellState extends State<AppShell> {
     AppTab.history: 'Remediation History',
     AppTab.viewer: 'Event Viewer',
     AppTab.simulation: 'Simulation Lab',
-    AppTab.taskScheduler: 'Task Scheduler',
   };
 
   @override
@@ -221,7 +235,6 @@ class _AppShellState extends State<AppShell> {
                       HistoryScreen(),
                       SimulationScreen(),
                       EventViewerScreen(),
-                      TaskSchedulerScreen(),
                     ],
                   ),
                 ),

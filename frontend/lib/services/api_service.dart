@@ -215,6 +215,13 @@ class ApiService {
     return await _post('/api/approvals/$reqId/reject', {'resolved_by': 'operator'}) as Map<String, dynamic>;
   }
 
+  /// Wipes the approved-event-types whitelist and all approval_requests records.
+  /// After this call, every event type is treated as 'new' and will trigger
+  /// a fresh approval request instead of auto-remediating.
+  Future<Map<String, dynamic>> resetApprovals() async {
+    return await _delete('/api/approvals/reset') as Map<String, dynamic>;
+  }
+
   // ─── Metrics / Observability ──────────────────────────────────────────────
   Future<MetricsSummary> getMetrics({int days = 14}) async {
     final data = await _get('/api/metrics?days=$days') as Map<String, dynamic>;

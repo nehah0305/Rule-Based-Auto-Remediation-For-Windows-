@@ -95,6 +95,12 @@ _intelligence_summary_cache = {'data': None, 'timestamp': 0, 'ttl': 30}
 # PERFORMANCE FIX #5: Cache event count to avoid expensive COUNT queries
 _event_count_cache = {'count': None, 'timestamp': 0, 'ttl': 60}
 
+# Cache for dashboard stats (severity/category GROUP BY on 50k+ rows) — 30s TTL
+_dashboard_stats_cache = {'data': None, 'timestamp': 0, 'ttl': 30}
+
+# Cache for metrics summary (4 serial DB connections) — 30s TTL
+_metrics_cache = {'data': None, 'timestamp': 0, 'ttl': 30}
+
 app = Flask(__name__)
 
 # CORS: Whitelist-based security (prevents origin reflection vulnerability)
@@ -329,10 +335,23 @@ def metrics():
     Task 4 — success rate, MTTR (+ historical time series), and auto vs.
     manual-approval ratio. Grouping endpoint for the dashboard's metrics
     panel and Phase 2 ML training data collection.
+    PERFORMANCE FIX: Caches result for 30 seconds to avoid opening 4
+    serial DB connections on every dashboard load/refresh.
     """
+    global _metrics_cache
+    now = time.time()
+    days = request.args.get('days', default=14, type=int)
+    cache_key = days  # invalidate if caller changes the day window
+    if (_metrics_cache['data'] is not None and
+            (now - _metrics_cache['timestamp']) < _metrics_cache['ttl'] and
+            _metrics_cache.get('days') == cache_key):
+        return jsonify(_metrics_cache['data'])
     try:
-        days = request.args.get('days', default=14, type=int)
-        return jsonify(analytics.get_metrics_summary(mttr_timeseries_days=days))
+        result = analytics.get_metrics_summary(mttr_timeseries_days=days)
+        _metrics_cache['data'] = result
+        _metrics_cache['timestamp'] = now
+        _metrics_cache['days'] = days
+        return jsonify(result)
     except Exception as e:
         _log.error(f'Error computing metrics: {str(e)}')
         return jsonify({'error': str(e)}), 500
@@ -350,6 +369,9 @@ def health_check():
 @app.route('/api/monitor/trigger', methods=['POST'])
 def monitor_trigger():
     """Manually force a pull of the Windows Event Logs."""
+    import importlib
+    importlib.reload(models)
+    importlib.reload(event_log_monitor)
     count = event_log_monitor.trigger_poll()
     return jsonify({'status': 'ok', 'events_ingested': count})
 
@@ -889,6 +911,22 @@ def reject_approval_request(req_id):
     return jsonify({'status': 'rejected'})
 
 
+@app.route('/api/approvals/reset', methods=['DELETE'])
+def reset_approvals():
+    """Wipe the approved-event-types whitelist and all approval request records.
+
+    After this call the event monitor treats every event type as 'new' again:
+    the next occurrence will create a fresh approval request and will NOT
+    auto-remediate, regardless of any previous operator approval.
+    """
+    result = models.clear_all_approvals()
+    return jsonify({
+        'status': 'ok',
+        'message': 'All approvals cleared. The monitor will request fresh approval for every event type.',
+        **result,
+    })
+
+
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #  Event definitions & filtered events (CSV)
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -984,9 +1022,19 @@ def intelligence_summary():
 
 @app.route('/api/dashboard-stats', methods=['GET'])
 def dashboard_stats():
-    """Returns real aggregated stats for the dashboard."""
+    """Returns real aggregated stats for the dashboard.
+    PERFORMANCE FIX: Caches GROUP BY results for 30 seconds to avoid
+    full table scans on 50k+ event rows on every dashboard load.
+    """
+    global _dashboard_stats_cache
+    now = time.time()
+    if (_dashboard_stats_cache['data'] is not None and
+            (now - _dashboard_stats_cache['timestamp']) < _dashboard_stats_cache['ttl']):
+        return jsonify(_dashboard_stats_cache['data'])
     try:
         stats = models.get_dashboard_stats()
+        _dashboard_stats_cache['data'] = stats
+        _dashboard_stats_cache['timestamp'] = now
         return jsonify(stats)
     except Exception as e:
         _log.error(f'Dashboard stats error: {e}')

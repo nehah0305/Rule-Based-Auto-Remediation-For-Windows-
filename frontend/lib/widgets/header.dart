@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
 import '../services/monitor_service.dart';
-import '../services/alert_polling_service.dart';
 
 class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   final String title;
@@ -56,11 +55,6 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
                   icon: Icons.refresh_rounded, label: 'Refresh All',
                   color: AppTheme.textPrimary,
                   onTap: onRefreshAll,
-                ),
-                const SizedBox(width: 8),
-                // Inject Error button
-                Consumer<AlertPollingService>(
-                  builder: (_, alertSvc, __) => _InjectBtn(alertSvc: alertSvc),
                 ),
               ]),
             ),
@@ -129,47 +123,6 @@ class _MonitorPill extends StatelessWidget {
   }
 }
 
-class _InjectBtn extends StatefulWidget {
-  final AlertPollingService alertSvc;
-  const _InjectBtn({required this.alertSvc});
-
-  @override
-  State<_InjectBtn> createState() => _InjectBtnState();
-}
-
-class _InjectBtnState extends State<_InjectBtn> {
-  bool _loading = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return _HeaderBtn(
-      icon: Icons.bolt_rounded,
-      label: _loading ? 'Injecting…' : 'Inject Error',
-      color: AppTheme.accentRed,
-      gradient: AppTheme.gradientDanger,
-      onTap: _loading ? null : _inject,
-    );
-  }
-
-  Future<void> _inject() async {
-    setState(() => _loading = true);
-    try {
-      await context.read<ApiService>().injectHighCpuAlert();
-      await widget.alertSvc.forceRefresh();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('High CPU Alert injected — check Dashboard for live popup')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Injection failed: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-}
-
 class _HeaderBtn extends StatefulWidget {
   final IconData icon;
   final String label;
@@ -196,7 +149,7 @@ class _HeaderBtnState extends State<_HeaderBtn> {
           duration: const Duration(milliseconds: 150),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
           decoration: BoxDecoration(
-            gradient: widget.gradient != null && (_hovered || widget.label.contains('Inject'))
+            gradient: widget.gradient != null && _hovered
                 ? widget.gradient : null,
             color: widget.gradient == null ? (_hovered ? AppTheme.bgCardAlt : Colors.white.withValues(alpha: 0.025)) : null,
             borderRadius: BorderRadius.circular(999),

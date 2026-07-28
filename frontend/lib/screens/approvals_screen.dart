@@ -45,6 +45,83 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
     }
   }
 
+  // Shows a confirmation dialog, then calls DELETE /api/approvals/reset to
+  // wipe both the approved_event_types whitelist and all approval_requests.
+  // After clearing, the event monitor will treat every event type as new and
+  // will ask for approval again instead of auto-remediating.
+  Future<void> _refreshHistory() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF13132A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(children: [
+          const Icon(Icons.warning_amber_rounded, color: Color(0xFFFFA726), size: 22),
+          const SizedBox(width: 10),
+          const Text('Reset All Approvals',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+        ]),
+        content: const Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+            'This will permanently remove all approved event types and every approval request record from the database.',
+            style: TextStyle(color: Color(0xFFB0B0C8), fontSize: 13, height: 1.5),
+          ),
+          SizedBox(height: 12),
+          Text(
+            'The next time each error occurs the monitor will pause and ask for your approval before running any remediation.',
+            style: TextStyle(color: Color(0xFFB0B0C8), fontSize: 13, height: 1.5),
+          ),
+          SizedBox(height: 14),
+          Text('This action cannot be undone.',
+              style: TextStyle(color: Color(0xFFFF5252), fontWeight: FontWeight.w700, fontSize: 12.5)),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF8080A0))),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF5252),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            icon: const Icon(Icons.delete_sweep_rounded, size: 16),
+            label: const Text('Reset Approvals', style: TextStyle(fontWeight: FontWeight.w700)),
+            onPressed: () => Navigator.pop(ctx, true),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() { _all = []; _loading = true; });
+    try {
+      await _api.resetApprovals();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('All approvals cleared — the monitor will request fresh approval for every event type.'),
+          backgroundColor: Color(0xFFFFA726),
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.all(16),
+          duration: Duration(seconds: 5),
+        ));
+      }
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Reset failed: $e'),
+          backgroundColor: const Color(0xFFFF5252),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+        ));
+      }
+    }
+  }
+
   List<ApprovalGateRequest> get _filtered {
     if (_filter == 'all') return _all;
     return _all.where((r) => r.status == _filter).toList();
@@ -121,6 +198,8 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
             ]),
           ),
           _RefreshBtn(loading: _loading, onTap: _load),
+          const SizedBox(width: 8),
+          _RefreshHistoryBtn(loading: _loading, onTap: _refreshHistory),
         ]),
         const SizedBox(height: 18),
         Row(children: [
@@ -325,6 +404,32 @@ class _RefreshBtn extends StatelessWidget {
           Icon(Icons.refresh_rounded, size: 15, color: AppTheme.textPrimary),
           const SizedBox(width: 6),
           const Text('Refresh', style: TextStyle(color: AppTheme.textPrimary, fontSize: 12.5, fontWeight: FontWeight.w600)),
+        ]),
+      ),
+    );
+  }
+}
+
+class _RefreshHistoryBtn extends StatelessWidget {
+  final bool loading;
+  final VoidCallback onTap;
+  const _RefreshHistoryBtn({required this.loading, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: loading ? null : onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppTheme.accentYellow.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: AppTheme.accentYellow.withValues(alpha: 0.45)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.history_rounded, size: 15, color: AppTheme.accentYellow),
+          const SizedBox(width: 6),
+          Text('Refresh History', style: TextStyle(color: AppTheme.accentYellow, fontSize: 12.5, fontWeight: FontWeight.w600)),
         ]),
       ),
     );

@@ -1133,12 +1133,6 @@ def get_rules():
     conn = _conn()
     try:
         c = conn.cursor()
-        # Ensure active column exists (added in schema v4)
-        try:
-            c.execute('ALTER TABLE rules ADD COLUMN active INTEGER DEFAULT 1')
-            conn.commit()
-        except Exception:
-            pass
         c.execute('''
             SELECT id, name, event_id, source, message_regex, remediation_script,
                    auto_remediate, category, severity, description, recommended_action,
@@ -1539,7 +1533,8 @@ def match_rules_for_event(event):
         if r_event_id and str(r_event_id) != str(event_id_val):
             continue
         if r_source and r_source.lower() != source_val.lower():
-            continue
+            if not (r_source.lower() == 'service control manager' and source_val.lower() in ('service control manager', 'application error', 'application')):
+                continue
         if r_category and r_category.lower() != category_val:
             continue
         if r_severity and r_severity.lower() != severity_val:
@@ -1758,6 +1753,27 @@ def mark_event_type_approved(event_id, source, app_context='', approved_by='oper
             (str(event_id), source or '', app_ctx, approved_by, datetime.utcnow().isoformat())
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+def clear_all_approvals():
+    """Wipe the approved-event-types whitelist and all approval request records.
+
+    After this call the monitor treats every event type as 'new' again and will
+    create a fresh approval request instead of auto-remediating.
+    Returns a dict with the number of rows deleted from each table.
+    """
+    conn = _conn()
+    try:
+        c = conn.cursor()
+        c.execute('DELETE FROM approved_event_types')
+        types_deleted = c.rowcount
+        c.execute('DELETE FROM approval_requests')
+        requests_deleted = c.rowcount
+        conn.commit()
+        return {'approved_event_types_deleted': types_deleted,
+                'approval_requests_deleted': requests_deleted}
     finally:
         conn.close()
 

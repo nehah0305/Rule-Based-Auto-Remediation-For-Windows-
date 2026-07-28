@@ -157,13 +157,127 @@ def get_auto_vs_manual_ratio():
 
 
 def get_metrics_summary(mttr_timeseries_days=14):
-    """Single grouping payload for GET /api/metrics."""
+    """Single grouping payload for GET /api/metrics.
+
+    PERFORMANCE FIX: All four sub-queries now share a single DB connection
+    instead of each opening and closing their own, cutting connection overhead
+    by 75% for this endpoint.
+    """
+    conn = _conn()
+    try:
+        success_rate = _get_success_rate_conn(conn)
+        mttr = _get_mttr_conn(conn)
+        mttr_timeseries = _get_mttr_timeseries_conn(conn, days=mttr_timeseries_days)
+        auto_vs_manual = _get_auto_vs_manual_conn(conn)
+    finally:
+        conn.close()
+
     return {
-        'success_rate': get_success_rate(),
-        'mttr': get_mttr(),
-        'mttr_timeseries': get_mttr_timeseries(days=mttr_timeseries_days),
-        'auto_vs_manual': get_auto_vs_manual_ratio(),
+        'success_rate': success_rate,
+        'mttr': mttr,
+        'mttr_timeseries': mttr_timeseries,
+        'auto_vs_manual': auto_vs_manual,
         'generated_at': datetime.utcnow().isoformat(),
+    }
+
+
+# ── Single-connection helpers (used by get_metrics_summary) ──────────────────
+
+def _get_success_rate_conn(conn):
+    """Success rate using a supplied connection (no open/close overhead)."""
+    c = conn.cursor()
+    placeholders = ','.join('?' * len(ATTEMPT_STATUSES))
+    c.execute(f'SELECT COUNT(*) FROM remediation_history WHERE status IN ({placeholders})',
+              ATTEMPT_STATUSES)
+    total_attempts = c.fetchone()[0]
+    placeholders = ','.join('?' * len(SUCCESS_STATUSES))
+    c.execute(f'SELECT COUNT(*) FROM remediation_history WHERE status IN ({placeholders})',
+              SUCCESS_STATUSES)
+    total_success = c.fetchone()[0]
+    rate = round((total_success / total_attempts) * 100, 1) if total_attempts else 0.0
+    return {
+        'success_rate_pct': rate,
+        'total_attempts': total_attempts,
+        'total_successful': total_success,
+    }
+
+
+def _get_mttr_conn(conn):
+    """MTTR using a supplied connection."""
+    c = conn.cursor()
+    c.execute('''
+        SELECT e.timestamp, COALESCE(h.verified_at, h.timestamp)
+        FROM remediation_history h
+        JOIN events e ON h.event_row_id = e.id
+        WHERE h.status = 'success' AND e.timestamp IS NOT NULL
+    ''')
+    deltas = []
+    for event_ts, resolved_ts in c.fetchall():
+        d = _safe_delta_seconds(event_ts, resolved_ts)
+        if d is not None and d >= 0:
+            deltas.append(d)
+    if not deltas:
+        return {'mttr_seconds': None, 'mttr_human': 'N/A', 'sample_size': 0}
+    avg_seconds = sum(deltas) / len(deltas)
+    return {
+        'mttr_seconds': round(avg_seconds, 1),
+        'mttr_human': _humanize_seconds(avg_seconds),
+        'sample_size': len(deltas),
+    }
+
+
+def _get_mttr_timeseries_conn(conn, days=14):
+    """MTTR timeseries using a supplied connection."""
+    c = conn.cursor()
+    since = (datetime.utcnow() - timedelta(days=days)).isoformat()
+    c.execute('''
+        SELECT e.timestamp, COALESCE(h.verified_at, h.timestamp)
+        FROM remediation_history h
+        JOIN events e ON h.event_row_id = e.id
+        WHERE h.status = 'success' AND e.timestamp >= ?
+        ORDER BY e.timestamp ASC
+    ''', (since,))
+    buckets = {}
+    for event_ts, resolved_ts in c.fetchall():
+        d = _safe_delta_seconds(event_ts, resolved_ts)
+        if d is None or d < 0:
+            continue
+        date_str = _local_date_str(event_ts)
+        if not date_str:
+            continue
+        buckets.setdefault(date_str, []).append(d)
+    return [
+        {
+            'date': date_str,
+            'mttr_seconds': round(sum(vals) / len(vals), 1),
+            'count': len(vals),
+        }
+        for date_str, vals in sorted(buckets.items())
+    ]
+
+
+def _get_auto_vs_manual_conn(conn):
+    """Auto vs manual ratio using a supplied connection."""
+    c = conn.cursor()
+    placeholders = ','.join('?' * len(ATTEMPT_STATUSES))
+    c.execute(f'SELECT COUNT(*) FROM remediation_history WHERE status IN ({placeholders})',
+              ATTEMPT_STATUSES)
+    total = c.fetchone()[0]
+    c.execute('''
+        SELECT COUNT(*) FROM remediation_history h
+        WHERE h.status IN ({})
+          AND EXISTS (
+              SELECT 1 FROM approval_requests ar
+              WHERE ar.event_row_id = h.event_row_id AND ar.rule_id = h.rule_id
+          )
+    '''.format(placeholders), ATTEMPT_STATUSES)
+    manual_count = c.fetchone()[0]
+    auto_count = total - manual_count
+    return {
+        'auto_count': auto_count,
+        'manual_approval_count': manual_count,
+        'total': total,
+        'auto_pct': round((auto_count / total) * 100, 1) if total else 0.0,
     }
 
 
