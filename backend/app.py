@@ -1838,6 +1838,80 @@ def simulate_lowdiskspace_auto_fix():
     })
 
 
+@app.route('/api/simulations/lowdiskspace/approval', methods=['POST'])
+def simulate_lowdiskspace_approval():
+    """
+    Simulate a Low Disk Space event and generate a pending approval request.
+    This route creates a synthetic event row and processes it through the
+    backend approval gating logic without immediately auto-remediating.
+    """
+    data = request.get_json(silent=True) or {}
+    profile = (data.get('profile') or 'degraded').strip().lower()
+    if profile not in ('stable', 'degraded', 'critical'):
+        profile = 'degraded'
+
+    do_reset = bool(data.get('reset_approvals', True))
+    if do_reset:
+        models.clear_all_approvals()
+
+    try:
+        count = int(data.get('count', 1))
+    except (TypeError, ValueError):
+        count = 1
+    count = max(1, min(count, 5))
+
+    events_summary = []
+    timeline = []
+    for idx in range(count):
+        disk_time = datetime.utcnow() - timedelta(seconds=idx * 45)
+        drive_letter = chr(67 + idx)
+        total_gb = 500 + (idx * 100)
+        free_gb = 2 + (idx * 0.3)
+        disk_message = (
+            f'Disk space on drive {drive_letter}: is running critically low. '
+            f'{free_gb} GB free of {total_gb} GB total. Immediate cleanup recommended.'
+        )
+
+        raw_event = {
+            'Id': 2013,
+            'LogName': 'Simulation',
+            'ProviderName': 'Disk',
+            'Message': disk_message,
+            'TimeCreated': disk_time.isoformat(),
+            'Level': 3,
+            'RawContext': {},
+        }
+
+        event_row_id = event_log_monitor._process_event(raw_event)
+        events_summary.append({
+            'event_row_id': event_row_id,
+            'drive': f'{drive_letter}:',
+            'message': disk_message,
+            'time_created': disk_time.isoformat() + 'Z',
+        })
+
+        timeline.append({
+            'phase': 'detect',
+            'title': f'Detect Low Disk Space Event {idx + 1}',
+            'status': 'completed',
+            'detail': f'Synthetic event row #{event_row_id} created for drive {drive_letter}.',
+        })
+
+    pending = models.get_approval_requests(status='pending')
+    pending_count = len(pending)
+
+    return jsonify({
+        'scenario': 'Disk Space Lab - Event ID 2013 Approval Request',
+        'simulation_mode': True,
+        'event_id': 2013,
+        'count': count,
+        'profile': profile,
+        'pending_approvals': pending_count,
+        'timeline': timeline,
+        'events': events_summary,
+    })
+
+
 @app.route('/api/simulations/eventlog', methods=['POST'])
 def simulate_eventlog():
     """
