@@ -537,8 +537,14 @@ def _load_rules_manifest(c):
         print(f'[WARN] Could not read rules_manifest.json: {e}')
         return
 
-    c.execute('SELECT event_id, source FROM rules')
-    existing = {(row[0], (row[1] or '').lower()) for row in c.fetchall()}
+    c.execute('SELECT id, event_id, source, remediation_script FROM rules')
+    existing = {}
+    for row in c.fetchall():
+        key = (row[1], (row[2] or '').lower())
+        existing[key] = {
+            'id': row[0],
+            'remediation_script': row[3],
+        }
 
     inserted = 0
     for entry in manifest:
@@ -546,6 +552,13 @@ def _load_rules_manifest(c):
         source = entry.get('source')
         key = (event_id, (source or '').lower())
         if key in existing:
+            existing_script = existing[key].get('remediation_script')
+            manifest_script = entry.get('script')
+            if manifest_script and not existing_script:
+                c.execute(
+                    'UPDATE rules SET remediation_script=? WHERE id=?',
+                    (manifest_script, existing[key]['id'])
+                )
             continue
 
         c.execute(
@@ -562,7 +575,7 @@ def _load_rules_manifest(c):
                 entry.get('cooldown_minutes', 0), 1,
             )
         )
-        existing.add(key)
+        existing[key] = {'id': c.lastrowid, 'remediation_script': entry.get('script')}
         inserted += 1
 
     if inserted:

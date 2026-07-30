@@ -298,6 +298,14 @@ class ApiService {
     return await _post('/api/simulations/servicecrash/remediate', {'event_row_id': eventRowId}) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> injectServiceNotStarting({String serviceName = 'MyTestService'}) async {
+    return await _post('/api/simulations/servicenotstarting/inject', {'service_name': serviceName}) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> remediateServiceNotStarting(int eventRowId) async {
+    return await _post('/api/simulations/servicenotstarting/remediate', {'event_row_id': eventRowId}) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> runRootCauseVariantSimulation(Map<String, dynamic> params) async {
     return await _post('/api/simulations/root-cause-variants', params) as Map<String, dynamic>;
   }

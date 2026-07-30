@@ -4,7 +4,7 @@ import '../services/api_service.dart';
 import '../widgets/simulation_widgets.dart';
 import '../widgets/badges.dart';
 
-enum SimType { crash, diskspace, eventlog, auditevents, highcpu, servicecrash, rootCauseVariants }
+enum SimType { crash, diskspace, eventlog, auditevents, highcpu, servicecrash, servicenotstarting, rootCauseVariants }
 
 class SimulationScreen extends StatefulWidget {
   const SimulationScreen({super.key});
@@ -33,6 +33,9 @@ class _SimulationScreenState extends State<SimulationScreen> {
   bool _livePlayback = true;
   double _playbackSpeed = 1.0;
 
+  // Service Not Starting params
+  final _svcName = TextEditingController(text: 'MyTestService');
+
   // Disk sim params
   int _diskCount = 1;
   String _diskProfile = 'degraded';
@@ -51,6 +54,7 @@ class _SimulationScreenState extends State<SimulationScreen> {
   @override
   void dispose() {
     _appName.dispose(); _faultMod.dispose(); _exception.dispose();
+    _svcName.dispose();
     super.dispose();
   }
 
@@ -108,6 +112,18 @@ class _SimulationScreenState extends State<SimulationScreen> {
           }
           setState(() {
             _statusMsg = 'Success: Alert injected. Check Dashboard for the live popup.';
+            _terminalOutput = r['script_output'] as String? ?? '';
+            _running = false;
+          });
+          return;
+        case SimType.servicenotstarting:
+          final r = await _api.injectServiceNotStarting(serviceName: _svcName.text.trim().isEmpty ? 'MyTestService' : _svcName.text.trim());
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Success: Service Not Starting alert injected. Open Dashboard to view the live popup.')));
+          }
+          setState(() {
+            _statusMsg = 'Success: Event 7000 injected. Check Dashboard for the live popup.';
             _terminalOutput = r['script_output'] as String? ?? '';
             _running = false;
           });
@@ -184,6 +200,7 @@ class _SimulationScreenState extends State<SimulationScreen> {
                   onVerifyChanged: (v) => setState(() => _verify = v),
                   onLivePlaybackChanged: (v) => setState(() => _livePlayback = v),
                   onSpeedChanged: (v) => setState(() => _playbackSpeed = v),
+                  svcName: _svcName,
                   // disk
                   diskCount: _diskCount, diskProfile: _diskProfile, diskRetry: _diskRetry, diskVerify: _diskVerify,
                   onDiskCountChanged: (v) => setState(() => _diskCount = v),
@@ -218,6 +235,7 @@ class _SimulationScreenState extends State<SimulationScreen> {
                   onVerifyChanged: (v) => setState(() => _verify = v),
                   onLivePlaybackChanged: (v) => setState(() => _livePlayback = v),
                   onSpeedChanged: (v) => setState(() => _playbackSpeed = v),
+                  svcName: _svcName,
                   diskCount: _diskCount, diskProfile: _diskProfile, diskRetry: _diskRetry, diskVerify: _diskVerify,
                   onDiskCountChanged: (v) => setState(() => _diskCount = v),
                   onDiskProfileChanged: (v) => setState(() => _diskProfile = v),
@@ -249,13 +267,14 @@ class _SimTypeSelector extends StatelessWidget {
   const _SimTypeSelector({required this.selected, required this.onChanged});
 
   static const _items = [
-    (SimType.crash,       Icons.bug_report_rounded,        'Event 1000 – App Crash'),
-    (SimType.diskspace,   Icons.storage_rounded,            'Event 2013 – Low Disk Space'),
-    (SimType.eventlog,    Icons.article_rounded,            'Event 1100 – Event Log Shutdown'),
-    (SimType.auditevents, Icons.gavel_rounded,             'Event 1101 – Audit Events Dropped'),
-    (SimType.highcpu,     Icons.speed_rounded,              'Event 9999 – High CPU ⚡'),
-    (SimType.servicecrash,Icons.settings_power_rounded,    'Event 7034 – Service Crash 🚨'),
-    (SimType.rootCauseVariants, Icons.device_hub_rounded,  'Root Cause Variants 🎯'),
+    (SimType.crash,              Icons.bug_report_rounded,           'Event 1000 – App Crash'),
+    (SimType.diskspace,          Icons.storage_rounded,              'Event 2013 – Low Disk Space'),
+    (SimType.eventlog,           Icons.article_rounded,              'Event 1100 – Event Log Shutdown'),
+    (SimType.auditevents,        Icons.gavel_rounded,                'Event 1101 – Audit Events Dropped'),
+    (SimType.highcpu,            Icons.speed_rounded,                'Event 9999 – High CPU ⚡'),
+    (SimType.servicecrash,       Icons.settings_power_rounded,       'Event 7034 – Service Crash 🚨'),
+    (SimType.servicenotstarting, Icons.play_disabled_rounded,        'Event 7000 – Service Not Starting 🔧'),
+    (SimType.rootCauseVariants,  Icons.device_hub_rounded,           'Root Cause Variants 🎯'),
   ];
 
   @override
@@ -306,6 +325,8 @@ class _ControlPanel extends StatelessWidget {
   final ValueChanged<int> onCountChanged; final ValueChanged<String> onProfileChanged;
   final ValueChanged<bool> onRetryChanged, onVerifyChanged, onLivePlaybackChanged;
   final ValueChanged<double> onSpeedChanged;
+  // Service Not Starting
+  final TextEditingController svcName;
   // Disk
   final int diskCount; final String diskProfile; final bool diskRetry, diskVerify;
   final ValueChanged<int> onDiskCountChanged; final ValueChanged<String> onDiskProfileChanged;
@@ -327,6 +348,7 @@ class _ControlPanel extends StatelessWidget {
     required this.onCountChanged, required this.onProfileChanged,
     required this.onRetryChanged, required this.onVerifyChanged,
     required this.onLivePlaybackChanged, required this.onSpeedChanged,
+    required this.svcName,
     required this.diskCount, required this.diskProfile, required this.diskRetry, required this.diskVerify,
     required this.onDiskCountChanged, required this.onDiskProfileChanged,
     required this.onDiskRetryChanged, required this.onDiskVerifyChanged,
@@ -358,7 +380,7 @@ class _ControlPanel extends StatelessWidget {
         label: Text(running ? 'Running…' : 'Run Simulation'),
         style: ElevatedButton.styleFrom(
           padding: const EdgeInsets.symmetric(vertical: 12),
-          backgroundColor: type == SimType.highcpu || type == SimType.servicecrash ? AppTheme.accentRed : AppTheme.accent,
+      backgroundColor: (type == SimType.highcpu || type == SimType.servicecrash || type == SimType.servicenotstarting) ? AppTheme.accentRed : AppTheme.accent,
         ),
       )),
       const SizedBox(height: 12),
@@ -403,6 +425,8 @@ class _ControlPanel extends StatelessWidget {
           step1: 'Writes Event ID 7034 (PrintSpooler crash) to Windows Application Log. The live alert popup will appear on Dashboard within 5 seconds.',
           step2: 'After the alert appears, click "Auto-Remediate Now" in the popup on the Dashboard tab. This runs Remediate_ServiceCrash.ps1.',
           script1: 'Simulate_ServiceCrash.ps1', script2: 'Remediate_ServiceCrash.ps1');
+      case SimType.servicenotstarting:
+        return _ServiceNotStartingParams(svcName: svcName);
       case SimType.rootCauseVariants:
         return const _LiveDemoParams(
           step1: 'Simulates 3 service crash events (same Event ID 1003) with different root causes: memory, disk, and dependency failure.',
@@ -419,13 +443,14 @@ class _ControlHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (gradient, icon, label) = switch (type) {
-      SimType.crash       => (AppTheme.gradientPrimary, Icons.bug_report_rounded, 'Crash Lab Controls'),
-      SimType.diskspace   => (AppTheme.gradientPrimary, Icons.storage_rounded, 'Disk Space Lab Controls'),
-      SimType.eventlog    => (AppTheme.gradientPrimary, Icons.article_rounded, 'Event Log Lab Controls'),
-      SimType.auditevents => (AppTheme.gradientPrimary, Icons.gavel_rounded, 'Audit Events Lab Controls'),
-      SimType.highcpu     => (AppTheme.gradientHighCpu, Icons.speed_rounded, 'High CPU Alert Lab'),
-      SimType.servicecrash=> (AppTheme.gradientWarning, Icons.settings_power_rounded, 'Service Crash Lab'),
-      SimType.rootCauseVariants => (AppTheme.gradientPurple, Icons.device_hub_rounded, 'Root Cause Variant Lab'),
+      SimType.crash              => (AppTheme.gradientPrimary,  Icons.bug_report_rounded,       'Crash Lab Controls'),
+      SimType.diskspace          => (AppTheme.gradientPrimary,  Icons.storage_rounded,          'Disk Space Lab Controls'),
+      SimType.eventlog           => (AppTheme.gradientPrimary,  Icons.article_rounded,          'Event Log Lab Controls'),
+      SimType.auditevents        => (AppTheme.gradientPrimary,  Icons.gavel_rounded,            'Audit Events Lab Controls'),
+      SimType.highcpu            => (AppTheme.gradientHighCpu,  Icons.speed_rounded,            'High CPU Alert Lab'),
+      SimType.servicecrash       => (AppTheme.gradientWarning,  Icons.settings_power_rounded,   'Service Crash Lab'),
+      SimType.servicenotstarting => (AppTheme.gradientWarning,  Icons.play_disabled_rounded,    'Service Not Starting Lab'),
+      SimType.rootCauseVariants  => (AppTheme.gradientPurple,   Icons.device_hub_rounded,       'Root Cause Variant Lab'),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -506,7 +531,20 @@ class _GenericParams extends StatelessWidget {
     _ScriptInfo('remediation_scripts/$script', null),
   ]);
 }
+class _ServiceNotStartingParams extends StatelessWidget {
+  final TextEditingController svcName;
+  const _ServiceNotStartingParams({required this.svcName});
 
+  @override
+  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    const Text('Simulates Event ID 7000 for a service failing to start, then injects it into the remediation engine.',
+        style: TextStyle(color: AppTheme.textMuted, fontSize: 11, height: 1.5)),
+    const SizedBox(height: 12),
+    _SmallField('Service Name', svcName),
+    const SizedBox(height: 8),
+    const _ScriptInfo('remediation_scripts/Error7000_ServiceNotStarting.ps1', null),
+  ]);
+}
 class _LiveDemoParams extends StatelessWidget {
   final String step1, step2, script1, script2;
   const _LiveDemoParams({required this.step1, required this.step2, required this.script1, required this.script2});

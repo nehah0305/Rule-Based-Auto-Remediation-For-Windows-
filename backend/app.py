@@ -2911,8 +2911,8 @@ def live_alerts():
                 continue
             if log_name != 'Simulation':
                 continue
-            # Accept both HighCPU and ServiceCrash demo sources
-            if source not in (_HIGHCPU_SOURCE, _SVCCRASH_SOURCE):
+            # Accept HighCPU, ServiceCrash, and ServiceNotStarting demo sources
+            if source not in (_HIGHCPU_SOURCE, _SVCCRASH_SOURCE, _SVCNOTSTART_SOURCE):
                 continue
             # Only within the time window
             if timestamp and timestamp < cutoff:
@@ -2922,6 +2922,9 @@ def live_alerts():
             if source == _SVCCRASH_SOURCE and event_id == _SVCCRASH_EVENT_ID:
                 rule = _ensure_svccrash_rule()
                 alert_type = 'servicecrash'
+            elif source == _SVCNOTSTART_SOURCE and event_id == _SVCNOTSTART_EVENT_ID:
+                rule = _ensure_svcnotstart_rule()
+                alert_type = 'servicenotstarting'
             else:
                 rule = _ensure_highcpu_rule()
                 alert_type = 'highcpu'
@@ -2950,6 +2953,145 @@ def live_alerts():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(exc)}), 500
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Service Not Starting — Live Demo Simulation  (Event ID 7000)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SVCNOTSTART_EVENT_ID = 7000
+_SVCNOTSTART_SOURCE   = 'AutoRemediationDemo_ServiceNotStart'
+_SVCNOTSTART_CATEGORY = 'Service Startup Failure'
+
+
+def _ensure_svcnotstart_rule():
+    """Return (or lazily create) the remediation rule for the ServiceNotStarting demo."""
+    script_path = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), '..', 'remediation_scripts',
+        'Error7000_ServiceStartupFailure.ps1'
+    ))
+    for r in models.get_rules():
+        if r[2] == _SVCNOTSTART_EVENT_ID and (r[3] or '').lower() == _SVCNOTSTART_SOURCE.lower():
+            return r
+    rid = models.add_rule(
+        name='AutoFix Demo - Event ID 7000 Service Not Starting',
+        event_id=_SVCNOTSTART_EVENT_ID,
+        source=_SVCNOTSTART_SOURCE,
+        message_regex=None,
+        remediation_script=script_path,
+        script_type='file',
+        auto_remediate=False,          # Driven manually from the pop-up
+        stop_processing=False,
+        category=_SVCNOTSTART_CATEGORY,
+        severity='High',
+        description='Auto-fix rule for the Service Not Starting live demo.',
+        recommended_action='Verify startup type, start dependencies, and restart the service.',
+        priority=12,
+        cooldown_minutes=0,
+    )
+    return models.get_rule(rid)
+
+
+@app.route('/api/simulations/servicenotstarting/inject', methods=['POST'])
+def servicenotstarting_inject():
+    """
+    Step 1 of the Service Not Starting live alert demo:
+      - Creates a synthetic Event ID 7000 entry in the DB.
+      - Also writes a real Windows Event Log entry via simulate_service_not_starting.ps1
+        so the monitor can pick it up, exactly like the notepad crash demo.
+      - Returns {status, event_row_id, script_output}.
+    """
+    data = request.get_json(silent=True) or {}
+    service_name = data.get('service_name', 'MyTestService')
+
+    # Run the existing PowerShell simulate script if it exists
+    inject_script = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), '..',
+        'simulate_service_not_starting.ps1'
+    ))
+    script_output = ''
+    if os.path.exists(inject_script):
+        try:
+            proc = subprocess.run(
+                ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                 '-File', inject_script,
+                 '-ServiceName', service_name,
+                 '-BackendUrl', 'http://localhost:5000'],
+                capture_output=True, text=True, timeout=30
+            )
+            script_output = (proc.stdout + proc.stderr).strip()
+        except Exception as exc:
+            script_output = f'Script execution info: {exc}'
+    else:
+        script_output = f'[INFO] Inject script not found at {inject_script}; DB event still created.'
+
+    now = datetime.utcnow()
+    message = (
+        f'[SERVICE NOT STARTING ALERT] The {service_name} service failed to start manually. '
+        f'Error 0x80070422: The service cannot be started, either because it is disabled '
+        f'or because it has no enabled devices associated with it. '
+        f'Service not starting manually. '
+        f'Timestamp: {now.isoformat()}Z'
+    )
+
+    event_row_id = models.add_event(
+        event_id=_SVCNOTSTART_EVENT_ID,
+        log_name='Simulation',
+        source=_SVCNOTSTART_SOURCE,
+        message=message,
+        timestamp=now.isoformat(),
+        category=_SVCNOTSTART_CATEGORY,
+        severity='High',
+        description=f'Simulated Service Not Starting — {service_name} failed to start manually',
+        recommended_action='Verify startup type, start dependencies, and restart the service.',
+        level='Error',
+    )
+
+    # Ensure the remediation rule exists so the live alert pop-up can use it
+    rule = _ensure_svcnotstart_rule()
+    rule_id = rule[0] if rule else None
+
+    return jsonify({
+        'status': 'ok',
+        'event_row_id': event_row_id,
+        'event_id': _SVCNOTSTART_EVENT_ID,
+        'source': _SVCNOTSTART_SOURCE,
+        'service_name': service_name,
+        'message': message,
+        'rule_id': rule_id,
+        'script_output': script_output,
+        'timestamp': now.isoformat() + 'Z',
+    })
+
+
+@app.route('/api/simulations/servicenotstarting/remediate', methods=['POST'])
+def servicenotstarting_remediate():
+    """
+    Step 2 of the Service Not Starting live alert demo:
+      - Receives {event_row_id} from the dashboard pop-up.
+      - Ensures the remediation rule exists.
+      - Executes Error7000_ServiceStartupFailure.ps1 (simulation mode).
+      - Returns {status, output, event_row_id, rule_id}.
+    """
+    data = request.get_json(silent=True) or {}
+    event_row_id = data.get('event_row_id')
+    if not event_row_id:
+        return jsonify({'error': 'event_row_id is required'}), 400
+
+    rule = _ensure_svcnotstart_rule()
+    if not rule:
+        return jsonify({'error': 'Could not create/find remediation rule'}), 500
+
+    rule_id = rule[0]
+    # wait=True: the live-demo pop-up displays the script output directly.
+    result = models.run_remediation(event_row_id, rule_id, wait=True)
+
+    return jsonify({
+        'status': result.get('status', 'unknown'),
+        'output': result.get('output', ''),
+        'event_row_id': event_row_id,
+        'rule_id': rule_id,
+    })
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
